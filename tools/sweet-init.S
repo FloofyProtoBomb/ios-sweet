@@ -15,6 +15,9 @@
 #define SYS_getpid	20
 #define SYS_select	93
 #define O_RDWR		2
+#ifndef INIT_BOARD
+#define INIT_BOARD "SWEET"
+#endif
 
 	.text
 	.globl	_start
@@ -58,7 +61,13 @@ _start:
 	sub	x2, x2, x1
 	bl	write_console
 
+#ifdef DRE_CHECK_IDENTIFIERS
+	bl	Ldre_check_ids
+#endif
 tick:
+#ifdef DRE_BOARD_TESTS
+	bl	Ldre_print_report
+#endif
 	/* select(0, NULL, NULL, NULL, &5s) as a portable sleep */
 	mov	x0, #0
 	mov	x1, #0
@@ -91,9 +100,15 @@ five_sec:
 path:
 	.asciz	"/dev/console"
 hello:
-	.ascii	"\n*** SWEET userspace: init running as PID "
+	.ascii	"\n*** "
+	.ascii	INIT_BOARD
+	.ascii	" userspace: init running as PID "
 hello_tail:
 	.ascii	" ***\n"
 alive:
-	.ascii	"SWEET init: still alive\n"
+	.ascii	INIT_BOARD
+	.ascii	" init: still alive\n"
 alive_end:
+#ifdef DRE_CHECK_IDENTIFIERS
+#include "../devices/dre/identity-check.inc"
+#endif

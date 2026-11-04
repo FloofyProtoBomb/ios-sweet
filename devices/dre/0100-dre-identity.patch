@@ -1,0 +1,40 @@
+--- a/iokit/Kernel/IOPlatformExpert.cpp
++++ b/iokit/Kernel/IOPlatformExpert.cpp
+@@ -1979,6 +1979,14 @@
+ OSString*
+ IODTPlatformExpert::createSystemSerialNumberString(OSData* myProperty)
+ {
++#if defined(ARM64_BOARD_CONFIG_DRE)
++	// The OnePlus serial is a conventional NUL-terminated device-tree string.
++	if (!myProperty || !myProperty->getLength()) return NULL;
++	const char *value = (const char *)myProperty->getBytesNoCopy();
++	if (!value || value[myProperty->getLength() - 1] != 0) return NULL;
++	return OSString::withCString(value);
++#endif
++
+ 	UInt8* serialNumber;
+ 	unsigned int serialNumberSize;
+ 	unsigned short pos = 0;
+@@ -2180,6 +2188,13 @@
+ 	if (entry) {
+ 		OSData * data1;
+ 
++#if defined(ARM64_BOARD_CONFIG_DRE)
++		data1 = OSDynamicCast(OSData, entry->getProperty("dre,host-uuid"));
++		if (data1 && data1->getLength() == sizeof(uuid_t)) {
++			uuid_unparse((const uint8_t *)data1->getBytesNoCopy(), uuid);
++			string = OSString::withCString(uuid);
++		}
++#else
+ 		data1 = OSDynamicCast( OSData, entry->getProperty( "unique-chip-id" ));
+ 		if (data1 && data1->getLength() == 8) {
+ 			OSData * data2;
+@@ -2203,6 +2218,8 @@
+ 				string = OSString::withCString( uuid );
+ 			}
+ 		}
++
++#endif
+ 
+ 		entry->release();
+ 	}

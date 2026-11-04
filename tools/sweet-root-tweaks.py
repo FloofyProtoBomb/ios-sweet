@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Apply the SWEET bring-up changes to an iOS root made by tools/mkiosroot.sh.
 
-  sudo sweet-root-tweaks.py MOUNTED_ROOT
+  sudo sweet-root-tweaks.py MOUNTED_ROOT [--first-run-setup]
 
 MOUNTED_ROOT is the HFS+ image mounted read-write (Linux: run
 `fsck.hfsplus -fy` on the image, then `mount -t hfsplus -o loop,force`).
@@ -27,7 +27,7 @@ screen (image versions v8-v14 in NOTES.md):
                   comes from its Hactivation branch, selected by the /chosen
                   security-status properties in tools/mkadt.py
 """
-import glob, os, plistlib, shutil, sys
+import argparse, glob, os, plistlib, shutil, sys
 
 BUILD, VERSION = '20H392', '16.7.16'
 MOBILE = 501
@@ -52,6 +52,17 @@ def merge_pref(root, name, values):
     data.update(values)
     save(path, data, MOBILE, MOBILE, 0o600)
     print('pref', name, sorted(values))
+
+
+def first_run_setup(root):
+    # Re-arm a previously prepared image without discarding unrelated Buddy
+    # preferences. On a fresh image the absence of these keys is sufficient.
+    path = os.path.join(root, 'private/var/mobile/Library/Preferences/com.apple.purplebuddy.plist')
+    if os.path.isfile(path):
+        values = load(path)
+        for key in ('SetupDone', 'SetupFinishedAllSteps', 'SetupVersion', 'daemonizeNeedsToRun'):
+            values.pop(key, None)
+        save(path, values, MOBILE, MOBILE, 0o600)
 
 
 def launchd(root):
@@ -94,17 +105,21 @@ def activation(root):
     c = find_container(root, 'Data/System', 'com.apple.mobileactivationd')
     if c is None:
         print('warning: no mobileactivationd system container in the image; skipped data ark')
-        return
+        return False
     d = os.path.join(c, 'Library/internal')
     os.makedirs(d, exist_ok=True)
     os.chown(d, MOBILE, MOBILE)
     os.chmod(d, 0o755)
-    save(os.path.join(d, 'data_ark.plist'), {
+    path = os.path.join(d, 'data_ark.plist')
+    values = load(path) if os.path.exists(path) else {}
+    values.update({
         '-ActivationState': 'Activated', '-BrickState': False,
         '-BuildVersion': BUILD, '-ProductVersion': VERSION,
         '-DataMigrationCompleted': True, '-PreSydroDataMigrationCompleted': True,
-    }, MOBILE, MOBILE, 0o600)
+    })
+    save(path, values, MOBILE, MOBILE, 0o600)
     print('data ark', d)
+    return True
 
 
 def audio(root):
@@ -123,9 +138,24 @@ def audio(root):
 
 
 def main():
-    if len(sys.argv) != 2 or not os.path.isdir(os.path.join(sys.argv[1], 'System/Library/xpc')):
+    parser = argparse.ArgumentParser(description="Prepare a mounted iOS 16.7.16 root image.")
+    parser.add_argument('root')
+    parser.add_argument('--first-run-setup', action='store_true',
+                        help='allow Setup.app to run while retaining local activation')
+    parser.add_argument('--activation-only', action='store_true',
+                        help='seed an existing mobileactivationd container without resetting Setup')
+    args = parser.parse_args()
+    root = args.root
+    if not os.path.isdir(os.path.join(root, 'System/Library/xpc')):
         sys.exit(__doc__)
-    root = sys.argv[1]
+    if args.activation_only:
+        if not activation(root):
+            sys.exit("mobileactivationd has not yet created its system container")
+        return
+    if args.first_run_setup:
+        info = os.path.join(root, 'Applications/Setup.app/Info.plist')
+        if not os.path.isfile(info) or load(info).get('CFBundleIdentifier') != 'com.apple.purplebuddy':
+            sys.exit("missing Setup.app (com.apple.purplebuddy) on the mounted root")
     launchd(root)
     containers(root)
     activation(root)
@@ -137,9 +167,12 @@ def main():
         'BKNoWatchdogs': True,
         'FBLaunchWatchdogExceptions': {'com.apple.purplebuddy': 100.0},
         'MCForceShowCloudConfigurationUI': False})
-    merge_pref(root, 'com.apple.purplebuddy', {
-        'SetupDone': True, 'SetupFinishedAllSteps': True, 'SetupVersion': 11,
-        'daemonizeNeedsToRun': False})
+    if args.first_run_setup:
+        first_run_setup(root)
+    else:
+        merge_pref(root, 'com.apple.purplebuddy', {
+            'SetupDone': True, 'SetupFinishedAllSteps': True, 'SetupVersion': 11,
+            'daemonizeNeedsToRun': False})
     merge_pref(root, 'com.apple.purplebuddy.notbackedup', {
         k: False for k in ('ShouldRunDiagnosticsMiniBuddy', 'ShouldRunHSA2MiniBuddy',
                            'ShouldRunKeychainSyncMiniBuddy', 'ShouldRunMesaMiniBuddy',

@@ -1,5 +1,91 @@
 # iOS 16 on sweet (Redmi Note 10 Pro, SM7150) - working notes
 
+## DE2118 handoff, 2026-11-04
+
+The OnePlus port starts at [devices/dre/README.md](devices/dre/README.md).
+Upstream base 45263bee51df4a0f55cdf9c649af886399488ddb. The kernel binary
+was retargeted from upstream Actions run 38779441895, artifact 11995436131,
+at patch 0027. No DRE macOS CI run was dispatched.
+
+Current follow-up, 2026-11-04. The combined shim now has guarded UFS
+branch-enable writes with bounded polling and rollback, plus read-only
+DWC3, touch GENI SPI and GPU readiness probes. Fourteen exact-image Unicorn
+scenarios pass for both enable and read-only builds, including HWCG idle,
+timeout rollback, powered-off blocks and mismatched DT. This is emulator
+evidence, not a new physical result. UFS commands, USB enumeration, touch
+transactions and XNU graphics acceleration are still unimplemented.
+The earlier CLOCK_GATED result did not account for HWCG idle semantics
+and cannot by itself establish that the branches were disabled.
+
+The user connected GitHub and supplied FloofyProtoBomb/ios-sweet. App
+installation 178678426 now exposes that account. Source publication and
+the first native DRE CI build are next. Keep actual identifiers, live DT,
+Apple artifacts and private images outside the public fork. The workflow
+selects DRE automatically on branch dre-n200. No further device flash has
+been authorized since the completed combined test and restore.
+
+Observed on project 133180, LineageOS 22.2 (20250815), slot B. The real
+device tree and boot headers matched the source profile. A bare-metal probe
+was sent to bootloader fastboot, which refused the temporary boot command.
+The host tested the exact private XNU Image through its first kernel marker
+using that live DTB. On QEMU virt the same kernel and md0 init reached
+PID 1, passed four model/board sysctl checks and gethostuuid, and emitted
+its heartbeat. A real KGSL command-buffer submission on the handset's
+A619v1 produced the expected marker. The iOS graphics stack, UFS root,
+touch driver, cellular integration and end-to-end Setup workflow are open.
+
+The approved artwork was written only to logo_b through userspace fastboot.
+Its readback SHA-256 is 246df6f62775406ceff376cfeae7f80d2f1007ba870b86c9a0831fac0e813587.
+The user observed the new Apple power-on logo. Fastboot and low-battery
+artwork were decoded and verified offline. The original boot_a, boot_b
+and logo_b were backed up and independently hashed. Keep those backups,
+the live FDT, the identity file and all personalized images outside git.
+
+A separately approved physical test wrote the private diagnostic image
+(SHA-256 e7e98fe670d4c79d2b97e3afc30149f6096d89a418803ad04c5cfb259aa9f3f7)
+to boot_b. The two handset photos show dre-shim, VM bootstrap complete,
+the platform expert, boot CPU 0 with SGI1 verified, HFS 627.100.6 registered,
+BSD autoconfiguration, multiple passing Skywalk tests and loopback/gif/stf
+interface threads scheduled. The console wraps. Neither photograph contains
+the md0 mount or PID 1 announcement. These were observed in QEMU.
+
+The approved restore succeeded. LineageOS 22.2 booted on B and Android
+reported boot completed. Independent device readback after boot matched
+the original boot_b (d12c5d921522abd545c39884f00af6265ff32f749afbdb1917aa3c741601c44c)
+and the installed artwork. ADB was returned to uid 2000.
+
+The follow-up combined image uses the same kernel and the optional
+`--board-tests` shim and init. Its read-only UFS survey is separate from
+GPU/touch DT identification and compares the live bootloader serial without
+printing it. The results are carried in XNU boot arguments and repeated
+by diagnostic PID 1. Six emulated controller states exercised the exact
+combined boot image. On QEMU virt, injected sample report values were read
+back from kern.bootargs and printed with the successful identity checks.
+
+Combined handset test, 2026-11-04. The user explicitly approved a new
+boot_b test and restore. The flashed combined image SHA-256 is
+d874684bb3503b40f3ccfb78c847f6b609bc2d2107d3a66b2f16605aa9b02297.
+Fastboot reported both write and reboot successful. The user confirmed
+the repeating DE2118 TEST results card appeared on the physical phone.
+That card is emitted by the diagnostic Mach-O PID 1 after md0 mounts.
+The user's combined-test photograph confirms repeated stable PID 1 cards
+with DRE identity checks PASS, UFS=CLOCK_GATED, GPU_DT=A619v1,
+TOUCH_DT=NT36672C_SPI0, PANEL_SEL=TIANMA_NT36672C, SERIAL=ABL_MATCH
+and "DRE init: still alive". The UFS result means the power-domain
+check passed but at least one of the inspected AHB, AXI or UniPro clock
+branches had CLK_OFF set. No UFSHCI registers or media were accessed.
+The current report does not identify which clock was gated. The next
+storage task is to record each clock's status and implement the Holi clock
+bring-up before link or DMA work. GPU/touch results identify hardware;
+accelerated rendering and touch input remain unimplemented.
+The combined-test restore completed successfully. LineageOS
+22.2-20250815 booted on slot B and reported sys.boot_completed=1.
+Device readback matched the original boot_b SHA-256
+d12c5d921522abd545c39884f00af6265ff32f749afbdb1917aa3c741601c44c
+and the installed artwork SHA-256
+246df6f62775406ceff376cfeae7f80d2f1007ba870b86c9a0831fac0e813587.
+ADB was returned to uid 2000. No diagnostic image remains installed.
+
 ## Agent handoff / active work (2026-10-15, latest)
 
 ### >>> UPDATE 2026-10-18 (read first, then the 10-17 handoff below) <<<

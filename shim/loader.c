@@ -83,13 +83,43 @@ const char *loader_boot(uintptr_t dtb)
 	if (!fdt_chosen_u64(dtb, "linux,initrd-start", &rd_start) ||
 	    !fdt_chosen_u64(dtb, "linux,initrd-end", &rd_end))
 		return "no initrd in /chosen";
+	return loader_boot_range(rd_start, rd_end, 0);
+}
+
+const char *loader_boot_range(uintptr_t rd_start, uintptr_t rd_end, const char *extra)
+{
+	if (rd_end <= rd_start || rd_end - rd_start < sizeof(struct payload) ||
+	    (rd_start & 7))
+		return "invalid payload range";
 	con_hex2("INITRD", "lo=", rd_start, "hi=", rd_end);
 
 	const struct payload *p = (const struct payload *)rd_start;
 	if (!magic_ok(p->magic))
 		return "no SWEETXNU payload";
-	if (p->version != 1 || (p->adt_off & 7) || (rd_start & 7))
+	uint64_t len = rd_end - rd_start;
+	if (p->version != 1 || (p->adt_off & 7) || !p->nsegs ||
+	    p->nsegs > (len - sizeof(*p)) / sizeof(p->segs[0]) ||
+	    p->adt_off < sizeof(*p) + p->nsegs * sizeof(p->segs[0]) ||
+	    p->adt_off > len || !p->adt_size || p->adt_size > UINT32_MAX ||
+	    (p->adt_size + 7) / 8 > (len - p->adt_off) / 8)
 		return "bad payload header";
+	if (!p->mem_size || p->phys_base > UINT64_MAX - p->mem_size ||
+	    p->kernel_end < p->virt_base || p->entry_va < p->virt_base ||
+	    p->entry_va >= p->kernel_end || (p->kernel_end & (PAGE_16K - 1)))
+		return "bad kernel range";
+	uint64_t used = p->kernel_end - p->virt_base;
+	uint64_t adt_pages = (p->adt_size + PAGE_16K - 1) & ~(PAGE_16K - 1);
+	if (used > p->mem_size || adt_pages + PAGE_16K > p->mem_size - used)
+		return "kernel and boot arguments exceed RAM";
+	for (uint32_t i = 0; i < p->nsegs; i++) {
+		const struct payload_seg *s = &p->segs[i];
+		if (s->vmaddr < p->virt_base || s->vmaddr > p->kernel_end ||
+		    s->vmsize > p->kernel_end - s->vmaddr ||
+		    s->file_size > s->vmsize || s->file_off > p->adt_off ||
+		    ((s->file_off | s->vmaddr | s->vmsize) & 7) != 0 ||
+		    s->file_size > p->adt_off - s->file_off)
+			return "bad payload segment";
+	}
 
 	uint64_t pa_of_va_base = p->phys_base - p->virt_base;	/* pa = va + this */
 	con_hex2("PHYS", "base=", p->phys_base, "size=", p->mem_size);
@@ -123,7 +153,7 @@ const char *loader_boot(uintptr_t dtb)
 	ba->physBase = p->phys_base;
 	ba->memSize = p->mem_size;
 	ba->topOfKernelData = top;
-	ba->Video.v_baseAddr = FB_BASE;
+	ba->Video.v_baseAddr = (uintptr_t)con_fb;
 	ba->Video.v_display = 1;
 	ba->Video.v_rowBytes = FB_STRIDE;
 	ba->Video.v_width = FB_W;
@@ -133,6 +163,16 @@ const char *loader_boot(uintptr_t dtb)
 	ba->deviceTreeLength = (uint32_t)p->adt_size;
 	for (int i = 0; i < BOOT_LINE_LENGTH; i++)
 		ba->CommandLine[i] = p->cmdline[i];
+	if (extra) {
+		unsigned i = 0;
+		while (i < BOOT_LINE_LENGTH && ba->CommandLine[i]) i++;
+		if (i + 2 >= BOOT_LINE_LENGTH) return "boot args full";
+		ba->CommandLine[i++] = ' ';
+		while (*extra && i < BOOT_LINE_LENGTH - 1)
+			ba->CommandLine[i++] = *extra++;
+		if (*extra) return "board report too long";
+		ba->CommandLine[i] = 0;
+	}
 	ba->memSizeActual = p->mem_size;
 	con_hex2("BOOTARG", "pa=", ba_pa, "top=", top);
 

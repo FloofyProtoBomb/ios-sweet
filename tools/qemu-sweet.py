@@ -209,6 +209,7 @@ def stream_serial_file(serial_path, file_pos, out_stream=sys.stdout):
 
 
 def main():
+    global FB_BASE
     ap = argparse.ArgumentParser(
         description="Boot a SWEETXNU payload in QEMU's virt board.",
         epilog="Examples:\n"
@@ -228,7 +229,10 @@ def main():
     ap.add_argument('--fail-on-panic', action='store_true', help='exit 2 for a visible panic, 3 for incomplete/blank decoding; requires --kernel')
     ap.add_argument('--live-serial', action='store_true', help='stream serial console output to stdout in real time')
     ap.add_argument('--check-env', action='store_true', help='check QEMU installation and dependencies without running a payload')
+    ap.add_argument('--fb-base', type=lambda v: int(v, 0), default=FB_BASE,
+                    help='physical framebuffer for boot arguments and screen capture')
     a = ap.parse_args()
+    FB_BASE = a.fb_base
 
     if a.check_env:
         ok = check_qemu_dependency(a.cpu)

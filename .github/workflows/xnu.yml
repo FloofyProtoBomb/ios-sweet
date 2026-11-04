@@ -16,9 +16,10 @@ on:
         description: make -k (collect all compile errors in one run)
         default: "true"
   push:
-    branches: [main]
+    branches: [main, dre-n200]
     paths:
       - "xnu/patches/**"
+      - "devices/dre/**"
       - ".github/workflows/xnu.yml"
 
 concurrency:
@@ -30,7 +31,7 @@ env:
   DXB_SHA: 663906528d1cd5ea8fde7de6f16de73db9511549
   MACOS_VERSION: ${{ inputs.macos_version || '13.5' }}
   KERNEL_CONFIG: ${{ inputs.kernel_config || 'DEVELOPMENT' }}
-  MACHINE_CONFIG: ${{ inputs.machine_config || 'SWEET' }}
+  MACHINE_CONFIG: ${{ inputs.machine_config || (github.ref_name == 'dre-n200' && 'DRE') || 'SWEET' }}
 
 jobs:
   build:
@@ -47,7 +48,11 @@ jobs:
           git -C dxb fetch -q --depth 1 "$DXB_REPO" "$DXB_SHA"
           git -C dxb checkout -q FETCH_HEAD
           # 12.5-14.3 use the top-level patches dir; ours go next to blacktop's
-          cp xnu/patches/*.patch xnu/patches/*.sh dxb/patches/
+          if [ "$MACHINE_CONFIG" = DRE ]; then
+            python3 devices/dre/stage_xnu.py dxb/patches
+          else
+            cp xnu/patches/*.patch xnu/patches/*.sh dxb/patches/
+          fi
           # libfirehose_kernel is built arm64e-only; the SWEET kernel is plain arm64
           sed -i '' 's/ARCHS="x86_64 arm64e" VALID_ARCHS="x86_64 arm64e"/ARCHS="x86_64 arm64e arm64" VALID_ARCHS="x86_64 arm64e arm64"/' dxb/build.sh
           grep -c 'VALID_ARCHS="x86_64 arm64e arm64"' dxb/build.sh
@@ -113,6 +118,9 @@ jobs:
         run: |
           mkdir -p out
           cp -R dxb/fakeroot/System/Library/Kernels/. out/ 2>/dev/null || true
+          if [ "$MACHINE_CONFIG" = DRE ]; then
+            test -s "out/kernel.$(echo "$KERNEL_CONFIG" | tr A-Z a-z).dre"
+          fi
           ls -la out
           (cd out && shasum -a 256 kernel.* > SHA256SUMS) || true
 

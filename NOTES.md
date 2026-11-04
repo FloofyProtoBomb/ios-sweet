@@ -2,13 +2,44 @@
 
 ## DE2118 handoff, 2026-11-04
 
-Independent touch work while handset approval is pending. The portable
+Latest handset result. The user explicitly approved the native combined
+test and restore, and fastboot wrote/rebooted image 1390d359c5ca3ea6f24fbdb3bc593098c9732bf9764f29225e5f7c1ec4ab97a4.
+The user confirmed the repeating results card and supplied photo
+20261104_153508.jpg. The photo shows native XNU PID 1 and identity checks
+PASS, SERIAL=ABL_DETECTED, UFS=LINK_READY, UCLK=READY, USB=DWC3_DEVICE,
+TOUCH_SPI=CLOCK_OFF and GPU_HW=POWER_OFF. The UFS before/after branch
+values match, so this boot needed no enable-bit changes. HWCG accounts
+for the earlier CLOCK_GATED classification. No sector commands were sent.
+USB identifies DWC3 v3.30a in device mode; gadget enumeration is still absent.
+The touch probe found no expected APSS clock votes and did not read GENI.
+Both GPU domains lacked power-on status and RBBM was not read. Full raw
+transcription stays outside git in outputs/native-platform-results.json.
+
+The authorized restore SUCCEEDED. LineageOS 22.2-20250815-NIGHTLY-dre booted
+on slot B with sys.boot_completed=1. Device readback matched original boot_b
+d12c5d921522abd545c39884f00af6265ff32f749afbdb1917aa3c741601c44c and installed
+artwork 246df6f62775406ceff376cfeae7f80d2f1007ba870b86c9a0831fac0e813587.
+ADB was dropped back to uid 2000. work/platform-restore-result.json records
+the readback. No diagnostic image remains on boot_b, and no watcher remains.
+
+Read-only firmware collection after restore saved six required GPU firmware
+files under work/device-firmware/gpu, independently checked against device
+hashes. The Holi A619 variant's published profile uses a630_sqe.fw and
+a615_zap, with no GMU firmware entry. The installed normal Tianma touch image
+was found at /odm/firmware/tp/133180/FW_NF_NT36672C_TIANMA.img and its
+139472-byte copy is under work/device-firmware/touch. These proprietary
+files and their manifests stay outside git. ADB was unrooted after each
+read batch. No firmware was uploaded to hardware or modified on the phone.
+
+Independent touch work. The portable
 NT36672C report decoder is in devices/dre/touch. Host and ARM64 freestanding
 compiles passed, and 447 synthetic protocol checks passed. The decoder handles
 the checksum, contact IDs, pressure extensions, coordinate limits, valid
 release frames and recovery/watchdog markers without partial output changes.
 It is NOT linked into XNU and has no SPI, firmware loader, GPIO or HID access.
-The pending candidate image is unchanged at SHA-256 1390d359c5ca3ea6f24fbdb3bc593098c9732bf9764f29225e5f7c1ec4ab97a4.
+It is published on branch dre-touch-protocol, commit
+7494ea4c4939595ea46b7ef7ea62ed2c0424659f, with its tree verified against
+local 2cbbf3a. The tested image is 1390d359c5ca3ea6f24fbdb3bc593098c9732bf9764f29225e5f7c1ec4ab97a4.
 
 Latest milestone. Native DRE CI run 41904068757 PASSED on public branch
 dre-n200, commit 21e955e7c39fbf6665377768bbf00de71e95945d. Its tree
@@ -26,21 +57,17 @@ all four model/board sysctls, exact gethostuuid and the full simulated
 platform report. The native build contains the built-in HFS driver; no UFS
 commands or peripheral transactions are implemented by the readiness probes.
 
-The output de2118-platform-test.img is the new generic native candidate.
+The output de2118-platform-test.img is the tested generic native diagnostic.
 No real serial or IMEI is embedded. Its manifest labels the remaining
 limitations. Source ZIP and manifest were refreshed after validation.
-The phone is currently absent from USB ADB. A new physical test and restore
-need user approval and a working USB path. No new partition was written.
+The physical test and restore are complete as recorded above. A further
+image test needs its own approval before writing a partition.
 The old combined and early private images remain separate in outputs.
-The prepared operator is work/platform-operator.py, copied from the earlier
-successful helper with the new image path and exact hash pinned. It has NOT
-been run. The restore hash remains d12c5d921522abd545c39884f00af6265ff32f749afbdb1917aa3c741601c44c.
-Neither USB ADB nor fastboot detected the phone at the last check. An async
-question is pending for a new combined test/restore after USB reconnection.
-Do not infer approval from the prior completed test. The latest local
-commits after 0001223 only record validation in NOTES/README and are not
-pushed, avoiding a redundant CI run. All implementation changes are already
-in remote commit 21e955e7c39fbf6665377768bbf00de71e95945d.
+The operator work/platform-operator.py ran the approved test and restore.
+The restore hash remains d12c5d921522abd545c39884f00af6265ff32f749afbdb1917aa3c741601c44c.
+All implementation changes for the tested image are in remote commit
+21e955e7c39fbf6665377768bbf00de71e95945d. New touch protocol work is isolated
+on dre-touch-protocol and is not present in the physical test image.
 
 The OnePlus port starts at [devices/dre/README.md](devices/dre/README.md).
 Upstream base 45263bee51df4a0f55cdf9c649af886399488ddb. The kernel binary

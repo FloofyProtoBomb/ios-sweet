@@ -43,8 +43,14 @@ watcher is active. A new physical test/restore needs specific approval.
 The last read-only USB check found the expected phone booted in LineageOS,
 slot B, boot_completed=1, shell uid 2000. Original boot backup and the
 previously handset-tested image remain hash-verified and unchanged.
-Publish this bundle on dre-next-test, preserving the handset-tested
-dre-n200 branch. The branch starts from remote c2152c2a3cec6ab213b38cb45511d4ca79e2e22d
+The code is published on dre-next-test at remote commit
+6f71c96b245db76253e9ce62992da5ab1f189fdd, with tree
+2985be005c9e059c7686fef1b15487d613d57fcc matching local 8609ce8.
+outputs/next-bundle-manifest.json records the image, source snapshot,
+validation and backup hashes. outputs/ios-dre-next-source.zip is the public
+source archive. The expanded final report passed its QEMU boot check.
+The handset-tested dre-n200 branch is preserved. This branch starts from
+remote c2152c2a3cec6ab213b38cb45511d4ca79e2e22d
 (local 220a686, tree 0583fe4b4a0cf76e104878df8ec8d6336d76460c).
 
 Latest handset result. The user explicitly approved the native combined

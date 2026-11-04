@@ -63,12 +63,16 @@ reading a phone.
 python devices/dre/test_identity.py --zig /path/to/zig
 ```
 
-The source-build alternative is the fork's upstream macOS/Xcode kernel
+The source-build path is the fork's upstream macOS/Xcode kernel
 workflow with `machine_config=DRE`, `macos_version=13.5`. It stages changes
 through 0027 plus the port's identity backport. All kernel patches were
-checked against the source release. The supplied binary was built using
-the pinned upstream artifact path. Pass a separately built kernel with
-`--xnu /path/to/kernel.development.dre`.
+checked against the source release. The first successful native DRE kernel
+is [build 41904068757](https://github.com/FloofyProtoBomb/ios-sweet/actions/runs/41904068757),
+commit `21e955e7c39fbf6665377768bbf00de71e95945d`. It passed QEMU PID 1,
+model/board and exact UUID checks with a synthetic test identity. The native
+phone image passed all fourteen constrained-MMIO scenarios with the real
+FDT. That image awaits a new approved handset test. Pass the native kernel
+with `--xnu /path/to/kernel.development.dre`.
 
 The Linux QEMU workflow uses the upstream screen decoder and requires
 `qemu-system-aarch64` and `llvm-nm` on PATH.
@@ -86,7 +90,8 @@ The expected console includes `DRE userspace: init running as PID 1`,
 
 ### Combined hardware test
 
-Pass `--board-tests` along with the kernel and private identity arguments.
+Pass `--board-tests` along with the kernel argument. Private identity input
+is optional.
 The default survey reads registers only. It checks Holi's UFS power domain
 and branch enables before reading the UFSHCI version, enable, host status
 and outstanding-transfer bits. The read helper catches a synchronous EL1

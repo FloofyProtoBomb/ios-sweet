@@ -2,6 +2,46 @@
 
 ## DE2118 handoff, 2026-11-04
 
+Independent touch work while handset approval is pending. The portable
+NT36672C report decoder is in devices/dre/touch. Host and ARM64 freestanding
+compiles passed, and 447 synthetic protocol checks passed. The decoder handles
+the checksum, contact IDs, pressure extensions, coordinate limits, valid
+release frames and recovery/watchdog markers without partial output changes.
+It is NOT linked into XNU and has no SPI, firmware loader, GPIO or HID access.
+The pending candidate image is unchanged at SHA-256 1390d359c5ca3ea6f24fbdb3bc593098c9732bf9764f29225e5f7c1ec4ab97a4.
+
+Latest milestone. Native DRE CI run 41904068757 PASSED on public branch
+dre-n200, commit 21e955e7c39fbf6665377768bbf00de71e95945d. Its tree
+f3722ae6f8b4b3219f0d27e5d1e817b9a747a20a matches local code commit 0001223.
+The exact ZIP digest is 1c4980996d09c14e91854564a24f7df6e9c68ae5cafd515611c286b2227c3113.
+The native kernel SHA-256 is ed81f44d59d0c29de708c52c5fda86211e046542bd3014f4780bcf497bd94e0b.
+It is saved at work/native-ci/kernel.development.dre outside the repository.
+
+The generic native combined image in work/build-native/dre-xnu-boot.img has
+SHA-256 1390d359c5ca3ea6f24fbdb3bc593098c9732bf9764f29225e5f7c1ec4ab97a4.
+It passed all 14 exact-image constrained-MMIO scenarios with the real FDT,
+including independent checks of the detected serial/UUID in the copied ADT.
+A twin with a synthetic QEMU-DRE-TEST expected identity passed QEMU PID 1,
+all four model/board sysctls, exact gethostuuid and the full simulated
+platform report. The native build contains the built-in HFS driver; no UFS
+commands or peripheral transactions are implemented by the readiness probes.
+
+The output de2118-platform-test.img is the new generic native candidate.
+No real serial or IMEI is embedded. Its manifest labels the remaining
+limitations. Source ZIP and manifest were refreshed after validation.
+The phone is currently absent from USB ADB. A new physical test and restore
+need user approval and a working USB path. No new partition was written.
+The old combined and early private images remain separate in outputs.
+The prepared operator is work/platform-operator.py, copied from the earlier
+successful helper with the new image path and exact hash pinned. It has NOT
+been run. The restore hash remains d12c5d921522abd545c39884f00af6265ff32f749afbdb1917aa3c741601c44c.
+Neither USB ADB nor fastboot detected the phone at the last check. An async
+question is pending for a new combined test/restore after USB reconnection.
+Do not infer approval from the prior completed test. The latest local
+commits after 0001223 only record validation in NOTES/README and are not
+pushed, avoiding a redundant CI run. All implementation changes are already
+in remote commit 21e955e7c39fbf6665377768bbf00de71e95945d.
+
 The OnePlus port starts at [devices/dre/README.md](devices/dre/README.md).
 Upstream base 45263bee51df4a0f55cdf9c649af886399488ddb. The kernel binary
 was retargeted from upstream Actions run 38779441895, artifact 11995436131,
@@ -20,7 +60,8 @@ The actual link failure was one undefined symbol, sweet_hfs_register.
 stage_xnu.py had renamed SWEET_HFS to DRE_HFS while retaining the lowercase
 sweet_hfs build selector. The native build therefore enabled the registration
 call but omitted all HFS objects. The staging transform now preserves the
-shared SWEET_HFS option and its Makefile variables. A new CI run is next.
+shared SWEET_HFS option and its Makefile variables. The corrected CI run
+41904068757 and its subsequent local virtual tests passed as recorded above.
 
 Current follow-up, 2026-11-04. The combined shim now has guarded UFS
 branch-enable writes with bounded polling and rollback, plus read-only

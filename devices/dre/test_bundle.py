@@ -250,6 +250,14 @@ def run(image, dtb, syms, case, context_probe=False):
         if case == 'both_translated': regs[SMMU + 0xc04] = 1
         elif case == 'context_layout': regs[SMMU + 0x24] = 32
         elif case == 'context_64k': regs[SMMU + 0x24] = (1 << 31) | (2 << 28) | 8
+        elif case == 'context_handset_span':
+            # Android observed 0x80000 hardware bytes in the 0x100000 DT
+            # reservation. ID1's page-size/bank-count bits remain modeled.
+            regs[SMMU + 0x24] = (5 << 28) | 32
+            regs[SMMU + 0xc04] = 1
+        elif case == 'context_outside_resource': regs[SMMU + 0x24] = (7 << 28) | 32
+        elif case == 'context_banks_outside_span': regs[SMMU + 0x24] = (5 << 28) | 65
+        elif case == 'context_bank_out_of_range': regs[SMMU + 0x24] = (5 << 28) | 2
     elif case == 'dt_mismatch':
         route, io, touch, usb = 'NOT_READY', 'NOT_READY', 'DT_MISMATCH', 'DT_MISMATCH'
     expectations = {'ocs_error': 'BAD_RESPONSE', 'wrong_tag': 'BAD_RESPONSE',
@@ -262,14 +270,18 @@ def run(image, dtb, syms, case, context_probe=False):
     io = expectations.get(case, io)
     if context_probe:
         pgshift = 16 if regs[SMMU + 0x24] & OFF else 12
+        context_span = 1 << (((regs[SMMU + 0x24] >> 28) & 7) + 1 + pgshift)
+        context_registers = set()
         for bank in range(32 if pgshift == 12 else 8):
             global_base = SMMU + (1 << pgshift)
-            context_base = SMMU + 0x80000 + (bank << pgshift)
+            context_base = SMMU + context_span + (bank << pgshift)
             regs[global_base + bank * 4] = 1 << 16
             regs[global_base + 0x800 + bank * 4] = 1
+            context_registers.update((global_base + bank * 4, global_base + 0x800 + bank * 4))
             for off, value in ((0, 1), (0x10, 2), (0x20, 0x96000000), (0x24, 0), (0x30, 32)):
                 regs[context_base + off] = value
-        cb = SMMU + 0x80000 + (2 << pgshift)
+                context_registers.add(context_base + off)
+        cb = SMMU + context_span + (2 << pgshift)
         if case == 'context_read_fault': fault_reads.add(cb + 0x30)
         if case == 'context_disabled': regs[cb] = 0
         if case == 'context_a32': regs[SMMU + (1 << pgshift) + 0x808] = 0
@@ -335,7 +347,7 @@ def run(image, dtb, syms, case, context_probe=False):
         nonlocal context_high_reads
         assert size == 4 and address in regs, f'unexpected MMIO read {address:#x}/{size}'
         reads.add(address)
-        if case == 'context_changed' and address == SMMU + 0x82024:
+        if case == 'context_changed' and address == cb + 0x24:
             context_high_reads += 1
             regs[address] = context_high_reads
         if address == 0x0141f144:
@@ -421,13 +433,21 @@ def run(image, dtb, syms, case, context_probe=False):
     if case == 'usb_translated': assert 'DMA_USB=TRANSLATED/00000003' in fields
     if case == 'panel_dsjm': assert any(p.startswith('TOUCH_FW=LAYOUT_OK/00000001/') for p in fields)
     if context_probe:
-        expected_context = {'context_layout': 'LAYOUT', 'context_read_fault': 'FAULT',
+        expected_context = {'context_layout': 'LAYOUT', 'context_outside_resource': 'LAYOUT',
+            'context_banks_outside_span': 'LAYOUT', 'context_bank_out_of_range': 'LAYOUT', 'context_read_fault': 'FAULT',
             'context_disabled': 'M_OFF', 'context_a32': 'S1_32', 'context_stage2': 'S2',
             'context_combined': 'COMBINED', 'context_big_endian': 'BIG_ENDIAN', 'context_changed': 'CHANGED'}
-        if case in expected_context or case in ('context_64k', 'both_translated', 'translated'):
+        if case in expected_context or case in ('context_64k', 'both_translated', 'translated', 'context_handset_span'):
             state = expected_context.get(case, 'S1_64')
             assert any(p == 'UCTX=' + state or p.startswith('UCTX=' + state + '/') for p in fields), fields
-        if case == 'both_translated': assert any(p.startswith('XCTX=S1_64/') for p in fields), fields
+        if case in ('both_translated', 'context_handset_span'):
+            assert any(p.startswith('XCTX=S1_64/') for p in fields), fields
+        if expected_context.get(case) == 'LAYOUT':
+            assert not reads & context_registers, 'bank registers read with an invalid layout'
+            assert any(p.startswith('UCTX=LAYOUT/') for p in fields), 'missing rejected ID1 value'
+        if case == 'context_handset_span':
+            assert {SMMU + 0x42000, SMMU + 0x41000} <= reads, 'wrong handset bank addresses'
+            assert not any(SMMU + 0x80000 <= a < SMMU + 0x100000 for a in reads)
         if route not in ('TRANSLATED',): assert 'UCTX=SKIP' in fields, fields
     if case in ('touch_clock_timeout', 'touch_dt_mismatch', 'dt_mismatch'):
         assert not any(0x04a80000 <= a < 0x04a84000 for a in reads), 'GENI read without checked clocks/resources'
@@ -483,7 +503,8 @@ if __name__ == '__main__':
     if args.dma_context and not args.case:
         cases += ('both_translated', 'context_layout', 'context_64k', 'context_read_fault',
                   'context_disabled', 'context_a32', 'context_stage2', 'context_combined',
-                  'context_big_endian', 'context_changed')
+                  'context_big_endian', 'context_changed', 'context_handset_span',
+                  'context_outside_resource', 'context_banks_outside_span', 'context_bank_out_of_range')
     image, dtb = args.image.read_bytes(), args.device_dtb.read_bytes()
     kernel = image[4096:4096 + struct.unpack_from('<I', image, 8)[0]]
     syms = symbols(args.elf, kernel)

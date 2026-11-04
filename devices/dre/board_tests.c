@@ -123,8 +123,12 @@ clock_report:
 static void context_report(const char *key, const struct dre_dma_route *route)
 {
     struct dre_dma_context ctx;
-    add(key); add(dre_dma_context(route, &ctx));
-    if (!ctx.captured) return;
+    const char *state = dre_dma_context(route, &ctx);
+    add(key); add(state);
+    if (!ctx.captured) {
+        if (!strcmp(state, "LAYOUT")) { add("/"); hex32(route->id1); }
+        return;
+    }
     add("/"); hex32(ctx.cbar); add("/"); hex32(ctx.cba2r);
     add("/"); hex32(ctx.control); add("/"); hex32(ctx.tcr);
     add("/"); hex32(ctx.tcr2); add("/"); hex32(ctx.ttbr_hi); hex32(ctx.ttbr_lo);

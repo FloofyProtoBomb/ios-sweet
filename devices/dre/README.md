@@ -237,8 +237,10 @@ The first 64-patch UI profile passed [native build 41923540367](https://github.c
 The 65-patch profile including the explicit QEMU-affinity adapter passed
 [native build 41928302512](https://github.com/FloofyProtoBomb/ios-sweet/actions/runs/41928302512).
 The DRE display/CPU tree and metadata checks are implemented; a full iOS root
-volume and a working DMA/storage driver are still needed. No N200 UI or
-secondary-core startup has been demonstrated on the phone. The profile excludes the Redmi UFS, touch,
+volume and a working DMA/storage driver are still needed. Image `8cd8bf6f`
+confirmed eight active CPU cores and IOSurface/framebuffer startup on the
+physical DE2118. It used diagnostic PID 1, with no rendered iOS GUI.
+The profile excludes the Redmi UFS, touch,
 PMIC, USB and display-power drivers. It cannot use that phone's DMA assumptions
 on the N200. A build-log gate rejects any skipped DRE patch.
 
@@ -268,6 +270,10 @@ SMMUv2 context-bank metadata through guarded reads. It does not change
 SMMU registers, walk page tables, grant DMA access or issue translation
 commands. Storage I/O remains blocked on a translated route. The
 exact-image MMIO suite accepts `--dma-context` to exercise these states.
+The hardware's ID1-derived register space can be smaller than the DT
+reservation: restored LineageOS reports 512 KiB inside a 1 MiB resource.
+Context offsets therefore come from ID1; every bank must still fit the
+hardware span and the complete layout must fit the validated reservation.
 
 The final filesystem will be sized against its verified target partition;
 the root-image script's default 16 GiB is not intended to limit usable space.

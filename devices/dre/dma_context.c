@@ -13,9 +13,12 @@ const char *dre_dma_context(const struct dre_dma_route *r, struct dre_dma_contex
     unsigned pgshift = r->id1 & (1u << 31) ? 16 : 12;
     uint64_t span = UINT64_C(1) << (((r->id1 >> 28) & 7) + 1 + pgshift);
     s->bank = r->s2cr & 255;
-    /* The validated Holi resource is 1 MiB, half global / half context.
-     * Refuse a different ID1 layout rather than guessing context offsets. */
-    if (span != 0x80000 || s->bank >= (r->id1 & 255) ||
+    /* ID1 determines the context offset, not half the DT reservation.
+     * Android reports a 512 KiB hardware space inside Holi's 1 MiB resource.
+     * Accept smaller complete layouts only when every bank fits, and keep
+     * all register accesses inside the validated DT resource. */
+    if (span > 0x80000 || ((uint64_t)(r->id1 & 255) << pgshift) > span ||
+        s->bank >= (r->id1 & 255) ||
         ((uint64_t)s->bank << pgshift) + 0x34 > span) return "LAYOUT";
     uintptr_t global = BASE + (UINT64_C(1) << pgshift);
     uintptr_t context = BASE + span + ((uint64_t)s->bank << pgshift);

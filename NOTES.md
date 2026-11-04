@@ -19,7 +19,7 @@ hw.ncpu=8, hw.activecpu=8, SGI1 startup verification, PID 1/identity PASS,
 and IOSurface + AppleCLCD driver-start records. QEMU virtualizes CPU
 affinities/GIC/timer and uses a clearly simulated peripheral report.
 work/qemu-ui8-final/result.json, screen.txt and kernel-log.txt are evidence.
-This is NOT an iOS GUI or a phone eight-core test. UI log inspection now
+That host check is NOT an iOS GUI or phone evidence. UI log inspection now
 uses proc_info(PROC_INFO_CALL_KERNMSGBUF); /dev/klog defaults to ASL on
 this XNU. Eleven exact-init mock-syscall cases pass, including bounded
 65536-byte reads, errors, missing records and an offline CPU. No raw log
@@ -41,7 +41,49 @@ display/identity ADT tests passed during builder development.
 
 Packaged as outputs/de2118-ui-smp-test.img with ui-smp-test-manifest.json
 and ios-dre-ui-source.zip. work/ui8-operator.py is pinned to the candidate
-and original restore backup. Prepared is not authorized or executed.
+and original restore backup. The user specifically approved "Run diagnostic
+and restore" for image 8cd8bf6f. The USB target was identified, both image
+hashes rechecked, and boot_b flash/reboot succeeded by 23:39:58 UTC.
+The supplied photo CONFIRMS CPUS=8/8 PASS, PID 1/identity PASS, a repeating
+heartbeat, and UI_DRIVER_LOGS=SURFACE+FRAMEBUFFER on the physical DE2118.
+Both UFS/USB routes remain translated (banks 2/1); UCTX/XCTX=LAYOUT means
+the context reader refused its layout assumption and read no bank data.
+UFS_IO=DMA_BLOCKED/N=0; no storage commands ran. Touch is SPI_GPI_ONLY,
+votes restored, selected firmware layout OK; GPU remains POWER_OFF.
+Raw transcription is outputs/ui-smp-handset-results.json. Never publish
+the user's photograph or device dumps.
+
+RESTORE VERIFIED: the first fastboot wait expired without writing; the
+renewed helper restored original boot_b and rebooted. By 23:47:21 UTC,
+verify-platform-restore.py confirmed LineageOS 22.2 boot_completed on B,
+original boot_b SHA d12c5d921522abd545c39884f00af6265ff32f749afbdb1917aa3c741601c44c,
+artwork SHA 246df6f62775406ceff376cfeae7f80d2f1007ba870b86c9a0831fac0e813587,
+and ADB uid 2000. No restore watcher remains; the authorization is consumed.
+No iOS rootfs/GPT/userdata write occurred. Further phone tests need approval.
+
+A subsequent authorized read-only Android dmesg check explains LAYOUT:
+apps-smmu reports hardware address space 0x80000 inside DT resource
+0x100000. The matching arm-smmu.c derives context offset from ID1 even
+when resource size differs (warning only). The old reader incorrectly
+required ID1 span == resource/2, so refused before its context reads.
+The source fix accepts complete ID1-derived bank layouts contained in
+the verified resource and reports rejected ID1 values. Out-of-resource,
+impossible bank counts and invalid selected banks remain blocked. No
+SMMU writes, table walks, translation queries or DMA admission added.
+work/build-context-layout-fix is a HOST-ONLY rebuilt diagnostic; do not
+overwrite the handset-tested 8cd8bf6f output or run it under consumed
+approval. All 21 targeted exact-image model cases PASS, including the
+observed 0x80000 hardware / 0x100000 reservation mismatch, both translated
+streams, invalid banks/counts/out-of-resource layouts, fault/changed/disabled
+contexts, 64K pages, error routes and the ordinary guarded read path. The
+model asserts bank accesses at 0x0c642000/0x0c641000 for the smaller layout,
+no bank reads on rejected layouts, no SMMU writes, and no UFS commands on
+translated streams. Strict ARM64 compilation and git diff --check PASS.
+The follow-up image SHA is
+dc9571650ffcf65c253f2d3d620a4c588ab9e46875b956b9dd5cd8089e35009a;
+it remains host-only, not a ready/authorized phone test. Android
+was unrooted after the dmesg read. Full log stays private at
+work/ui8-restored-lineage-dmesg.txt.
 Functional source commit 6c612b692587abe7e2f79bf6e098146a831e4082 was
 published to dre-next-test as ffd88f890154894814b4c811947b9b4882d6bfa0;
 both trees are d9b0ae30812c7871151115387273663352fedde3. dre-ui retains
@@ -53,9 +95,8 @@ on the phone. Flashing that root before the XNU storage path works would
 leave it inaccessible. The current candidate is a CPU/display-start/DMA
 diagnostic, not Setup.app or SpringBoard. No rootfs/GPT/userdata write is
 authorized or planned for this test. The original LineageOS boot_b was
-restored and hash-verified after the previous 0ed99848 test. No watcher
-remains. The latest read-only host check sees neither USB ADB nor fastboot.
-A new boot_b test/restore needs fresh approval once the package is ready.
+restored and hash-verified after the previous 0ed99848 test. The current
+8cd8bf6f write/restore completed and was verified as stated above.
 
 Earlier bundle and bring-up history follows; CURRENT above supersedes
 old pending-build and QEMU-failure entries.

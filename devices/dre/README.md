@@ -152,7 +152,70 @@ does not distinguish disabled clocks from enabled, automatically gated
 branches. The expanded native handset test reports `UFS=LINK_READY` and
 `UCLK=READY` with identical before/after values. Its enabled AHB branch is
 automatically gated while idle. The next storage step is a validated DMA
-mapping and read-only command path. Storage commands remain unimplemented.
+mapping and read-only command path. The handset-tested image has no storage
+commands; the additional opt-in bundle below implements that next test.
+
+### Next storage, USB and touch bundle
+
+These components are new host-validated shim diagnostics, not handset results
+or XNU device drivers. Use the same native kernel with these additional flags:
+
+```sh
+python devices/dre/build.py --zig /path/to/zig --out /private/bundle \
+    --xnu /path/to/kernel.development.dre --board-tests --ufs-clock-enable \
+    --dma-probe --ufs-read-test --touch-preflight
+python devices/dre/test_bundle.py /private/bundle/dre-xnu-boot.img /private/live.dtb \
+    --elf /private/bundle/dre.elf
+python devices/dre/touch/test_firmware.py --zig /path/to/zig
+```
+
+`--dma-probe` reads the existing ARM SMMUv2 stream routes for UFS SID 0x60
+and USB SID 0xe0 at APPS SMMU 0x0c600000. It handles masked and extended
+stream matches. Translated, faulting, ambiguous, inaccessible and unsupported
+routes are never treated as physical DMA. No SMMU register is written.
+
+`--ufs-read-test` requires the DMA probe. Only an observed physical bypass
+route permits the private DMA ring to run. Commands are restricted to NOP,
+TEST UNIT READY, READ CAPACITY(16), and one-block READ(10) on LUN 0.
+The test checks the 4096-byte block size, primary GPT header and array CRCs,
+and a unique, bounded userdata partition. It does not read userdata contents
+or send media writes. Host interrupt enable, list base and run/stop state
+are saved and restored. Polls are bounded. An unquiesced request or failed
+restoration stops the XNU handoff and requires a reset. No host reset,
+RPMB command, crypto-engine update or GPT modification is attempted.
+
+`--touch-preflight` temporarily votes only GCC bits 6, 7 and 10 for the
+known SPI engine. It reads GENI protocol, busy state and FIFO availability,
+inspects the SPI pin mux and IRQ input, and restores its clock votes.
+It also selects firmware-data-0 or firmware-data-1 from the live FDT using
+the bootloader's `oplus_bsp_tp_custom.dsi_display0` panel suffix. The bounded
+parser checks the Novatek end marker, version complement and ILM/DLM/info/
+overlay ranges. `LAYOUT_OK` is a file-layout check, not authentication or
+a hardware CRC result. No proprietary blob is embedded in the image or
+repository. No pin is changed, touch reset asserted, SPI command sent or
+firmware uploaded. This does not produce touch events or HID devices.
+
+The USB addition reads DCTL/DSTS and the endpoint/event-buffer configuration,
+alongside the USB DMA route. It does not consume events, configure endpoints,
+enumerate a gadget, or provide iTunes/lockdown pairing. GPU power readiness
+and runtime serial/UUID checks remain in the same image.
+
+The shorter results card uses `DMA_UFS`, `IOMMU`, `UFS_IO`, `USB_STATE`,
+`DMA_USB`, `TOUCH`, `TVOTE` and `TOUCH_FW`. Legacy raw clock fields are
+omitted to keep the report within the kernel's 608-byte boot arguments.
+`UFS_IO=GPT_PASS` means the shim read the synthetic/physical GPT on that
+particular run; it does not expose a disk to XNU. `DMA_BLOCKED` is an
+intentional skip, not evidence of a broken storage controller. `SPI_PIO_READY`
+means register preflight succeeded, not that the touch controller responded.
+
+The exact-image model supplies a synthetic disk with an independently
+constructed GPT, inspects the actual UTRD/UPIU/PRDT bytes, rejects non-read
+commands, verifies clock/list restoration, and checks unsafe handoff blocking.
+It covers SMMU routes, storage protocol/CRC/timeouts, touch clock/firmware
+selection and USB states. Guarded-access failures are injected at the helper
+boundary; Qualcomm bus timing, SError and real exception delivery are not
+emulated. A physical test still requires a separate approved boot-partition
+write and subsequent restoration.
 
 ## Hardware reference
 

@@ -48,6 +48,20 @@ const char *dre_usb_state(const void *dt, struct dre_usb_state *s)
     return ((s->control >> 12) & 3) == 2 ? "DWC3_DEVICE" : "DWC3_OTHER_MODE";
 }
 
+const char *dre_usb_detail(const void *dt, struct dre_usb_detail *s)
+{
+    struct dre_usb_state basic = {0};
+    const char *state = dre_usb_state(dt, &basic);
+    if (strcmp(state, "DWC3_DEVICE")) return state;
+    /* DWC3 core.h: snapshot only. Do not consume events or touch EP0/rings. */
+    if (!dre_read32(0x04e0c700, &s->config) || !dre_read32(0x04e0c704, &s->control) ||
+        !dre_read32(0x04e0c70c, &s->status) || !dre_read32(0x04e0c720, &s->endpoints) ||
+        !dre_read32(0x04e0c408, &s->event_size)) return "DETAIL_READ_FAULT";
+    if (s->control & (1u << 30)) return "RESETTING";
+    if ((s->control & (1u << 31)) && !(s->status & (1u << 22))) return "RUNNING";
+    return "HALTED";
+}
+
 const char *dre_touch_state(const void *dt, struct dre_touch_state *s)
 {
     if (!reg_is(dt, "/soc/spi@4a80000", "qcom,spi-geni", 0x04a80000, 0x4000))

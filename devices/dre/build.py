@@ -46,11 +46,20 @@ def main():
     ap.add_argument("--board-tests", action="store_true", help="survey UFS power/link and live DT at handoff")
     ap.add_argument("--ufs-clock-enable", action="store_true",
                     help="enable UFS GCC branches with a bounded wait and rollback")
+    ap.add_argument("--dma-probe", action="store_true", help="read UFS/USB SMMU stream routes")
+    ap.add_argument("--ufs-read-test", action="store_true",
+                    help="read capacity/GPT on LUN 0 only if physical DMA is verified")
+    ap.add_argument("--touch-preflight", action="store_true",
+                    help="temporarily vote touch clocks, inspect GENI, select live-DT firmware")
     args = ap.parse_args()
     if (args.identity or args.board_tests) and not (args.xnu or args.upstream_0027):
         ap.error("--identity and --board-tests need an XNU kernel")
     if args.ufs_clock_enable and not args.board_tests:
         ap.error("--ufs-clock-enable requires --board-tests")
+    if (args.dma_probe or args.touch_preflight) and not args.board_tests:
+        ap.error("--dma-probe and --touch-preflight require --board-tests")
+    if args.ufs_read_test and not args.dma_probe:
+        ap.error("--ufs-read-test requires --dma-probe")
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     zig = os.path.abspath(args.zig) if Path(args.zig).is_file() else args.zig
@@ -77,6 +86,17 @@ def main():
                                                 "ufs_clock.c", "peripheral_state.c")]
             if args.ufs_clock_enable:
                 cc += ["-DDRE_UFS_CLOCK_ENABLE"]
+            if args.dma_probe or args.touch_preflight:
+                cc += ["-DDRE_COMPACT_REPORT"]
+            if args.dma_probe:
+                cc += ["-DDRE_DMA_PROBE"]
+                sources += [HERE / "dma_route.c"]
+            if args.ufs_read_test:
+                cc += ["-DDRE_UFS_READ_TEST"]
+                sources += [HERE / "ufs_read.c"]
+            if args.touch_preflight:
+                cc += ["-DDRE_TOUCH_PREFLIGHT"]
+                sources += [HERE / "touch_preflight.c", HERE / "touch/firmware.c"]
         serial = json.loads(args.identity.read_text()).get("serial") if args.identity else None
         if serial is not None:
             if not re.fullmatch(r"[A-Za-z0-9-]{1,63}", serial):

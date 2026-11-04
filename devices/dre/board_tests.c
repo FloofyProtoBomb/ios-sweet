@@ -1,21 +1,31 @@
-/* SM4350 boot-handoff snapshot. Peripheral probes are read-only. The
- * optional UFS clock step changes only GCC branch-enable bits. */
+/* SM4350 handoff diagnostics. Optional read-only UFS commands use a private
+ * DMA ring only on a verified bypass route. Touch clock votes are restored. */
 #include <libfdt.h>
 #include "console.h"
 #include "ufs_clock.h"
 #include "peripheral_state.h"
 #include "identity.h"
+#ifdef DRE_DMA_PROBE
+#include "dma_route.h"
+#include "ufs_read.h"
+#endif
+#ifdef DRE_TOUCH_PREFLIGHT
+#include "touch_preflight.h"
+#endif
 
 /* Returns 0 on a synchronous data abort, 1 on success. */
 extern int dre_read32(uintptr_t addr, uint32_t *out);
 
 static char report[496];
 static unsigned used;
+static int overflow, ufs_ready;
+static const char *handoff_error;
 
 static void add(const char *s)
 {
     while (*s && used < sizeof(report) - 1)
         report[used++] = *s++;
+    if (*s) overflow = 1;
     report[used] = 0;
 }
 
@@ -76,11 +86,14 @@ static void check_ufs(const void *dt)
     else if (!(enable & 1)) add("HOST_DISABLED");
     else if (!(status & 1)) add("NO_DEVICE");
     else if (!(status & 2)) add("LIST_NOT_READY");
-    else add(busy ? "LINK_BUSY" : "LINK_READY");
+    else { add(busy ? "LINK_BUSY" : "LINK_READY"); ufs_ready = !busy; }
+#ifndef DRE_COMPACT_REPORT
     add("|UFS_VER="); hex32(version);
     add("_HCS="); hex32(status);
     add("_DBR="); hex32(busy);
+#endif
 clock_report:
+#ifndef DRE_COMPACT_REPORT
     add("|UCLK_PRE=");
     for (unsigned i = 0; i < DRE_UFS_CLOCKS; i++) {
         if (i) add(",");
@@ -93,35 +106,97 @@ clock_report:
     }
     add("|ROOT_AXI="); hex32(clocks.axi_cmd); add("/"); hex32(clocks.axi_cfg);
     add("_UNI="); hex32(clocks.unipro_cmd); add("/"); hex32(clocks.unipro_cfg);
+#endif
     add("|UCLK="); add(clock_state);
 }
+
+#ifdef DRE_DMA_PROBE
+static void check_dma_ufs(const void *dt)
+{
+    struct dre_dma_route route = {0};
+    add("|DMA_UFS=");
+    add(ufs_ready ? dre_dma_route(dt, "/soc/ufshc@4804000", 0x60, &route) : "NOT_READY");
+    add("/"); hex32(route.s2cr);
+    add("|IOMMU="); hex32(route.id0); add("/"); hex32(route.control);
+#ifdef DRE_UFS_READ_TEST
+    struct dre_ufs_read_state io = {.safe_to_handoff = 1};
+    add("|UFS_IO=");
+    add(ufs_ready ? dre_ufs_read_test(&route, &io) : "NOT_READY");
+    add("/"); hex32(io.ocs); add("/"); hex32(io.status);
+    add("/N="); hex32(io.commands); add("/B="); hex32(io.block_size);
+    if (io.userdata_blocks) {
+        add("/UD="); hex32((uint32_t)io.userdata_first); add("/"); hex32((uint32_t)io.userdata_blocks);
+    }
+    if (!io.safe_to_handoff) handoff_error = "UFS restore failed; reset required";
+#endif
+}
+#endif
 
 static void check_peripherals(const void *dt)
 {
     struct dre_usb_state usb = {0};
+#ifndef DRE_TOUCH_PREFLIGHT
     struct dre_touch_state touch = {0};
+#endif
     struct dre_gpu_state gpu = {0};
-    add("|USB="); add(dre_usb_state(dt, &usb));
+    const char *usb_state = dre_usb_state(dt, &usb);
+    add("|USB="); add(usb_state);
+#ifndef DRE_COMPACT_REPORT
     if (usb.id) {
         add("_"); hex32(usb.id); add("/"); hex32(usb.control);
     }
     add("|USB_CLK="); hex32(usb.power); add("/"); hex32(usb.master);
     add("/"); hex32(usb.config);
+#else
+    struct dre_usb_detail detail = {0};
+    add("|USB_STATE="); add(dre_usb_detail(dt, &detail));
+    add("/"); hex32(detail.control); add("/"); hex32(detail.status);
+    add("/"); hex32(detail.config); add("/"); hex32(detail.endpoints);
+    add("/"); hex32(detail.event_size);
+#ifdef DRE_DMA_PROBE
+    struct dre_dma_route route = {0};
+    add("|DMA_USB=");
+    add(!strcmp(usb_state, "DWC3_DEVICE") ?
+        dre_dma_route(dt, "/soc/ssusb@4e00000", 0xe0, &route) : "NOT_READY");
+    add("/"); hex32(route.s2cr);
+#endif
+#endif
+#ifdef DRE_TOUCH_PREFLIGHT
+    struct dre_touch_preflight tp;
+    add("|TOUCH="); add(dre_touch_preflight(dt, &tp));
+    add("/"); hex32(tp.revision); add("/P="); hex32(tp.pin_match);
+    add("/F="); hex32(tp.tx_geometry); add("/"); hex32(tp.rx_geometry);
+    add("|TVOTE="); hex32(tp.votes_before); add("/"); hex32(tp.votes_during);
+    add("/"); hex32(tp.votes_after);
+    add("|TOUCH_FW="); add(tp.firmware_state);
+    add("/"); hex32(tp.firmware_index); add("/"); hex32(tp.firmware_version);
+    add("/"); hex32(tp.partitions);
+    if (!tp.safe_to_handoff) handoff_error = "touch clock restore failed; reset required";
+#else
     add("|TOUCH_SPI="); add(dre_touch_state(dt, &touch));
     add("_"); hex32(touch.votes); add("/"); hex32(touch.revision);
     add("/"); hex32(touch.status);
+#endif
     add("|GPU_HW="); add(dre_gpu_state(dt, &gpu));
+#ifndef DRE_COMPACT_REPORT
     add("_"); hex32(gpu.cx); add("/"); hex32(gpu.gx);
     add("/"); hex32(gpu.status);
+#endif
 }
 
 const char *dre_board_report(const void *dt)
 {
     used = 0;
+    overflow = ufs_ready = 0;
+    handoff_error = 0;
     add("dre_report=UFS=");
     con_str("UFS", "reading power/clock state");
     check_ufs(dt);
+#ifdef DRE_DMA_PROBE
+    check_dma_ufs(dt);
+#endif
     check_peripherals(dt);
+#ifndef DRE_COMPACT_REPORT
     int gpu = fdt_node_offset_by_compatible(dt, -1, "qcom,adreno-gpu-a619-holi");
     int len;
     const fdt32_t *chip = fdt_getprop(dt, gpu, "qcom,chipid", &len);
@@ -137,6 +212,10 @@ const char *dre_board_report(const void *dt)
     for (int i = 0; args && i + (int)sizeof(want) - 1 <= len; i++)
         if (!memcmp(args + i, want, sizeof(want) - 1)) { selected = 1; break; }
     add(selected ? "|PANEL_SEL=TIANMA_NT36672C" : "|PANEL_SEL=UNCONFIRMED");
+#elif defined(DRE_EXPECT_SERIAL)
+    int len, chosen = fdt_path_offset(dt, "/chosen");
+    const char *args = fdt_getprop(dt, chosen, "bootargs", &len);
+#endif
 #ifdef DRE_EXPECT_SERIAL
     const char serial[] = "androidboot.serialno=" DRE_EXPECT_SERIAL;
     int match = 0;
@@ -150,4 +229,10 @@ const char *dre_board_report(const void *dt)
     add(dre_identity_serial() ? "|SERIAL=ABL_DETECTED" : "|SERIAL=UNAVAILABLE");
 #endif
     return report;
+}
+
+const char *dre_board_error(void)
+{
+    if (handoff_error) { con_str("BUNDLE", report); return handoff_error; }
+    return overflow ? "diagnostic report exceeds command-line budget" : 0;
 }

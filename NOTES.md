@@ -2,6 +2,51 @@
 
 ## DE2118 handoff, 2026-11-04
 
+Next combined bundle, code commit d01ab38a2b1f67925f604603f2d13a1d8ca6e7a4.
+The user asked to focus on main functionality and finish multiple components
+before another phone test. SEP/fingerprint research is paused. New opt-in
+flags --dma-probe --ufs-read-test --touch-preflight add three paths:
+read-only ARM SMMUv2 stream-route inspection for UFS/USB; a guarded LUN-0
+capacity/GPT reader using its own ring only on an observed bypass route;
+and temporary touch clock votes with GENI/FIFO/pin preflight and live-DT
+firmware selection/layout validation. The USB snapshot now includes
+DCTL/DSTS, DCFG, enabled endpoints and event-buffer size. No USB function,
+touch transaction, firmware upload or XNU storage/GPU driver was added.
+
+The exact candidate passed all 56 constrained-MMIO scenarios, including
+independent synthetic GPT CRCs, descriptor/opcode/LUN restrictions,
+SMMU masked/extended/translated/fault/ambiguous routes, MMU/cache refusal,
+storage errors/timeouts/restoration, touch FIFO/clock/firmware failures,
+and USB state gating. Failed UFS restoration, a stuck request, lost host
+readiness or failed touch clock restoration prevents XNU handoff. Fourteen
+legacy survey regression cases still pass. Modified modules pass strict
+ARM64 cross-compilation. The bounded touch firmware parser passes 640
+synthetic checks and both private raw-DT fixtures. The native kernel/PID 1
+and expanded simulated bundle report passed QEMU, including every final
+card field. This is host evidence only.
+
+The raw Tianma firmware-data-0 (139264 bytes) EXACTLY matches the installed
+ODM image's payload: its FwUp vendor container has an 80-byte prefix and
+128-byte trailer. The earlier prefix-only comparison was comparing the
+wrapper, not firmware bytes. The raw payload is privately extracted at
+work/hardware-reference/installed-touch-payload.bin and passes the parser.
+Both DT variants have a 131072-byte write area and 15 layout entries;
+Tianma version is 6, DSJM version is 5. No blob/container was committed.
+
+Candidate outputs/de2118-next-bundle.img is 16461824 bytes, SHA-256
+0ed99848c2963c1e65d3924e571d91db8732a019fcea54fe83dc09f8ae9b1dff.
+It reuses native kernel ed81f44d59d0c29de708c52c5fda86211e046542bd3014f4780bcf497bd94e0b
+from successful CI run 41904068757. No new XNU kernel build is needed for
+these shim-only changes. work/bundle-operator.py is pinned to the new image
+and verified original boot_b backup and has NOT been run. No restore
+watcher is active. A new physical test/restore needs specific approval.
+The last read-only USB check found the expected phone booted in LineageOS,
+slot B, boot_completed=1, shell uid 2000. Original boot backup and the
+previously handset-tested image remain hash-verified and unchanged.
+Publish this bundle on dre-next-test, preserving the handset-tested
+dre-n200 branch. The branch starts from remote c2152c2a3cec6ab213b38cb45511d4ca79e2e22d
+(local 220a686, tree 0583fe4b4a0cf76e104878df8ec8d6336d76460c).
+
 Latest handset result. The user explicitly approved the native combined
 test and restore, and fastboot wrote/rebooted image 1390d359c5ca3ea6f24fbdb3bc593098c9732bf9764f29225e5f7c1ec4ab97a4.
 The user confirmed the repeating results card and supplied photo

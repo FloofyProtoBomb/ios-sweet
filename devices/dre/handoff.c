@@ -5,6 +5,7 @@
 #include "identity.h"
 #ifdef DRE_BOARD_TESTS
 const char *dre_board_report(const void *dt);
+const char *dre_board_error(void);
 #endif
 
 #define BASE UINT64_C(0x100000000)
@@ -99,6 +100,8 @@ const char *dre_handoff(const void *dt)
     const char *extra = NULL;
 #ifdef DRE_BOARD_TESTS
     extra = dre_board_report(dt);
+    const char *board_error = dre_board_error();
+    if (board_error) return board_error;
 #endif
     return loader_boot_range_with_adt((uintptr_t)p, (uintptr_t)_payload_end,
                                       extra, dre_identity_fixup);

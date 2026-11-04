@@ -40,6 +40,9 @@ _start:
 	svc	#0x80
 	b.cs	hang			/* no console: nothing to report to */
 	mov	x19, x0
+#ifdef DRE_CHECK_UI_SERVICES
+	mov	w27, #0
+#endif
 
 	adr	x1, hello
 	adr	x2, hello_tail
@@ -67,6 +70,9 @@ _start:
 tick:
 #if defined(DRE_EXPECT_CPUS) && !defined(DRE_BOARD_TESTS)
 	bl	Ldre_check_cpus
+#endif
+#if defined(DRE_CHECK_UI_SERVICES) && !defined(DRE_BOARD_TESTS)
+	bl	Ldre_check_ui
 #endif
 #ifdef DRE_BOARD_TESTS
 	bl	Ldre_print_report
@@ -117,4 +123,7 @@ alive_end:
 #endif
 #ifdef DRE_EXPECT_CPUS
 #include "../devices/dre/cpu-check.inc"
+#endif
+#ifdef DRE_CHECK_UI_SERVICES
+#include "../devices/dre/ui-check.inc"
 #endif

@@ -110,6 +110,9 @@ Ldre_print_report:
 #ifdef DRE_EXPECT_CPUS
     bl Ldre_check_cpus
 #endif
+#ifdef DRE_CHECK_UI_SERVICES
+    bl Ldre_check_ui
+#endif
     adr x0, Largs_name
     mov x1, #13                   /* strlen("kern.bootargs") */
     add x2, sp, #32

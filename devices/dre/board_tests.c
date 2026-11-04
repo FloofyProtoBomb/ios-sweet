@@ -8,6 +8,9 @@
 #ifdef DRE_DMA_PROBE
 #include "dma_route.h"
 #include "ufs_read.h"
+#ifdef DRE_DMA_CONTEXT
+#include "dma_context.h"
+#endif
 #endif
 #ifdef DRE_TOUCH_PREFLIGHT
 #include "touch_preflight.h"
@@ -16,7 +19,12 @@
 /* Returns 0 on a synchronous data abort, 1 on success. */
 extern int dre_read32(uintptr_t addr, uint32_t *out);
 
+#ifdef DRE_DMA_CONTEXT
+/* Leave room for the UI profile's additional msgbuf boot argument. */
+static char report[512];
+#else
 static char report[496];
+#endif
 static unsigned used;
 static int overflow, ufs_ready;
 static const char *handoff_error;
@@ -111,19 +119,43 @@ clock_report:
 }
 
 #ifdef DRE_DMA_PROBE
+#ifdef DRE_DMA_CONTEXT
+static void context_report(const char *key, const struct dre_dma_route *route)
+{
+    struct dre_dma_context ctx;
+    add(key); add(dre_dma_context(route, &ctx));
+    if (!ctx.captured) return;
+    add("/"); hex32(ctx.cbar); add("/"); hex32(ctx.cba2r);
+    add("/"); hex32(ctx.control); add("/"); hex32(ctx.tcr);
+    add("/"); hex32(ctx.tcr2); add("/"); hex32(ctx.ttbr_hi); hex32(ctx.ttbr_lo);
+}
+#endif
+
 static void check_dma_ufs(const void *dt)
 {
     struct dre_dma_route route = {0};
     add("|DMA_UFS=");
     add(ufs_ready ? dre_dma_route(dt, "/soc/ufshc@4804000", 0x60, &route) : "NOT_READY");
     add("/"); hex32(route.s2cr);
+#ifdef DRE_DMA_CONTEXT
+    context_report("|UCTX=", &route);
+#else
     add("|IOMMU="); hex32(route.id0); add("/"); hex32(route.control);
+#endif
 #ifdef DRE_UFS_READ_TEST
     struct dre_ufs_read_state io = {.safe_to_handoff = 1};
     add("|UFS_IO=");
     add(ufs_ready ? dre_ufs_read_test(&route, &io) : "NOT_READY");
+#ifndef DRE_DMA_CONTEXT
     add("/"); hex32(io.ocs); add("/"); hex32(io.status);
-    add("/N="); hex32(io.commands); add("/B="); hex32(io.block_size);
+#else
+    if (io.ocs) { add("/OCS="); hex32(io.ocs); }
+    if (io.status) { add("/S="); hex32(io.status); }
+#endif
+    add("/N="); hex32(io.commands);
+#ifndef DRE_DMA_CONTEXT
+    add("/B="); hex32(io.block_size);
+#endif
     if (io.userdata_blocks) {
         add("/UD="); hex32((uint32_t)io.userdata_first); add("/"); hex32((uint32_t)io.userdata_blocks);
     }
@@ -151,14 +183,19 @@ static void check_peripherals(const void *dt)
     struct dre_usb_detail detail = {0};
     add("|USB_STATE="); add(dre_usb_detail(dt, &detail));
     add("/"); hex32(detail.control); add("/"); hex32(detail.status);
+#ifndef DRE_DMA_CONTEXT
     add("/"); hex32(detail.config); add("/"); hex32(detail.endpoints);
     add("/"); hex32(detail.event_size);
+#endif
 #ifdef DRE_DMA_PROBE
     struct dre_dma_route route = {0};
     add("|DMA_USB=");
     add(!strcmp(usb_state, "DWC3_DEVICE") ?
         dre_dma_route(dt, "/soc/ssusb@4e00000", 0xe0, &route) : "NOT_READY");
     add("/"); hex32(route.s2cr);
+#ifdef DRE_DMA_CONTEXT
+    context_report("|XCTX=", &route);
+#endif
 #endif
 #endif
 #ifdef DRE_TOUCH_PREFLIGHT
@@ -166,8 +203,12 @@ static void check_peripherals(const void *dt)
     add("|TOUCH="); add(dre_touch_preflight(dt, &tp));
     add("/"); hex32(tp.revision); add("/P="); hex32(tp.pin_match);
     add("/F="); hex32(tp.tx_geometry); add("/"); hex32(tp.rx_geometry);
+#ifndef DRE_DMA_CONTEXT
     add("|TVOTE="); hex32(tp.votes_before); add("/"); hex32(tp.votes_during);
     add("/"); hex32(tp.votes_after);
+#else
+    add(tp.safe_to_handoff ? "|TVOTE=RESTORED" : "|TVOTE=RESTORE_FAILED");
+#endif
     add("|TOUCH_FW="); add(tp.firmware_state);
     add("/"); hex32(tp.firmware_index); add("/"); hex32(tp.firmware_version);
     add("/"); hex32(tp.partitions);

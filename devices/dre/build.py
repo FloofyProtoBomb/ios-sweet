@@ -47,6 +47,7 @@ def main():
     ap.add_argument("--ufs-clock-enable", action="store_true",
                     help="enable UFS GCC branches with a bounded wait and rollback")
     ap.add_argument("--dma-probe", action="store_true", help="read UFS/USB SMMU stream routes")
+    ap.add_argument("--dma-context", action="store_true", help="read translated UFS/USB context metadata; no SMMU writes")
     ap.add_argument("--ufs-read-test", action="store_true",
                     help="read capacity/GPT on LUN 0 only if physical DMA is verified")
     ap.add_argument("--touch-preflight", action="store_true",
@@ -63,6 +64,8 @@ def main():
         ap.error("--dma-probe and --touch-preflight require --board-tests")
     if args.ufs_read_test and not args.dma_probe:
         ap.error("--ufs-read-test requires --dma-probe")
+    if args.dma_context and not args.dma_probe:
+        ap.error("--dma-context requires --dma-probe")
     if (args.ui_services or args.product_adt) and not args.xnu:
         ap.error("--ui-services/--product-adt require a native UI/SMP kernel via --xnu")
     if (args.cpus != 1 or args.product_adt) and not args.ui_services:
@@ -87,7 +90,7 @@ def main():
         init_obj = out / "init.o"
         init_flags = ["-DDRE_CHECK_IDENTIFIERS"]
         if args.ui_services:
-            init_flags += [f"-DDRE_EXPECT_CPUS={args.cpus}"]
+            init_flags += [f"-DDRE_EXPECT_CPUS={args.cpus}", "-DDRE_CHECK_UI_SERVICES"]
             cc += [f"-DDRE_SMP_COUNT={args.cpus}"]
             sources += [HERE / "cpu_topology.c"]
         if args.board_tests:
@@ -102,6 +105,9 @@ def main():
             if args.dma_probe:
                 cc += ["-DDRE_DMA_PROBE"]
                 sources += [HERE / "dma_route.c"]
+            if args.dma_context:
+                cc += ["-DDRE_DMA_CONTEXT"]
+                sources += [HERE / "dma_context.c"]
             if args.ufs_read_test:
                 cc += ["-DDRE_UFS_READ_TEST"]
                 sources += [HERE / "ufs_read.c"]
@@ -152,6 +158,13 @@ def main():
     image.write_bytes(code)
     output = out / ("dre-xnu-boot.img" if kernel else "dre-probe-boot.img")
     output.write_bytes(boot_v3(code))
+    info = {'device': 'DE2118', 'ui_services': args.ui_services, 'cpus': args.cpus,
+            'board_tests': args.board_tests, 'dma_context': args.dma_context,
+            'private_identity_provisioned': args.identity is not None,
+            'product_metadata_imported': args.product_adt is not None,
+            'image_sha256': hashlib.sha256(output.read_bytes()).hexdigest(),
+            'kernel_sha256': hashlib.sha256(kernel.read_bytes()).hexdigest() if kernel else None}
+    (out / 'build-info.json').write_text(json.dumps(info, indent=2) + '\n')
     print(output)
 
 

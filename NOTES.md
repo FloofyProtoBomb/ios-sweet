@@ -2,6 +2,59 @@
 
 ## DE2118 handoff, 2026-11-04
 
+CURRENT: UI/SMP native build 41928302512 SUCCEEDED with all 65 selected
+patches applied, remote 0f9135bb54251f091e6f163f3bd46aa202ebda3b (tree
+b269eb7ab140c50b9974723b8d107fa130934b55, local bcb1c7d). The verified
+kernel at work/native-ui2/kernel.development.dre is 17149136 bytes, SHA-256
+f5c20500834589e5e69b6094dbf139cc9b6c7908905e4a031428d5faa0f35d24.
+Artifact 13371825141 ZIP SHA-256 is
+a44f8d90b1655dc78075bb16edd003699ebd081e689a7f6e9183b185796d51fc.
+
+The final eight-core/context diagnostic built at work/build-ui8-context-final
+is 16695296 bytes, SHA-256
+8cd8bf6f6a36aa074835f4207340ea98bc4ed03da2f01159b9b5083553237118.
+Its generic (no private identity) image uses runtime serial/UUID detection.
+Public qemu_ui.py passed with this image's init and unchanged native kernel:
+hw.ncpu=8, hw.activecpu=8, SGI1 startup verification, PID 1/identity PASS,
+and IOSurface + AppleCLCD driver-start records. QEMU virtualizes CPU
+affinities/GIC/timer and uses a clearly simulated peripheral report.
+work/qemu-ui8-final/result.json, screen.txt and kernel-log.txt are evidence.
+This is NOT an iOS GUI or a phone eight-core test. UI log inspection now
+uses proc_info(PROC_INFO_CALL_KERNMSGBUF); /dev/klog defaults to ASL on
+this XNU. Eleven exact-init mock-syscall cases pass, including bounded
+65536-byte reads, errors, missing records and an offline CPU. No raw log
+or identifiers are printed by the diagnostic.
+
+New --dma-context snapshots UFS/USB SMMUv2 context-bank metadata only
+after validated unique translated routes. Guarded reads inspect CBAR,
+CBA2R, SCTLR, TCR/TCR2 and stable TTBR0. No SMMU write, table walk, ATOS
+command or DMA admission is added. The previously observed translated
+routes still block storage commands. All 66 final exact-image MMIO cases
+PASSED, including both translated streams, 4K/64K register layouts,
+context faults/changes/disabled/stage-2/AArch32/endian states, and all
+prior storage/touch/USB regressions. The largest tested boot argument is
+567/607 bytes. SMMU writes are rejected by the model. Strict ARM64 compile
+and git diff --check pass. The generic image passes the private-identifier
+and device-firmware exclusion scan. The QEMU-only affinity flag is absent
+from the phone payload. Thirty-one CPU metadata checks and the 1-8 CPU
+display/identity ADT tests passed during builder development.
+
+Package as outputs/de2118-ui-smp-test.img with ui-smp-test-manifest.json
+and ios-dre-ui-source.zip. work/ui8-operator.py is pinned to the candidate
+and original restore backup. Prepared is not authorized or executed.
+
+The user's latest point is correct: real Setup.app needs a full iOS root
+on the phone. Flashing that root before the XNU storage path works would
+leave it inaccessible. The current candidate is a CPU/display-start/DMA
+diagnostic, not Setup.app or SpringBoard. No rootfs/GPT/userdata write is
+authorized or planned for this test. The original LineageOS boot_b was
+restored and hash-verified after the previous 0ed99848 test. No watcher
+remains. The latest read-only host check sees neither USB ADB nor fastboot.
+A new boot_b test/restore needs fresh approval once the package is ready.
+
+Earlier bundle and bring-up history follows; CURRENT above supersedes
+old pending-build and QEMU-failure entries.
+
 Next combined bundle, code commit d01ab38a2b1f67925f604603f2d13a1d8ca6e7a4.
 The user asked to focus on main functionality and finish multiple components
 before another phone test. SEP/fingerprint research is paused. New opt-in
@@ -77,7 +130,7 @@ Upstream already has CPU-rendered IOSurface/IOMobileFramebuffer services
 and a software CoreAnimation path; Adreno acceleration is not required
 for the first UI. DRE currently stages only through 0027 and removes
 disp0 from its ADT. Work now on an opt-in UI kernel profile and display
-ADT alongside DMA. Keep Redmi UFS, PMIC, touch, USB, SMP and display-power
+ADT alongside DMA. Keep Redmi UFS, PMIC, touch, USB and display-power
 drivers excluded. A genuine Setup.app/SpringBoard boot also needs the
 actual iOS root volume and daemon/user-client compatibility. Do not label
 a diagnostic drawing as the iOS UI. Preserve Setup.app/offline first-run
@@ -92,8 +145,8 @@ retain only their framebuffer/AKS sections; a local console-mute patch
 avoids introducing the Redmi persistent UFS logger. The original bring-up
 profile's 32 staged inputs are byte-identical to the saved deployed set.
 The new CI manifest gate passed the real prior build log and synthetic
-missing/skipped cases. Native UI compilation and DRE ADT/CPU-count checks
-are next. The live N200 FDT has eight PSCI CPUs at MPIDRs 0x000-0x700.
+missing/skipped cases. Native compilation and DRE ADT/CPU-count checks
+have since passed. The live N200 FDT has eight PSCI CPUs at MPIDRs 0x000-0x700.
 Do not claim their XNU startup has been tested on the phone.
 
 Native UI/SMP CI run 41923540367 SUCCEEDED, remote a099c8fd22438ed060a88d71d36916e480df7568
@@ -104,7 +157,7 @@ kernel SHA e2a093e84af7be25826668f3ce481b87a5e16279416c3042a677545416aaa9b7
 at work/native-ui/kernel.development.dre. All 64 patch applications passed
 the CI gate. No new phone test has run for this kernel.
 
-Pending UI builder work adds --ui-services --cpus N, a validated live-FDT
+The UI builder adds --ui-services --cpus N, a validated live-FDT
 PSCI/eight-core guard, optional private D22AP /product import, display
 nodes, and real hw.ncpu/hw.activecpu checks in diagnostic PID 1. Thirty-one
 metadata tests pass (including private FDT), as do 1-8 CPU/display/identity
@@ -119,9 +172,9 @@ SMC works, but CPU_ON(0x100) returns -2 because virt uses fixed Aff0 IDs
 adds explicit dre_qemu_affinity=1 validation for virtual ADTs only;
 the phone keeps its validated Aff1 layout. virt_payload --qemu-smp adapts
 the virtual reg cells and enables this option. qemu_start.S is the
-QEMU-only entry adapter. The next native UI build must include 0102
-(65 patches) before repeating all-eight-core QEMU. Do not claim SMP PASS
-from the failed runs in work/qemu-ui8. Physical kernel e2a... is unchanged.
+QEMU-only entry adapter. Build 41928302512 includes 0102 and passed the
+all-eight-core QEMU boot. The old failed runs in work/qemu-ui8 remain
+historical failures; they are not physical N200 evidence.
 
 Latest user storage preference: use all available space in the final iOS
 installation. The default 16 GiB root-image size is not a storage cap;

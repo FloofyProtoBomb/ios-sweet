@@ -48,10 +48,11 @@ def symbols(path, image):
         strings = sections[section[6]]
         names = p[strings[4]:strings[4] + strings[5]]
         for off in range(section[4], section[4] + section[5], section[9]):
-            name, _, _, _, value, _ = struct.unpack_from('<IBBHQQ', p, off)
+            name, _, _, _, value, size = struct.unpack_from('<IBBHQQ', p, off)
             name = names[name:names.index(0, name)].decode()
             if name:
                 result[name] = LOAD + value
+                if name == 'report': result['report_size'] = size
     return result
 
 
@@ -113,7 +114,7 @@ def disk(case):
     return {1: bytes(header), **{2 + i: bytes(entries[i * 4096:(i + 1) * 4096]) for i in range(4)}}
 
 
-def run(image, dtb, syms, case):
+def run(image, dtb, syms, case, context_probe=False):
     if case == 'dt_mismatch':
         dtb = dtb.replace(b'qcom,holi-gcc\0', b'qcom,xoli-gcc\0')
     elif case == 'touch_dt_mismatch':
@@ -153,7 +154,7 @@ def run(image, dtb, syms, case):
             0x00500000: 8, 0x00501000: 8, 0x00502000: 4, 0x00503000: 4, 0x00516004: 1,
             0x01436004: 1, 0x0599106c: 0x222001, 0x0599100c: 0x222001,
             SMMU: 1 << 10, SMMU + 0x20: (1 << 30) | (1 << 29) | (1 << 27) | (8 << 9) | 8,
-            SMMU + 0x24: 32}
+            SMMU + 0x24: (6 << 28) | 32}
     regs.update({a: v for a, v in zip(CLOCKS, (1, OFF | 0xb, 0x229, 0x229))})
     for i in range(8):
         regs[SMMU + 0x800 + i * 4] = 0
@@ -244,6 +245,11 @@ def run(image, dtb, syms, case):
         regs[0x0141a004] = 0; usb = 'POWER_OFF'
     elif case == 'usb_translated':
         regs[SMMU + 0xc04] = 3
+    elif case.startswith('context_') or case == 'both_translated':
+        regs[SMMU + 0xc00] = 2; route, io = 'TRANSLATED', 'DMA_BLOCKED'
+        if case == 'both_translated': regs[SMMU + 0xc04] = 1
+        elif case == 'context_layout': regs[SMMU + 0x24] = 32
+        elif case == 'context_64k': regs[SMMU + 0x24] = (1 << 31) | (2 << 28) | 8
     elif case == 'dt_mismatch':
         route, io, touch, usb = 'NOT_READY', 'NOT_READY', 'DT_MISMATCH', 'DT_MISMATCH'
     expectations = {'ocs_error': 'BAD_RESPONSE', 'wrong_tag': 'BAD_RESPONSE',
@@ -254,11 +260,28 @@ def run(image, dtb, syms, case):
                     'restore_failed': 'RESTORE_FAILED', 'abort_stuck': 'RESTORE_FAILED',
                     'host_lost': 'RESTORE_FAILED'}
     io = expectations.get(case, io)
+    if context_probe:
+        pgshift = 16 if regs[SMMU + 0x24] & OFF else 12
+        for bank in range(32 if pgshift == 12 else 8):
+            global_base = SMMU + (1 << pgshift)
+            context_base = SMMU + 0x80000 + (bank << pgshift)
+            regs[global_base + bank * 4] = 1 << 16
+            regs[global_base + 0x800 + bank * 4] = 1
+            for off, value in ((0, 1), (0x10, 2), (0x20, 0x96000000), (0x24, 0), (0x30, 32)):
+                regs[context_base + off] = value
+        cb = SMMU + 0x80000 + (2 << pgshift)
+        if case == 'context_read_fault': fault_reads.add(cb + 0x30)
+        if case == 'context_disabled': regs[cb] = 0
+        if case == 'context_a32': regs[SMMU + (1 << pgshift) + 0x808] = 0
+        if case == 'context_stage2': regs[SMMU + (1 << pgshift) + 8] = 0
+        if case == 'context_combined': regs[SMMU + (1 << pgshift) + 8] = 3 << 16
+        if case == 'context_big_endian': regs[cb] |= 16
     initial = regs.copy()
     pages = {address & -4096 for address in regs}
     for page in pages: cpu.mem_map(page, 4096)
     for address, value in regs.items(): cpu.mem_write(address, struct.pack('<I', value))
     reads, writes, commands = set(), [], []
+    context_high_reads = 0
     blocks = disk(case)
     old_ring = initial[UFS + 0x50]
 
@@ -309,8 +332,12 @@ def run(image, dtb, syms, case):
         if case not in ('command_timeout', 'abort_stuck'): regs[UFS + 0x58] = 0
 
     def mmio_read(uc, access, address, size, value, _):
+        nonlocal context_high_reads
         assert size == 4 and address in regs, f'unexpected MMIO read {address:#x}/{size}'
         reads.add(address)
+        if case == 'context_changed' and address == SMMU + 0x82024:
+            context_high_reads += 1
+            regs[address] = context_high_reads
         if address == 0x0141f144:
             regs[address] = 0 if regs[VOTE] & MASK == MASK and case != 'touch_clock_timeout' else OFF
         if address in CLOCKS and regs[address] & 1 and case != 'ufs_clock_timeout':
@@ -384,7 +411,7 @@ def run(image, dtb, syms, case):
     cpu.reg_write(UC_ARM64_REG_X0, tree)
     cpu.emu_start(LOAD, base + entry - va, count=250000000)
     assert stopped_error == unsafe, ('handoff safety gate', case, stopped_error)
-    fields = bytes(cpu.mem_read(syms['report'], 496)).split(b'\0')[0].decode().removeprefix('dre_report=').split('|')
+    fields = bytes(cpu.mem_read(syms['report'], syms['report_size'])).split(b'\0')[0].decode().removeprefix('dre_report=').split('|')
     assert any(p.startswith('DMA_UFS=' + route + '/') for p in fields), fields
     assert any(p.startswith('UFS_IO=' + io + '/') for p in fields), fields
     assert any(p.startswith('TOUCH=' + touch + '/') for p in fields), fields
@@ -393,6 +420,15 @@ def run(image, dtb, syms, case):
     assert {'SERIAL=ABL_DETECTED', 'SERIAL=ABL_MATCH'} & set(fields), fields
     if case == 'usb_translated': assert 'DMA_USB=TRANSLATED/00000003' in fields
     if case == 'panel_dsjm': assert any(p.startswith('TOUCH_FW=LAYOUT_OK/00000001/') for p in fields)
+    if context_probe:
+        expected_context = {'context_layout': 'LAYOUT', 'context_read_fault': 'FAULT',
+            'context_disabled': 'M_OFF', 'context_a32': 'S1_32', 'context_stage2': 'S2',
+            'context_combined': 'COMBINED', 'context_big_endian': 'BIG_ENDIAN', 'context_changed': 'CHANGED'}
+        if case in expected_context or case in ('context_64k', 'both_translated', 'translated'):
+            state = expected_context.get(case, 'S1_64')
+            assert any(p == 'UCTX=' + state or p.startswith('UCTX=' + state + '/') for p in fields), fields
+        if case == 'both_translated': assert any(p.startswith('XCTX=S1_64/') for p in fields), fields
+        if route not in ('TRANSLATED',): assert 'UCTX=SKIP' in fields, fields
     if case in ('touch_clock_timeout', 'touch_dt_mismatch', 'dt_mismatch'):
         assert not any(0x04a80000 <= a < 0x04a84000 for a in reads), 'GENI read without checked clocks/resources'
     if case in ('usb_power_off', 'dt_mismatch'):
@@ -431,6 +467,7 @@ if __name__ == '__main__':
     ap.add_argument('--elf', type=Path, required=True)
     ap.add_argument('--case', action='append')
     ap.add_argument('--report-json', type=Path, help='save synthetic model reports (no device identifiers)')
+    ap.add_argument('--dma-context', action='store_true')
     args = ap.parse_args()
     cases = args.case or ('ready', 'translated', 'route_fault', 'route_reserved', 'unmatched_fault',
         'unmatched_bypass', 'ambiguous', 'masked', 'extended', 'bad_smmu_id', 'client_disabled',
@@ -443,9 +480,13 @@ if __name__ == '__main__':
         'touch_busy', 'touch_already_voted', 'touch_restore_failed', 'touch_dt_mismatch',
         'panel_unknown', 'panel_ambiguous', 'panel_dsjm', 'firmware_bad', 'usb_running',
         'usb_resetting', 'usb_power_off', 'usb_translated', 'dt_mismatch')
+    if args.dma_context and not args.case:
+        cases += ('both_translated', 'context_layout', 'context_64k', 'context_read_fault',
+                  'context_disabled', 'context_a32', 'context_stage2', 'context_combined',
+                  'context_big_endian', 'context_changed')
     image, dtb = args.image.read_bytes(), args.device_dtb.read_bytes()
     kernel = image[4096:4096 + struct.unpack_from('<I', image, 8)[0]]
     syms = symbols(args.elf, kernel)
-    reports = {case: run(image, dtb, syms, case) for case in cases}
+    reports = {case: run(image, dtb, syms, case, args.dma_context) for case in cases}
     if args.report_json:
         args.report_json.write_text(json.dumps(reports, indent=2) + '\n')

@@ -142,7 +142,8 @@ def embed(kernel, out, init_obj, donor=False, identity_path=None,
     adt_path.write_bytes(tree(identity, ui=ui, cpus=cpus, product_path=product_path))
     ramdisk = out / "dre-init.macho"
     ramdisk.write_bytes(mkinit.build(init_obj.read_bytes()))
-    data, _ = mkpayload.build(str(kernel), str(adt_path),
-                              f"debug=0xc serial=3 cpus={cpus} keepsyms=1 -enable_kprintf_spam -noprogress rd=md0",
-                              str(ramdisk))
+    cmdline = f"debug=0xc serial=3 cpus={cpus} keepsyms=1 -enable_kprintf_spam -noprogress rd=md0"
+    if ui:
+        cmdline += " msgbuf=65536"  # Retain driver-start records until diagnostic PID 1.
+    data, _ = mkpayload.build(str(kernel), str(adt_path), cmdline, str(ramdisk))
     (out / "payload.bin").write_bytes(data)

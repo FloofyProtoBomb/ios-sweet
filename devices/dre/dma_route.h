@@ -6,6 +6,7 @@ struct dre_dma_route {
     uint32_t id0, id1, control, slot, smr, s2cr;
     unsigned matches;
     int physical_dma;
+    int translated;
 };
 
 /* Read-only ARM SMMUv2 route inspection. A translation or uncertain state is

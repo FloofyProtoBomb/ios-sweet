@@ -234,7 +234,8 @@ workflow run needs `machine_config=DRE` and `dre_profile=ui`. The ordinary
 `bringup` profile remains the handset-tested early kernel configuration.
 
 The first 64-patch UI profile passed [native build 41923540367](https://github.com/FloofyProtoBomb/ios-sweet/actions/runs/41923540367).
-The additional explicit QEMU-affinity adapter is receiving native compilation.
+The 65-patch profile including the explicit QEMU-affinity adapter passed
+[native build 41928302512](https://github.com/FloofyProtoBomb/ios-sweet/actions/runs/41928302512).
 The DRE display/CPU tree and metadata checks are implemented; a full iOS root
 volume and a working DMA/storage driver are still needed. No N200 UI or
 secondary-core startup has been demonstrated on the phone. The profile excludes the Redmi UFS, touch,
@@ -252,6 +253,21 @@ For QEMU, `virt_payload.py ... --qemu-smp` changes only the virtual CPU reg
 cells to Aff0 and adds `dre_qemu_affinity=1`. QEMU needs
 `virt,virtualization=on` to provide SMC PSCI, with `qemu_start.S` entering
 EL1 from EL2. The phone's image does not enable the virtual-affinity option.
+
+`qemu_ui.py BUILD_DIRECTORY KERNEL --out QEMU_DIRECTORY --zig ZIG --qemu QEMU`
+boots the generic `--ui-services --cpus 8` diagnostic with the unchanged
+native kernel. It verifies actual `hw.ncpu` / `hw.activecpu`, interprocessor
+interrupt startup, PID 1 / identity checks, and successful IOSurface and
+framebuffer driver-start records. The diagnostic uses the kernel message
+buffer API, not the ASL stream, and never prints raw kernel messages.
+This check passes with eight active virtual CPUs. Peripheral report fields
+are explicitly simulated; neither an iOS GUI nor N200 SMP is proven by it.
+
+`--dma-context` together with `--dma-probe` snapshots validated UFS/USB
+SMMUv2 context-bank metadata through guarded reads. It does not change
+SMMU registers, walk page tables, grant DMA access or issue translation
+commands. Storage I/O remains blocked on a translated route. The
+exact-image MMIO suite accepts `--dma-context` to exercise these states.
 
 The final filesystem will be sized against its verified target partition;
 the root-image script's default 16 GiB is not intended to limit usable space.

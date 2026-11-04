@@ -58,7 +58,7 @@ const char *dre_dma_route(const void *dt, const char *device_path,
         return s->physical_dma ? "UNMATCHED_BYPASS" : "UNMATCHED_FAULT";
     }
     switch ((s->s2cr >> 16) & 3) {
-    case 0: return "TRANSLATED";
+    case 0: s->translated = 1; return "TRANSLATED";
     case 1: s->physical_dma = 1; return "BYPASS";
     case 2: return "FAULT";
     default: return "RESERVED";

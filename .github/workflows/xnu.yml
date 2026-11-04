@@ -12,11 +12,16 @@ on:
       machine_config:
         description: xnu MACHINE_CONFIG
         default: SWEET
+      dre_profile:
+        description: DRE bringup or UI/SMP kernel patch profile
+        type: choice
+        options: [bringup, ui]
+        default: bringup
       keep_going:
         description: make -k (collect all compile errors in one run)
         default: "true"
   push:
-    branches: [main, dre-n200]
+    branches: [main, dre-n200, dre-ui]
     paths:
       - "xnu/patches/**"
       - "devices/dre/**"
@@ -31,7 +36,8 @@ env:
   DXB_SHA: 663906528d1cd5ea8fde7de6f16de73db9511549
   MACOS_VERSION: ${{ inputs.macos_version || '13.5' }}
   KERNEL_CONFIG: ${{ inputs.kernel_config || 'DEVELOPMENT' }}
-  MACHINE_CONFIG: ${{ inputs.machine_config || (github.ref_name == 'dre-n200' && 'DRE') || 'SWEET' }}
+  MACHINE_CONFIG: ${{ inputs.machine_config || (startsWith(github.ref_name, 'dre-') && 'DRE') || 'SWEET' }}
+  DRE_PROFILE: ${{ inputs.dre_profile || (github.ref_name == 'dre-ui' && 'ui') || 'bringup' }}
 
 jobs:
   build:
@@ -49,7 +55,7 @@ jobs:
           git -C dxb checkout -q FETCH_HEAD
           # 12.5-14.3 use the top-level patches dir; ours go next to blacktop's
           if [ "$MACHINE_CONFIG" = DRE ]; then
-            python3 devices/dre/stage_xnu.py dxb/patches
+            python3 devices/dre/stage_xnu.py dxb/patches --profile "$DRE_PROFILE"
           else
             cp xnu/patches/*.patch xnu/patches/*.sh dxb/patches/
           fi
@@ -80,6 +86,11 @@ jobs:
         run: |
           set -o pipefail
           bash build.sh 2>&1 | tee build.log
+
+      - name: Verify DRE patch application
+        if: always() && env.MACHINE_CONFIG == 'DRE'
+        run: |
+          python3 tools/verify-dre-patches.py dxb/patches/dre-patches.json dxb/build.log
 
       - name: Summarize build errors
         if: always()

@@ -157,8 +157,14 @@ commands; the additional opt-in bundle below implements that next test.
 
 ### Next storage, USB and touch bundle
 
-These components are new host-validated shim diagnostics, not handset results
-or XNU device drivers. Use the same native kernel with these additional flags:
+These components are shim diagnostics, not XNU device drivers. The approved
+handset test reached PID 1 with identity checks passing. Both UFS and USB
+streams are translated (context banks 2 and 1), so storage commands were
+correctly skipped. Touch clock voting/restoration and firmware layout checks
+passed; GENI reports a GPI-only interface, requiring DMA rather than PIO.
+USB is halted without endpoints/event buffers and GPU remains powered off.
+LineageOS and the artwork were restored and hash-verified afterward.
+Use the same native kernel with these additional flags:
 
 ```sh
 python devices/dre/build.py --zig /path/to/zig --out /private/bundle \
@@ -218,6 +224,25 @@ emulated. A physical test still requires a separate approved boot-partition
 write and subsequent restoration.
 
 ## Hardware reference
+
+### UI and SMP kernel profile under development
+
+`devices/dre/stage_xnu.py PATCH_DIRECTORY --profile ui` stages the generic
+iOS userland, IOSurface/AppleCLCD, CPU-rendering and eight-core PSCI paths.
+The workflow selects it automatically for a push to `dre-ui`; a manual
+workflow run needs `machine_config=DRE` and `dre_profile=ui`. The ordinary
+`bringup` profile remains the handset-tested early kernel configuration.
+
+All 64 UI-profile patches apply locally. This is not a compiled or phone-tested
+UI result yet. The DRE display/CPU device tree, native compilation and actual
+iOS root volume are still needed. The profile excludes the Redmi UFS, touch,
+PMIC, USB and display-power drivers. It cannot use that phone's DMA assumptions
+on the N200. A build-log gate rejects any skipped DRE patch.
+
+The final filesystem will be sized against its verified target partition;
+the root-image script's default 16 GiB is not intended to limit usable space.
+Any later partition/layout write needs separate confirmation. No Android
+partition is being resized during this build work.
 
 The verified splash reservation is 0x85200000 + 0xc00000. GICD is at
 0x0f200000, GICR at 0x0f240000, and the virtual timer uses INTID 19 at

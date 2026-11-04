@@ -35,11 +35,30 @@ Tianma version is 6, DSJM version is 5. No blob/container was committed.
 
 Candidate outputs/de2118-next-bundle.img is 16461824 bytes, SHA-256
 0ed99848c2963c1e65d3924e571d91db8732a019fcea54fe83dc09f8ae9b1dff.
+The user specifically approved "Run bundled test and restore". The pinned
+operator successfully wrote boot_b and rebooted at 2026-11-04 21:50:23 UTC.
+The supplied photo shows PID 1/identity PASS and a repeating heartbeat.
+UFS remains LINK_READY, but SID 0x60 is TRANSLATED to context bank 2;
+USB SID 0xe0 is TRANSLATED to context bank 1. UFS_IO=DMA_BLOCKED and
+N=0 confirm no storage command was attempted. SMMU ID0/control are
+4c017e35/00210406. USB is halted with no enabled endpoints/event buffer.
+Touch clock voting works: 09000020 -> 090004e0 -> 09000020. GENI revision
+00000102 reports SPI_GPI_ONLY, pin-match mask zero, FIFO geometry
+20102964/20204800. Firmware selection/layout is DT index 0, version 6,
+15 parts. GPU remains powered off. Raw transcription is private at
+outputs/bundle-handset-results.json; do not publish the photo.
+
+The approved restore COMPLETED. verify-platform-restore.py confirmed
+LineageOS boot_completed=1 on B, original boot_b hash, installed logo_b
+hash, and ADB uid 2000. No restore watcher remains. This run identifies
+actual next drivers: SMMU-aware DMA for UFS/USB, and GPI DMA plus pin
+setup for touch; a PIO-only SPI implementation cannot use this interface.
 It reuses native kernel ed81f44d59d0c29de708c52c5fda86211e046542bd3014f4780bcf497bd94e0b
 from successful CI run 41904068757. No new XNU kernel build is needed for
 these shim-only changes. work/bundle-operator.py is pinned to the new image
-and verified original boot_b backup and has NOT been run. No restore
-watcher is active. A new physical test/restore needs specific approval.
+and verified original boot_b backup; its approved test has run as above.
+That temporary boot_b test/restore authorization is consumed. A further
+partition write needs its own approval.
 The last read-only USB check found the expected phone booted in LineageOS,
 slot B, boot_completed=1, shell uid 2000. Original boot backup and the
 previously handset-tested image remain hash-verified and unchanged.
@@ -52,6 +71,38 @@ source archive. The expanded final report passed its QEMU boot check.
 The handset-tested dre-n200 branch is preserved. This branch starts from
 remote c2152c2a3cec6ab213b38cb45511d4ca79e2e22d
 (local 220a686, tree 0583fe4b4a0cf76e104878df8ec8d6336d76460c).
+
+Latest steering: the user also wants an actual iOS UI in the next batch.
+Upstream already has CPU-rendered IOSurface/IOMobileFramebuffer services
+and a software CoreAnimation path; Adreno acceleration is not required
+for the first UI. DRE currently stages only through 0027 and removes
+disp0 from its ADT. Work now on an opt-in UI kernel profile and display
+ADT alongside DMA. Keep Redmi UFS, PMIC, touch, USB, SMP and display-power
+drivers excluded. A genuine Setup.app/SpringBoard boot also needs the
+actual iOS root volume and daemon/user-client compatibility. Do not label
+a diagnostic drawing as the iOS UI. Preserve Setup.app/offline first-run
+preparation requested earlier. No new test is authorized yet.
+
+UI/SMP profile is now implemented in stage_xnu.py --profile ui. All 64
+selected patches applied to a local pristine-file tree. It includes
+IOSurface/AppleCLCD, generic HID, CPU-rendered presentation, iOS daemon
+compatibility and eight-core PSCI startup, and excludes the Redmi UFS,
+PMIC, touch, USB and panel-power drivers. Mixed patches 0054/0055/0067
+retain only their framebuffer/AKS sections; a local console-mute patch
+avoids introducing the Redmi persistent UFS logger. The original bring-up
+profile's 32 staged inputs are byte-identical to the saved deployed set.
+The new CI manifest gate passed the real prior build log and synthetic
+missing/skipped cases. Native UI compilation and DRE ADT/CPU-count checks
+are next. The live N200 FDT has eight PSCI CPUs at MPIDRs 0x000-0x700.
+Do not claim their XNU startup has been tested on the phone.
+
+Latest user storage preference: use all available space in the final iOS
+installation. The default 16 GiB root-image size is not a storage cap;
+size the final filesystem to its verified target partition, and evaluate
+reclaiming Android super space only after storage is working. Preserve
+bootloaders/recovery/modem/calibration and require explicit approval for
+any destructive layout or filesystem write. The most recent USB read
+could not reach the phone; local build work is independent of that.
 
 Latest handset result. The user explicitly approved the native combined
 test and restore, and fastboot wrote/rebooted image 1390d359c5ca3ea6f24fbdb3bc593098c9732bf9764f29225e5f7c1ec4ab97a4.

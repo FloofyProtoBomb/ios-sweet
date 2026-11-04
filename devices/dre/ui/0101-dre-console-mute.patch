@@ -1,0 +1,24 @@
+--- a/osfmk/console/serial_console.c
++++ b/osfmk/console/serial_console.c
+@@ -268,5 +268,10 @@
+  * @param size The number of characters to print to the console.
+  */
++#if defined(ARM64_BOARD_CONFIG_DRE)
++/* AppleCLCD can stop console drawing after its first swap. Panic output
++ * remains visible. DRE has no Redmi UFS-backed persistent logger. */
++int sweet_console_muted;
++#endif
+ static inline void
+ _cnputs(char *c, int size, bool poll)
+ {
+@@ -275,5 +280,10 @@
+ 	extern int disableConsoleOutput;
+ 
++#if defined(ARM64_BOARD_CONFIG_DRE)
++	if (sweet_console_muted && !panic_active()) {
++		return;
++	}
++#endif
+ 	if (disableConsoleOutput) {
+ 		return;
+ 	}

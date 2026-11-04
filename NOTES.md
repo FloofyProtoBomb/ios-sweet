@@ -39,9 +39,14 @@ and device-firmware exclusion scan. The QEMU-only affinity flag is absent
 from the phone payload. Thirty-one CPU metadata checks and the 1-8 CPU
 display/identity ADT tests passed during builder development.
 
-Package as outputs/de2118-ui-smp-test.img with ui-smp-test-manifest.json
+Packaged as outputs/de2118-ui-smp-test.img with ui-smp-test-manifest.json
 and ios-dre-ui-source.zip. work/ui8-operator.py is pinned to the candidate
 and original restore backup. Prepared is not authorized or executed.
+Functional source commit 6c612b692587abe7e2f79bf6e098146a831e4082 was
+published to dre-next-test as ffd88f890154894814b4c811947b9b4882d6bfa0;
+both trees are d9b0ae30812c7871151115387273663352fedde3. dre-ui retains
+the successful native kernel source; no native rebuild is needed for
+these shim/init diagnostic changes. This note records that publication.
 
 The user's latest point is correct: real Setup.app needs a full iOS root
 on the phone. Flashing that root before the XNU storage path works would

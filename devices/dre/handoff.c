@@ -3,6 +3,9 @@
 #include <libfdt.h>
 #include "loader.h"
 #include "identity.h"
+#ifdef DRE_SMP_COUNT
+#include "cpu_topology.h"
+#endif
 #ifdef DRE_BOARD_TESTS
 const char *dre_board_report(const void *dt);
 const char *dre_board_error(void);
@@ -81,6 +84,10 @@ const char *dre_handoff(const void *dt)
     if (el != 4 || !((granules >> 20) & 15) ||
         (mpidr & UINT64_C(0xff00ffffff)) || freq != 19200000)
         return "CPU handoff mismatch";
+#ifdef DRE_SMP_COUNT
+    const char *cpu_error = dre_cpu_topology(dt, DRE_SMP_COUNT);
+    if (cpu_error) return cpu_error;
+#endif
     int chosen = fdt_path_offset(dt, "/chosen");
     uint64_t start, end;
     if (chosen < 0 || fdt_getprop(dt, chosen, "linux,usable-memory-range", NULL) ||

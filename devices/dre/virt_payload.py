@@ -27,6 +27,7 @@ if __name__ == "__main__":
     ap.add_argument("out", type=Path, help="build.py output directory")
     ap.add_argument("kernel", type=Path)
     ap.add_argument("--test-serial", help="explicit synthetic serial for a generic QEMU image")
+    ap.add_argument("--qemu-smp", action="store_true", help="adapt CPU affinities to QEMU virt's Aff0 layout")
     args = ap.parse_args()
     root, _ = mkadt.adt.parse((args.out / "dre.adt").read_bytes())
     if args.test_serial:
@@ -42,8 +43,17 @@ if __name__ == "__main__":
     elif not root.prop("serial-number").strip(b"\0"):
         ap.error("a generic ADT needs --test-serial in QEMU; the handset detects its real serial")
     virtualize(root)
+    if args.qemu_smp:
+        kernel = args.kernel.read_bytes()
+        if b"dre_qemu_affinity" not in kernel:
+            ap.error("kernel lacks the explicit QEMU SMP adapter")
+        cpus = next(c for c in root.children if c.name == "cpus")
+        for index, cpu in enumerate(cpus.children):
+            cpu.props = [(k, f, mkadt.u32(index) if k == "reg" else v) for k, f, v in cpu.props]
     adt = args.out / "dre-virt.adt"
     adt.write_bytes(mkadt.adt.serialize(root))
     cmd = (args.out / "payload.bin").read_bytes()[0x48:0x48 + 608].split(b"\0", 1)[0].decode()
+    if args.qemu_smp:
+        cmd += " dre_qemu_affinity=1"
     data, _ = mkpayload.build(str(args.kernel), str(adt), cmd, str(args.out / "dre-init.macho"))
     (args.out / "virt-payload.bin").write_bytes(data)

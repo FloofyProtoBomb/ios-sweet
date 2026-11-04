@@ -51,6 +51,9 @@ def main():
                     help="read capacity/GPT on LUN 0 only if physical DMA is verified")
     ap.add_argument("--touch-preflight", action="store_true",
                     help="temporarily vote touch clocks, inspect GENI, select live-DT firmware")
+    ap.add_argument("--ui-services", action="store_true", help="publish display/watchdog nodes for the UI/SMP kernel")
+    ap.add_argument("--cpus", type=int, choices=range(1, 9), default=1, help="selected CPU count; >1 requires --ui-services")
+    ap.add_argument("--product-adt", type=Path, help="optional private D22AP Apple ADT for /product metadata")
     args = ap.parse_args()
     if (args.identity or args.board_tests) and not (args.xnu or args.upstream_0027):
         ap.error("--identity and --board-tests need an XNU kernel")
@@ -60,6 +63,10 @@ def main():
         ap.error("--dma-probe and --touch-preflight require --board-tests")
     if args.ufs_read_test and not args.dma_probe:
         ap.error("--ufs-read-test requires --dma-probe")
+    if (args.ui_services or args.product_adt) and not args.xnu:
+        ap.error("--ui-services/--product-adt require a native UI/SMP kernel via --xnu")
+    if (args.cpus != 1 or args.product_adt) and not args.ui_services:
+        ap.error("--cpus >1 and --product-adt require --ui-services")
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     zig = os.path.abspath(args.zig) if Path(args.zig).is_file() else args.zig
@@ -79,6 +86,10 @@ def main():
         # No phone storage controller is linked into the 0027 kernel.
         init_obj = out / "init.o"
         init_flags = ["-DDRE_CHECK_IDENTIFIERS"]
+        if args.ui_services:
+            init_flags += [f"-DDRE_EXPECT_CPUS={args.cpus}"]
+            cc += [f"-DDRE_SMP_COUNT={args.cpus}"]
+            sources += [HERE / "cpu_topology.c"]
         if args.board_tests:
             cc += ["-DDRE_BOARD_TESTS"]
             init_flags += ["-DDRE_BOARD_TESTS"]
@@ -110,7 +121,8 @@ def main():
         subprocess.run([zig, "cc", "-target", "aarch64-macos-none", "-g0",
                         '-DINIT_BOARD="DRE"', *init_flags, "-c", str(SHIM.parent / "tools/sweet-init.S"),
                         "-o", str(init_obj)], check=True)
-        embed(kernel, out, init_obj, donor=args.upstream_0027 is not None, identity_path=args.identity)
+        embed(kernel, out, init_obj, donor=args.upstream_0027 is not None, identity_path=args.identity,
+              ui=args.ui_services, cpus=args.cpus, product_path=args.product_adt)
         source = out / "embedded.S"
         payload = (out / "payload.bin").read_bytes()
         # Zig's assembly cache does not track the file named by .incbin.

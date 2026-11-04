@@ -96,6 +96,33 @@ missing/skipped cases. Native UI compilation and DRE ADT/CPU-count checks
 are next. The live N200 FDT has eight PSCI CPUs at MPIDRs 0x000-0x700.
 Do not claim their XNU startup has been tested on the phone.
 
+Native UI/SMP CI run 41923540367 SUCCEEDED, remote a099c8fd22438ed060a88d71d36916e480df7568
+(local ab0ec5a, tree 13a841a4d3de680ab205513daa82765373d0305c).
+Artifact xnu-kernel 13368446524 ZIP SHA-256
+698bdc71d4ff92188de99832789655d609cb41f711f12391614e374be86caa33,
+kernel SHA e2a093e84af7be25826668f3ce481b87a5e16279416c3042a677545416aaa9b7
+at work/native-ui/kernel.development.dre. All 64 patch applications passed
+the CI gate. No new phone test has run for this kernel.
+
+Pending UI builder work adds --ui-services --cpus N, a validated live-FDT
+PSCI/eight-core guard, optional private D22AP /product import, display
+nodes, and real hw.ncpu/hw.activecpu checks in diagnostic PID 1. Thirty-one
+metadata tests pass (including private FDT), as do 1-8 CPU/display/identity
+ADT checks. A deterministic comparison showed the default bring-up ADT
+byte-identical to the pre-UI builder. The UI8 image passed exact-image
+handoff/MMIO ready modeling. These changes are not a full iOS system image.
+
+QEMU SMP debugging: virt defaults to HVC PSCI, so the first run hit an
+undefined SMC. With virtualization=on plus an EL2-to-EL1 startup adapter,
+SMC works, but CPU_ON(0x100) returns -2 because virt uses fixed Aff0 IDs
+0-7 regardless of -smp cluster descriptions. A new local UI patch 0102
+adds explicit dre_qemu_affinity=1 validation for virtual ADTs only;
+the phone keeps its validated Aff1 layout. virt_payload --qemu-smp adapts
+the virtual reg cells and enables this option. qemu_start.S is the
+QEMU-only entry adapter. The next native UI build must include 0102
+(65 patches) before repeating all-eight-core QEMU. Do not claim SMP PASS
+from the failed runs in work/qemu-ui8. Physical kernel e2a... is unchanged.
+
 Latest user storage preference: use all available space in the final iOS
 installation. The default 16 GiB root-image size is not a storage cap;
 size the final filesystem to its verified target partition, and evaluate

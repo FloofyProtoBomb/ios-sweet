@@ -1,5 +1,6 @@
 """DRE single-core XNU bring-up on a 512 MiB window in the upper RAM bank."""
 from pathlib import Path
+import copy
 import json
 import re
 import sys
@@ -17,7 +18,9 @@ SIZE = 0x20000000
 SPLASH = 0x85200000
 
 
-def tree(identity=None):
+def tree(identity=None, ui=False, cpus=1, product_path=None):
+    if not 1 <= cpus <= 8 or (cpus != 1 and not ui):
+        raise ValueError("secondary CPUs require the UI/SMP kernel profile")
     # Reuse the common Apple boot properties and node encoding. Only the boot
     # CPU, interrupt controller, framebuffer, RAM and panic buffer are exposed.
     root = mkadt.build(qemu=True, include_product=False)
@@ -62,13 +65,44 @@ def tree(identity=None):
     put(chosen, "firmware-version", b"dre-shim\0")
     put(chosen, "system-firmware-version", b"dre-shim\0")
     put(child(root, "pram"), "reg", mkadt.u64(BASE + usable, mkadt.PANIC_LOG_SIZE))
-    cpu = child(child(root, "cpus"), "cpu0")
-    put(cpu, "compatible", b"qcom,kryo460\0ARM,v8\0")
-    for key in ("timebase-frequency", "peripheral-frequency", "fixed-frequency"):
-        put(cpu, key, mkadt.u32(19200000))
-    put(cpu, "clock-frequency", mkadt.u32(1804800000))
+    cpu_parent = child(root, "cpus")
+    template = child(cpu_parent, "cpu0")
+    def handles(node):
+        for key, _, value in node.props:
+            if key == "AAPL,phandle" and len(value) == 4:
+                yield int.from_bytes(value, "little")
+        for node_child in node.children:
+            yield from handles(node_child)
+    last_handle = max(handles(root))
+    cpu_parent.children = []
+    for core in range(cpus):
+        cpu = copy.deepcopy(template)
+        put(cpu, "name", mkadt.cstr(f"cpu{core}"))
+        put(cpu, "compatible", b"qcom,kryo460\0ARM,v8\0")
+        for key, value in (("reg", core << 8), ("cpu-id", core),
+                           ("cluster-core-id", core), ("l2-cache-id", core)):
+            put(cpu, key, mkadt.u32(value))
+        if core:
+            put(cpu, "AAPL,phandle", mkadt.u32(last_handle + core))
+            # Frequency control is not implemented. Do not copy CPU0's
+            # nominal clock into the heterogeneous secondary-core entries.
+            cpu.props = [p for p in cpu.props if p[0] != "clock-frequency"]
+        else:
+            put(cpu, "clock-frequency", mkadt.u32(1804800000))
+        put(cpu, "state", mkadt.cstr("running" if not core else "stopped"))
+        for key in ("timebase-frequency", "peripheral-frequency", "fixed-frequency"):
+            put(cpu, key, mkadt.u32(19200000))
+        cpu_parent.children.append(cpu)
     arm_io = child(root, "arm-io")
-    arm_io.children = [child(arm_io, "gic")]
+    arm_io.children = [c for c in arm_io.children if c.name in
+                       (("gic", "wdt", "disp0") if ui else ("gic",))]
+    if ui:
+        put(child(arm_io, "disp0"), "compatible", b"dre,display\0")
+        if product_path:
+            product = mkadt.d22ap_product(str(product_path))
+            if not product:
+                raise ValueError("D22AP product metadata unavailable")
+            root.children.append(mkadt.node("product", product))
     gic = child(arm_io, "gic")
     put(gic, "reg", mkadt.u64(0x0f200000 - mkadt.SOC_BASE, 0x10000,
                                0x0f240000 - mkadt.SOC_BASE, 0x100000))
@@ -91,7 +125,8 @@ def tree(identity=None):
     return mkadt.adt.serialize(root)
 
 
-def embed(kernel, out, init_obj, donor=False, identity_path=None):
+def embed(kernel, out, init_obj, donor=False, identity_path=None,
+          ui=False, cpus=1, product_path=None):
     data = kernel.read_bytes()
     if donor:
         data = retarget(data)
@@ -99,12 +134,15 @@ def embed(kernel, out, init_obj, donor=False, identity_path=None):
         kernel.write_bytes(data)
     if b"oneplus,dre\0" not in data and b"oneplus,dre'" not in data:
         raise ValueError("expected a DRE XNU build (missing DRE platform match)")
+    if ui and not all(marker in data for marker in
+                      (b"IOCoreSurfaceRoot", b"AppleCLCD", b"sweet_secondary_entry")):
+        raise ValueError("--ui-services requires a kernel built with the DRE ui profile")
     adt_path = out / "dre.adt"
     identity = json.loads(identity_path.read_text()) if identity_path else None
-    adt_path.write_bytes(tree(identity))
+    adt_path.write_bytes(tree(identity, ui=ui, cpus=cpus, product_path=product_path))
     ramdisk = out / "dre-init.macho"
     ramdisk.write_bytes(mkinit.build(init_obj.read_bytes()))
     data, _ = mkpayload.build(str(kernel), str(adt_path),
-                              "debug=0xc serial=3 cpus=1 keepsyms=1 -enable_kprintf_spam -noprogress rd=md0",
+                              f"debug=0xc serial=3 cpus={cpus} keepsyms=1 -enable_kprintf_spam -noprogress rd=md0",
                               str(ramdisk))
     (out / "payload.bin").write_bytes(data)

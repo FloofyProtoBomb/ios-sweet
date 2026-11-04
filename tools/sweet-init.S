@@ -65,6 +65,9 @@ _start:
 	bl	Ldre_check_ids
 #endif
 tick:
+#if defined(DRE_EXPECT_CPUS) && !defined(DRE_BOARD_TESTS)
+	bl	Ldre_check_cpus
+#endif
 #ifdef DRE_BOARD_TESTS
 	bl	Ldre_print_report
 #endif
@@ -111,4 +114,7 @@ alive:
 alive_end:
 #ifdef DRE_CHECK_IDENTIFIERS
 #include "../devices/dre/identity-check.inc"
+#endif
+#ifdef DRE_EXPECT_CPUS
+#include "../devices/dre/cpu-check.inc"
 #endif

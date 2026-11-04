@@ -107,6 +107,9 @@ Ldre_print_report:
     mov x1, x25
     mov x2, x26
     bl write_console
+#ifdef DRE_EXPECT_CPUS
+    bl Ldre_check_cpus
+#endif
     adr x0, Largs_name
     mov x1, #13                   /* strlen("kern.bootargs") */
     add x2, sp, #32

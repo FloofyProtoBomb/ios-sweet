@@ -1,0 +1,20 @@
+--- a/iokit/Kernel/arm/SweetCPU.cpp
++++ b/iokit/Kernel/arm/SweetCPU.cpp
+@@ -73,8 +73,15 @@
+ 	if (*(const uint32_t *)reg->getBytesNoCopy() != cpu->phys_id) {
+ 		return false;
+ 	}
+-	/* MPIDR Aff1 = core: 0x000-0x500 A55, 0x600/0x700 A76 */
+-	if (cpu->phys_id > 0x700 || (cpu->phys_id & 0xff) != 0 ||
++	/* The phone uses Aff1 for cores. QEMU virt fixes Aff0 to the CPU
++	 * index, independently of its descriptive socket/cluster topology.
++	 * This explicit virtual-test option changes validation only; PSCI
++	 * and GIC still use the affinity supplied by the virtual ADT. */
++	uint32_t virtual_affinity = 0;
++	PE_parse_boot_argn("dre_qemu_affinity", &virtual_affinity, sizeof(virtual_affinity));
++	bool affinity_ok = virtual_affinity ? cpu->phys_id < 8 :
++	    cpu->phys_id <= 0x700 && (cpu->phys_id & 0xff) == 0;
++	if (!affinity_ok ||
+ 	    topology->num_cpus > DRE_SMP_MAX_CPUS) {
+ 		panic("DRE CPU: invalid topology cpu=%u mpidr=0x%x count=%u",
+ 		    cpu->cpu_id, cpu->phys_id, topology->num_cpus);

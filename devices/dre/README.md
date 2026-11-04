@@ -233,11 +233,25 @@ The workflow selects it automatically for a push to `dre-ui`; a manual
 workflow run needs `machine_config=DRE` and `dre_profile=ui`. The ordinary
 `bringup` profile remains the handset-tested early kernel configuration.
 
-All 64 UI-profile patches apply locally. This is not a compiled or phone-tested
-UI result yet. The DRE display/CPU device tree, native compilation and actual
-iOS root volume are still needed. The profile excludes the Redmi UFS, touch,
+The first 64-patch UI profile passed [native build 41923540367](https://github.com/FloofyProtoBomb/ios-sweet/actions/runs/41923540367).
+The additional explicit QEMU-affinity adapter is receiving native compilation.
+The DRE display/CPU tree and metadata checks are implemented; a full iOS root
+volume and a working DMA/storage driver are still needed. No N200 UI or
+secondary-core startup has been demonstrated on the phone. The profile excludes the Redmi UFS, touch,
 PMIC, USB and display-power drivers. It cannot use that phone's DMA assumptions
 on the N200. A build-log gate rejects any skipped DRE patch.
+
+The builder accepts `--ui-services --cpus 8` with a native UI/SMP kernel.
+It validates the live FDT's eight Kryo CPU affinities and SMC PSCI method
+before handing off. `--product-adt /private/d22ap.adt` optionally imports the
+real iPhone X product metadata; Apple artifacts stay outside git. This still
+uses diagnostic PID 1, which reports actual selected/active CPU counts.
+It does not launch Setup.app or SpringBoard by itself.
+
+For QEMU, `virt_payload.py ... --qemu-smp` changes only the virtual CPU reg
+cells to Aff0 and adds `dre_qemu_affinity=1`. QEMU needs
+`virt,virtualization=on` to provide SMC PSCI, with `qemu_start.S` entering
+EL1 from EL2. The phone's image does not enable the virtual-affinity option.
 
 The final filesystem will be sized against its verified target partition;
 the root-image script's default 16 GiB is not intended to limit usable space.

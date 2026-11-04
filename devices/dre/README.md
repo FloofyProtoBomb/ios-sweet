@@ -15,7 +15,7 @@ Setup.app and the iOS system volume are separate.
 | CPU, memory and display | In ARM64 emulation, the exact phone image accepted the handset's FDT, passed the verified boot arguments to XNU and executed XNU's first 64 × 32 framebuffer marker. A separate probe rendered its complete result text at two load addresses and refused five incompatible or malformed device trees. |
 | Full-system virtual boot | On QEMU virt, the same DRE kernel and RAM-disk init mounted md0, started PID 1 and printed a heartbeat. The virtual test substitutes virt's interrupt controller and architected timer in the ADT. |
 | Physical XNU boot | The DE2118 photos show XNU booting via dre-shim, VM bootstrap, CPU 0 registration and SGI1 verification, HFS registration, Skywalk self-tests and BSD network-interface threads being scheduled. In the subsequent combined handset test the user confirmed the repeating DE2118 TEST card, which is emitted by diagnostic PID 1 after md0 mounts. |
-| Identifiers | The private image carries the phone's real serial and checksum-validated slot-0 IMEI. XNU publishes the root serial using its platform expert and accepts a deterministic per-phone UUID from the ADT. Diagnostic PID 1 passed reads of hw.machine, hw.model, hw.product, hw.target and gethostuuid in QEMU and on the handset. The handset also reports SERIAL=ABL_MATCH. The IMEI is an OSData string at IODeviceTree:/oneplus-hardware/imei. A native CoreTelephony/Settings IMEI lookup still requires modem integration. Serial display in Settings is untested. |
+| Identifiers | The shim detects the real serial from ABL's androidboot.serialno, with a root FDT serial-number fallback. It fills the copied XNU ADT and derives the same per-phone UUIDv5 at startup. This generic-image path passed exact-image emulation and synthetic identity fixtures, and awaits a handset test. The earlier private-image diagnostic passed hw.machine, hw.model, hw.product, hw.target and gethostuuid in QEMU and on the handset, with SERIAL=ABL_MATCH. An optional checksum-validated IMEI can be staged as OSData at IODeviceTree:/oneplus-hardware/imei. Automatic IMEI discovery and a native CoreTelephony/Settings lookup require modem integration. Serial display in Settings is untested. |
 | Adreno | The N200 reports Adreno619v1. On the handset a KGSL userspace test submitted an A6xx CP_MEM_WRITE packet and read its result back after the GPU fence. The XNU ADT supplies the GPU register ranges and interrupt. XNU GPU power, firmware, SMMU, submission, buffer sharing and iOS graphics user-client support remain unimplemented. |
 | Input and display | The phone reported a Tianma NT36672C panel and Novatek no-flash touch on SPI. The console writes to continuous-splash memory. Touch firmware loading, touch events, display power and accelerated composition remain outstanding. |
 | Storage and radios | The kernel image has no UFS driver. A verified UFS read path and a root volume are required before it can run a full iOS filesystem. Cellular, Wi-Fi, Bluetooth, camera and audio drivers remain outstanding. |
@@ -44,11 +44,24 @@ python devices/dre/build.py --zig /path/to/zig --out devices/dre/out \
     --upstream-0027 /path/to/kernel.development.sweet
 ```
 
-Add `--identity /private/path/phone.private.json` for a private handset
-image. Supply two JSON strings named `serial` and `imei`. Omitting the
-option builds without those personal identifiers. A personalized boot image
-and its intermediate files contain the original values. Rebuilds use fresh
-random seed bytes in the ADT.
+Serial and UUID detection require no private build input. The shim reads
+the bootloader's live serial and fills reserved ADT slots after payload
+validation. Missing, invalid or duplicate serials stop the handoff. The
+UUID is `uuid5(NAMESPACE_URL, "urn:oneplus:dre:" + serial)`, preserving the
+identity used by earlier builds. Only serial and UUID slots are changed.
+
+Optionally add `--identity /private/path/phone.private.json`. Its optional
+`serial` string adds an expected-value diagnostic check. Its optional `imei`
+string must be the phone's checksum-valid 15-digit IMEI. The IMEI is still
+explicit provisioning. It is not discovered from modem NV by this shim.
+Such a private image and its intermediate files contain the supplied values.
+Rebuilds use fresh random seed bytes in the ADT. Synthetic identity fixtures
+test serial parsing, UUID compatibility and malformed ADT rejection without
+reading a phone.
+
+```sh
+python devices/dre/test_identity.py --zig /path/to/zig
+```
 
 The source-build alternative is the fork's upstream macOS/Xcode kernel
 workflow with `machine_config=DRE`, `macos_version=13.5`. It stages changes
@@ -62,7 +75,7 @@ The Linux QEMU workflow uses the upstream screen decoder and requires
 
 ```sh
 OUT=devices/dre/out
-python devices/dre/virt_payload.py "$OUT" "$OUT/kernel.development.dre"
+python devices/dre/virt_payload.py "$OUT" "$OUT/kernel.development.dre" --test-serial QEMU-DRE-TEST
 python tools/qemu-sweet.py "$OUT/virt-payload.bin" "$OUT/qemu" \
     --fb-base 0x85200000 --cpu cortex-a76 --kernel "$OUT/kernel.development.dre" \
     --secs 150 --fail-on-panic
@@ -90,7 +103,8 @@ seconds. `LINK_READY` means the device-present and transfer-list-ready
 bits are set on an enabled, idle host. It does not establish sector I/O.
 `GPU_DT` and `TOUCH_DT` identify FDT nodes. `PANEL_SEL` identifies the
 panel selection in the actual boot arguments and `SERIAL` compares the
-bootloader's own serial to the private build. No personal value is printed.
+bootloader's own serial to an optional private expectation. A generic build
+reports `SERIAL=ABL_DETECTED` after successful discovery. No personal value is printed.
 Record the card after PID 1 has started. If boot stops earlier, capture the
 last changing line instead.
 

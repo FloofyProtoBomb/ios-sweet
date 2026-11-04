@@ -28,7 +28,6 @@ Ldre_check_ids:
     check_sysctl model, board
     check_sysctl product, product
     check_sysctl target, board
-#ifdef DRE_EXPECT_UUID
     add x0, sp, #32
     add x1, sp, #64
     mov x8, #2
@@ -36,11 +35,21 @@ Ldre_check_ids:
     mov x16, #142
     svc #0x80
     b.cs Ldre_bad_ids
+#ifdef DRE_EXPECT_UUID
     add x0, sp, #32
     adr x1, Ldre_expected_uuid
     mov x2, #16
     bl Ldre_compare
     cbnz w0, Ldre_bad_ids
+#else
+    ldrb w8, [sp, #38]            /* UUIDv5 version and RFC variant */
+    and w8, w8, #0xf0
+    cmp w8, #0x50
+    b.ne Ldre_bad_ids
+    ldrb w8, [sp, #40]
+    and w8, w8, #0xc0
+    cmp w8, #0x80
+    b.ne Ldre_bad_ids
 #endif
     adr x1, Ldre_pass
     mov x2, #(Ldre_fail - Ldre_pass)

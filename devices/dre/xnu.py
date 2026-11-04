@@ -36,20 +36,26 @@ def tree(identity=None):
     # 0027 predates the SHA-1 provider. Publishing these optional identity
     # values invokes SHA1Init in IOPlatformExpertDevice::generatePlatformUUID.
     chosen.props = [p for p in chosen.props if p[0] not in ("unique-chip-id", "chip-id")]
+    # Fixed-size slots are populated from ABL's live FDT by the phone shim.
+    # Explicit identities also support virtual tests and optional IMEI staging.
+    serial_bytes, host_bytes = bytes(64), bytes(16)
     if identity:
-        serial, imei = identity["serial"], identity["imei"]
-        if not re.fullmatch(r"[A-Za-z0-9-]{1,63}", serial):
+        serial, imei = identity.get("serial"), identity.get("imei")
+        if serial is not None and not re.fullmatch(r"[A-Za-z0-9-]{1,63}", serial):
             raise ValueError("invalid hardware serial")
-        if not re.fullmatch(r"[0-9]{15}", imei):
+        if imei is not None and not re.fullmatch(r"[0-9]{15}", imei):
             raise ValueError("expected the phone's 15-digit IMEI")
-        digits = [int(ch) * (1 + i % 2) for i, ch in enumerate(imei)]
-        if sum(d // 10 + d % 10 for d in digits) % 10 or len(set(imei)) == 1:
-            raise ValueError("invalid IMEI checksum")
-        serial_bytes = mkadt.cstr(serial)
-        root.props.append(("serial-number", 0, serial_bytes))
-        hardware.props += [("serial-number", 0, serial_bytes), ("imei", 0, mkadt.cstr(imei))]
-        host_id = uuid.uuid5(uuid.NAMESPACE_URL, "urn:oneplus:dre:" + serial)
-        chosen.props.append(("dre,host-uuid", 0, host_id.bytes))
+        if imei is not None:
+            digits = [int(ch) * (1 + i % 2) for i, ch in enumerate(imei)]
+            if sum(d // 10 + d % 10 for d in digits) % 10 or len(set(imei)) == 1:
+                raise ValueError("invalid IMEI checksum")
+            hardware.props.append(("imei", 0, mkadt.cstr(imei)))
+        if serial is not None:
+            serial_bytes = mkadt.cstr(serial).ljust(64, b"\0")
+            host_bytes = uuid.uuid5(uuid.NAMESPACE_URL, "urn:oneplus:dre:" + serial).bytes
+    root.props.append(("serial-number", 0, serial_bytes))
+    hardware.props.append(("serial-number", 0, serial_bytes))
+    chosen.props.append(("dre,host-uuid", 0, host_bytes))
     usable = SIZE - mkadt.PANIC_LOG_SIZE
     put(chosen, "dram-base", mkadt.u64(BASE))
     put(chosen, "dram-size", mkadt.u64(usable))

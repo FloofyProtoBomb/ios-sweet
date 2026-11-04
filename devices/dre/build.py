@@ -42,7 +42,7 @@ def main():
     kernels = ap.add_mutually_exclusive_group()
     kernels.add_argument("--xnu", type=Path, help="embed a kernel built with MACHINE_CONFIG=DRE")
     kernels.add_argument("--upstream-0027", type=Path, help="retarget the pinned upstream CI kernel")
-    ap.add_argument("--identity", type=Path, help="private JSON with this phone's serial and IMEI")
+    ap.add_argument("--identity", type=Path, help="optional private JSON with a serial expectation and/or IMEI")
     ap.add_argument("--board-tests", action="store_true", help="survey UFS power/link and live DT at handoff")
     ap.add_argument("--ufs-clock-enable", action="store_true",
                     help="enable UFS GCC branches with a bounded wait and rollback")
@@ -77,8 +77,8 @@ def main():
                                                 "ufs_clock.c", "peripheral_state.c")]
             if args.ufs_clock_enable:
                 cc += ["-DDRE_UFS_CLOCK_ENABLE"]
-        if args.identity:
-            serial = json.loads(args.identity.read_text())["serial"]
+        serial = json.loads(args.identity.read_text()).get("serial") if args.identity else None
+        if serial is not None:
             if not re.fullmatch(r"[A-Za-z0-9-]{1,63}", serial):
                 raise ValueError("invalid hardware serial")
             host_id = uuid.uuid5(uuid.NAMESPACE_URL, "urn:oneplus:dre:" + serial)
@@ -97,7 +97,7 @@ def main():
         digest = hashlib.sha256(payload).hexdigest()
         source.write_text(f'/* {digest} */\n.section .dre_payload,"a"\n.incbin "payload.bin"\n',
                           encoding="ascii")
-        sources += [source, HERE / "handoff.c", SHIM / "loader.c"]
+        sources += [source, HERE / "handoff.c", HERE / "identity.c", SHIM / "loader.c"]
         cc += ["-DDRE_XNU"]
     objects = []
     for source in sources:

@@ -77,7 +77,25 @@ jobs:
         env:
           # keep going after errors so one run reports every compile failure
           MAKEFLAGS: ${{ inputs.keep_going == 'false' && '' || '-k' }}
-        run: bash build.sh
+        run: |
+          set -o pipefail
+          bash build.sh 2>&1 | tee build.log
+
+      - name: Summarize build errors
+        if: always()
+        run: |
+          mkdir -p out
+          if [ -f dxb/build.log ]; then
+            python3 tools/summarize-xnu-build.py dxb/build.log out/build-errors.txt
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xnu-build-log
+          path: dxb/build.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Package build tree for local compiles
         if: always()

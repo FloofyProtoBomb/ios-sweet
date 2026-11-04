@@ -4,6 +4,7 @@
 #include "console.h"
 #include "ufs_clock.h"
 #include "peripheral_state.h"
+#include "identity.h"
 
 /* Returns 0 on a synchronous data abort, 1 on success. */
 extern int dre_read32(uintptr_t addr, uint32_t *out);
@@ -145,6 +146,8 @@ const char *dre_board_report(const void *dt)
             !memcmp(args + i, serial, sizeof(serial) - 1)) { match = 1; break; }
     }
     add(match ? "|SERIAL=ABL_MATCH" : "|SERIAL=UNCONFIRMED");
+#else
+    add(dre_identity_serial() ? "|SERIAL=ABL_DETECTED" : "|SERIAL=UNAVAILABLE");
 #endif
     return report;
 }

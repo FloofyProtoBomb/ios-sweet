@@ -2,6 +2,7 @@
  * against this boot's live FDT before handing the embedded payload to XNU. */
 #include <libfdt.h>
 #include "loader.h"
+#include "identity.h"
 #ifdef DRE_BOARD_TESTS
 const char *dre_board_report(const void *dt);
 #endif
@@ -93,9 +94,12 @@ const char *dre_handoff(const void *dt)
     if ((uintptr_t)_payload_end - (uintptr_t)p < 72 ||
         p[7] != BASE || p[8] != SIZE - 0x100000)
         return "payload RAM mismatch";
+    const char *identity_error = dre_identity_detect(dt);
+    if (identity_error) return identity_error;
     const char *extra = NULL;
 #ifdef DRE_BOARD_TESTS
     extra = dre_board_report(dt);
 #endif
-    return loader_boot_range((uintptr_t)p, (uintptr_t)_payload_end, extra);
+    return loader_boot_range_with_adt((uintptr_t)p, (uintptr_t)_payload_end,
+                                      extra, dre_identity_fixup);
 }

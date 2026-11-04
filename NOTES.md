@@ -5,7 +5,22 @@
 The OnePlus port starts at [devices/dre/README.md](devices/dre/README.md).
 Upstream base 45263bee51df4a0f55cdf9c649af886399488ddb. The kernel binary
 was retargeted from upstream Actions run 38779441895, artifact 11995436131,
-at patch 0027. No DRE macOS CI run was dispatched.
+at patch 0027. The first native DRE CI run is 41900701920 on
+FloofyProtoBomb/ios-sweet branch dre-n200, commit
+a0329de92623d5de74e66d87861b277d267c08cb. Attempt 1 failed on a BearSSL
+HTTP 502 before compilation. Attempt 2 reached compilation and failed.
+Its job is 126823633612. The large job-log connector returns Transport closed,
+and desktop/browser tools fail to initialize (kernel assets path missing).
+The user was asked for the first compiler/linker error while source work
+continued. The workflow now captures a full downloadable build.log and
+a bounded build-errors.txt, so the next run can be diagnosed independently.
+The pinned BearSSL fetch now retries transient errors three times.
+The user supplied the signed log download, saved privately in work/ci-retry.log.
+The actual link failure was one undefined symbol, sweet_hfs_register.
+stage_xnu.py had renamed SWEET_HFS to DRE_HFS while retaining the lowercase
+sweet_hfs build selector. The native build therefore enabled the registration
+call but omitted all HFS objects. The staging transform now preserves the
+shared SWEET_HFS option and its Makefile variables. A new CI run is next.
 
 Current follow-up, 2026-11-04. The combined shim now has guarded UFS
 branch-enable writes with bounded polling and rollback, plus read-only
@@ -18,11 +33,28 @@ The earlier CLOCK_GATED result did not account for HWCG idle semantics
 and cannot by itself establish that the branches were disabled.
 
 The user connected GitHub and supplied FloofyProtoBomb/ios-sweet. App
-installation 178678426 now exposes that account. Source publication and
-the first native DRE CI build are next. Keep actual identifiers, live DT,
+installation 178678426 now exposes that account. The generic source is
+published, with remote tree a51f91f02d04a1929978b9e163a33930a66c76d1 verified
+against local commit d140fd3. Keep actual identifiers, live DT,
 Apple artifacts and private images outside the public fork. The workflow
 selects DRE automatically on branch dre-n200. No further device flash has
 been authorized since the completed combined test and restore.
+
+On the user's request for autodetection, the shim now reads the hardware
+serial at boot and computes UUIDv5 using the original Python namespace/name.
+It edits only validated 64-byte serial slots and the 16-byte UUID in the
+copied ADT. Optional JSON can still provide an expected serial and/or an IMEI.
+An IMEI is not invented or automatically obtained from modem NV. The generic
+image at work/build-auto passes 14 exact-image MMIO scenarios and compares
+the resulting ADT serial and UUID with independent Python expectations.
+The native host fixture suite passes 73 parsing/UUID/ADT checks, including
+invalid or duplicate serials, bounded tree traversal and no partial edits.
+These are local tests, not handset observations. The generic build's PID 1
+also checks gethostuuid version/variant without an embedded expected UUID.
+That generic init passed a complete QEMU boot with an explicit synthetic
+QEMU-DRE-TEST identity, all model checks, gethostuuid and the full simulated
+platform report. The optional private-identity build also passed ready and
+timeout/rollback scenarios with its original expected UUID.
 
 Observed on project 133180, LineageOS 22.2 (20250815), slot B. The real
 device tree and boot headers matched the source profile. A bare-metal probe

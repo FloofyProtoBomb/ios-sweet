@@ -7,8 +7,15 @@ bearssl_sha=7bea48e5e850ab4cafbe68d3765cdaba13a86d6f
 bearssl_tmp=$(mktemp -d)
 trap 'rm -rf "$bearssl_tmp"' EXIT
 git init -q "$bearssl_tmp"
-git -C "$bearssl_tmp" fetch -q --depth 1 \
-    https://www.bearssl.org/git/BearSSL "$bearssl_sha"
+for attempt in 1 2 3; do
+    if git -C "$bearssl_tmp" fetch -q --depth 1 \
+        https://www.bearssl.org/git/BearSSL "$bearssl_sha"; then
+        break
+    fi
+    [[ "$attempt" != 3 ]] || exit 1
+    echo "BearSSL fetch failed; retrying pinned commit (attempt $attempt)" >&2
+    sleep 5
+done
 git -C "$bearssl_tmp" checkout -q FETCH_HEAD
 [[ "$(git -C "$bearssl_tmp" rev-parse HEAD)" == "$bearssl_sha" ]]
 python3 - "$bearssl_tmp" <<'PY'

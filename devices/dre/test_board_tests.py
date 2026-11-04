@@ -7,6 +7,12 @@ handoff, clock-write limits/rollback and peripheral access gating, not hardware.
 import argparse
 from pathlib import Path
 import struct
+import re
+import sys
+import uuid
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
+import adt
 
 from unicorn import (Uc, UC_ARCH_ARM64, UC_HOOK_INSN, UC_HOOK_MEM_READ,
                      UC_HOOK_MEM_WRITE, UC_MODE_ARM)
@@ -138,13 +144,23 @@ def run(image, dtb, case, enable):
     assert b"\0" in raw, "unterminated boot arguments"
     args = raw.split(b"\0")[0].decode()
     fields = args.split(" dre_report=")[1].split("|")
+    adt_va, adt_size = struct.unpack("<QI", bytes(cpu.mem_read(ba + 96, 12)))
+    root, consumed = adt.parse(bytes(cpu.mem_read(adt_va + base - va, adt_size)))
+    expected_serial = re.search(rb"(?:^|[ \0])androidboot.serialno=([A-Za-z0-9-]{1,63})(?: |\0)", dtb)[1]
+    hardware = next(n for n in root.children if n.name == "oneplus-hardware")
+    chosen = next(n for n in root.children if n.name == "chosen")
+    assert consumed == adt_size
+    assert root.prop("serial-number").split(b"\0")[0] == expected_serial
+    assert hardware.prop("serial-number") == root.prop("serial-number")
+    assert chosen.prop("dre,host-uuid") == uuid.uuid5(uuid.NAMESPACE_URL, "urn:oneplus:dre:" + expected_serial.decode()).bytes
     if expected_clock not in ("READY", "ENABLED") and case != "power_off":
         expected_ufs = "CLOCK_" + expected_clock
     assert fields[0] == "UFS=" + expected_ufs, fields
     if case not in ("power_off", "dt_mismatch"):
         assert "UCLK=" + expected_clock in fields, fields
     assert {"GPU_DT=A619v1", "TOUCH_DT=NT36672C_SPI0",
-            "PANEL_SEL=TIANMA_NT36672C", "SERIAL=ABL_MATCH"} <= set(fields), fields
+            "PANEL_SEL=TIANMA_NT36672C"} <= set(fields), fields
+    assert {"SERIAL=ABL_MATCH", "SERIAL=ABL_DETECTED"} & set(fields), fields
     for prefix, expected in (("USB", expected_usb), ("TOUCH_SPI", expected_touch), ("GPU_HW", expected_gpu)):
         assert any(s == prefix + "=" + expected or s.startswith(prefix + "=" + expected + "_") for s in fields), fields
     hci = {0x04804008, 0x04804034, 0x04804030, 0x04804058}

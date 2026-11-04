@@ -21,6 +21,10 @@ def stage(out):
                          ("Kryo 470", "Kryo 460"), ('"sweet"', '"dre"'),
                          ("Redmi Note 10 Pro", "OnePlus Nord N200"), ("SM7150", "SM4350")):
             patch = patch.replace(old, new)
+        # This shared filesystem option selects "optional sweet_hfs" entries
+        # in bsd/conf/files. Renaming only its uppercase spelling enables the
+        # bsd_init call but silently omits every HFS object from the link.
+        patch = patch.replace("DRE_HFS", "SWEET_HFS")
         # The panel begins 18 MiB into the 32 MiB block at 0x84000000.
         # Keep the virtual and physical *pixel* pointers distinct from PTEs.
         if source.name.startswith(("0010-", "0012-")):

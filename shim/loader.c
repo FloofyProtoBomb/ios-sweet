@@ -88,6 +88,12 @@ const char *loader_boot(uintptr_t dtb)
 
 const char *loader_boot_range(uintptr_t rd_start, uintptr_t rd_end, const char *extra)
 {
+	return loader_boot_range_with_adt(rd_start, rd_end, extra, 0);
+}
+
+const char *loader_boot_range_with_adt(uintptr_t rd_start, uintptr_t rd_end,
+    const char *extra, loader_adt_fixup_fn fixup)
+{
 	if (rd_end <= rd_start || rd_end - rd_start < sizeof(struct payload) ||
 	    (rd_start & 7))
 		return "invalid payload range";
@@ -142,6 +148,10 @@ const char *loader_boot_range(uintptr_t rd_start, uintptr_t rd_end, const char *
 	/* ADT, then boot_args, behind the kernel; everything below topOfKernelData is ours. */
 	uintptr_t adt_pa = p->kernel_end + pa_of_va_base;
 	copy64(adt_pa, rd_start + p->adt_off, p->adt_size);
+	if (fixup) {
+		const char *error = fixup((void *)adt_pa, (uint32_t)p->adt_size);
+		if (error) return error;
+	}
 	uintptr_t ba_pa = (adt_pa + p->adt_size + PAGE_16K - 1) & ~(PAGE_16K - 1);
 	uintptr_t top = ba_pa + PAGE_16K;
 

@@ -2,6 +2,8 @@
 """Retain the DRE kernel, init and identity, substituting QEMU virt's GIC/timer."""
 import argparse
 from pathlib import Path
+import re
+import uuid
 
 from xnu import mkadt, mkpayload
 
@@ -24,8 +26,21 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("out", type=Path, help="build.py output directory")
     ap.add_argument("kernel", type=Path)
+    ap.add_argument("--test-serial", help="explicit synthetic serial for a generic QEMU image")
     args = ap.parse_args()
     root, _ = mkadt.adt.parse((args.out / "dre.adt").read_bytes())
+    if args.test_serial:
+        if not re.fullmatch(r"[A-Za-z0-9-]{1,63}", args.test_serial):
+            ap.error("invalid test serial")
+        def replace(node, key, value):
+            node.props = [(k, f, value if k == key else v) for k, f, v in node.props]
+        serial = (args.test_serial.encode() + b"\0").ljust(64, b"\0")
+        replace(root, "serial-number", serial)
+        replace(next(c for c in root.children if c.name == "oneplus-hardware"), "serial-number", serial)
+        replace(next(c for c in root.children if c.name == "chosen"), "dre,host-uuid",
+                uuid.uuid5(uuid.NAMESPACE_URL, "urn:oneplus:dre:" + args.test_serial).bytes)
+    elif not root.prop("serial-number").strip(b"\0"):
+        ap.error("a generic ADT needs --test-serial in QEMU; the handset detects its real serial")
     virtualize(root)
     adt = args.out / "dre-virt.adt"
     adt.write_bytes(mkadt.adt.serialize(root))

@@ -77,6 +77,10 @@ static const char *firmware(const void *dt, struct dre_touch_preflight *s)
 const char *dre_touch_preflight(const void *dt, struct dre_touch_preflight *s)
 {
     *s = (struct dre_touch_preflight){.safe_to_handoff = 1, .firmware_index = UINT32_MAX};
+#ifdef DRE_DRIVER_PREP
+    s->gpi_state = "SKIP";
+    s->gpi.dma_state = s->gpi.map_state = s->gpi.spi_plan = "SKIP";
+#endif
     s->firmware_state = firmware(dt, s);
     int soc = fdt_path_offset(dt, "/soc"), n;
     const fdt32_t *ranges = fdt_getprop(dt, soc, "ranges", &n);
@@ -131,6 +135,9 @@ const char *dre_touch_preflight(const void *dt, struct dre_touch_preflight *s)
     }
     /* Read the IRQ input only; never assert the touch reset pin. */
     if (!dre_read32(0x00516004, &s->irq_level)) goto restore;
+#ifdef DRE_DRIVER_PREP
+    s->gpi_state = dre_gpi_preflight(dt, &s->gpi);
+#endif
     if (((s->revision >> 8) & 255) != 1) error = "SPI_FW_MISSING";
     else if (s->status & 0x1001) error = "SPI_BUSY";
     else if (s->fifo_disabled & 1) error = "SPI_GPI_ONLY";

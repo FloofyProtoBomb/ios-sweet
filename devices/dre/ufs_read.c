@@ -18,6 +18,7 @@ extern int dre_write32(uintptr_t address, uint32_t value);
 
 /* 32 UTRDs, one 128-byte-aligned UCD and one block. MMU/caches are off. */
 static volatile uint8_t arena[0x2000] __attribute__((aligned(4096)));
+uintptr_t dre_ufs_probe_arena(void) { return (uintptr_t)arena; }
 #define DMA_RING ((volatile uint32_t *)arena)
 #define DMA_COMMAND (arena + 0x400)
 #define DMA_RESPONSE (arena + 0x600)

@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: MIT */
 #pragma once
 #include <stdint.h>
+#ifdef DRE_DRIVER_PREP
+#include "gpi_preflight.h"
+#endif
 
 struct dre_touch_preflight {
     uint32_t votes_before, votes_during, votes_after;
@@ -9,6 +12,10 @@ struct dre_touch_preflight {
     uint32_t firmware_index, firmware_bytes, firmware_version, partitions;
     const char *firmware_state;
     int safe_to_handoff;
+#ifdef DRE_DRIVER_PREP
+    struct dre_gpi_preflight gpi;
+    const char *gpi_state;
+#endif
 };
 
 /* Temporarily vote only the three known GCC clocks, inspect GENI without

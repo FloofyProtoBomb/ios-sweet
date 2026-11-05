@@ -15,3 +15,4 @@ struct dre_ufs_read_state {
  * A false safe_to_handoff MUST stop booting XNU until a hardware reset. */
 const char *dre_ufs_read_test(const struct dre_dma_route *route,
                             struct dre_ufs_read_state *out);
+uintptr_t dre_ufs_probe_arena(void);

@@ -2,6 +2,65 @@
 
 ## DE2118 handoff, 2026-11-04
 
+LATEST DEVELOPMENT: user said "ok continue" after the verified 8cd8bf6f
+test/restore. Phone stays on LineageOS; no new partition write is approved.
+The opt-in --driver-prep batch now adds a shared inherited-table inspector
+for UFS/USB, read-only AP GPI channel survey plus SPI descriptor preparation,
+and DWC3 capability / unowned setup-data-status TRB preparation and event
+decoding. The core walker passes 44 host cases; RAM exclusions and SPI/USB
+formats pass 227 cases including the private live-FDT memory policy.
+All ten changed C modules pass strict ARM64 compilation. This is driver
+preparation, not working DMA submission, storage, touch input or enumeration.
+
+dma_memory.c rejects every fixed/dynamic reserved interval and non-RAM;
+dma_proof.c additionally excludes the shim, FDT and initrd and rereads
+route/context state. RAM descriptors are read as stable 64-bit values
+through guarded 32-bit loads. Only bounded stage-1 AArch64 4K tables are
+supported. IDENTITY_RW reports table contents, never DMA authorization:
+hardware translation caches / XPU permissions and ownership still matter.
+ufs_read.c retains its physical_dma-only gate. No SMMU write, ATOS, TLB
+flush, table mutation or new UFS command on a translated stream was added.
+
+GPI live-DT metadata: provider /soc/qcom,gpi-dma@4a00000, SID 0x16,
+DT reg 0x04a00000+0x60000, max instances 10, AP mask 0x1f and EE offset
+0x10000. The matching gpi.c subtracts that EE offset before adding its
+0x20000/0x21000 context offsets. Thus AP instance 0 channel/event reads
+start at 0x04a10000/0x04a11000, not 0x04a20000/0x04a21000.
+SPI dmas are paired channel 0/1, SE0, protocol1, ring count64, flags0;
+GPII assignment is dynamic, not implicitly instance0. No proprietary
+firmware/dump was committed. GPI/SPI reads occur within touch's checked
+clock-vote scope; no pins, channels, firmware or transfer are changed.
+
+work/build-driver-prep is the current HOST-ONLY build, SHA
+ce4ffafd7b671e740e73b98e22235361dc1cecfd007c27c6f133e00b3757cd79.
+It reuses native kernel f5c205...; kernel/init are unchanged. All 93 distinct
+exact-image cases PASS: full 84-case regression plus focused route/context/
+descriptor/torn-read races, own-image exclusion, GPI EE/DMA metadata guards,
+and GPI translated identity/missing mappings. Model JSONs are
+work/driver-prep-model-reports.json (84), driver-prep-race-reports.json (5),
+driver-prep-gpi-gate-reports.json (3, includes repeated reserved case), and
+driver-prep-gpi-map-reports.json (2). No SMMU register write is permitted
+by the model, and no translated UFS route issues commands. Largest modeled
+argument is 522/607 bytes. USB plans retain HWO=0, touch votes restore,
+and unsafe restoration still stops the XNU handoff. Full log is private
+at work/driver-prep-model.log. All test processes have exited successfully.
+Public qemu_ui.py also PASS with eight active virtual CPUs, SGIs, PID 1,
+identity and display-driver startup; peripheral fields are simulated.
+Evidence: work/qemu-driver-prep/result.json and kernel-log.txt. Privacy scan
+passes (no device identifiers or proprietary firmware in the image).
+The QEMU-only CPU-affinity option is absent from phone boot arguments.
+
+Package this as outputs/de2118-dma-touch-test.img, with
+dma-touch-test-manifest.json and ios-dre-driver-source.zip using
+work/package-driver-prep.py after committing. Its operator helper waits
+up to 15 minutes for fastboot restoration, rather than expiring while the
+user takes a photo. Do not start it until a specifically approved test
+flash/reboot has completed. No new test is authorized yet.
+Keep handset-tested outputs/de2118-ui-smp-test.img and its source archive
+unchanged. No test/restore watcher is alive. Last verified ADB uid 2000.
+The read-only USB check after host tests confirms the expected phone is
+booted in LineageOS on B, boot_completed=1, uid 2000. No root was needed.
+
 CURRENT: UI/SMP native build 41928302512 SUCCEEDED with all 65 selected
 patches applied, remote 0f9135bb54251f091e6f163f3bd46aa202ebda3b (tree
 b269eb7ab140c50b9974723b8d107fa130934b55, local bcb1c7d). The verified

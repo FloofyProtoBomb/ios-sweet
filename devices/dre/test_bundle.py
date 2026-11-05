@@ -114,7 +114,7 @@ def disk(case):
     return {1: bytes(header), **{2 + i: bytes(entries[i * 4096:(i + 1) * 4096]) for i in range(4)}}
 
 
-def run(image, dtb, syms, case, context_probe=False):
+def run(image, dtb, syms, case, context_probe=False, driver_prep=False):
     if case == 'dt_mismatch':
         dtb = dtb.replace(b'qcom,holi-gcc\0', b'qcom,xoli-gcc\0')
     elif case == 'touch_dt_mismatch':
@@ -131,6 +131,10 @@ def run(image, dtb, syms, case, context_probe=False):
         dtb = change_property(dtb, '/chosen', 'bootargs', panel)
     elif case == 'firmware_bad':
         dtb = change_property(dtb, '/soc/spi@4a80000/novatek@0', 'firmware-data-0', lambda p: bytes(len(p)))
+    elif case == 'gpi_ee_mismatch':
+        dtb = change_property(dtb, '/soc/qcom,gpi-dma@4a00000', 'qcom,gpi-ee-offset', lambda p: struct.pack('>I', 0x20000))
+    elif case == 'gpi_dma_mismatch':
+        dtb = change_property(dtb, '/soc/qcom,gpi-dma@4a00000', '#dma-cells', lambda p: struct.pack('>I', 4))
     kernel = image[4096:4096 + struct.unpack_from('<I', image, 8)[0]]
     payload = kernel.index(b'SWEETXNU\x01\0\0\0')
     va, entry, _, _, end, base, _ = struct.unpack_from('<7Q', kernel, payload + 16)
@@ -161,6 +165,13 @@ def run(image, dtb, syms, case, context_probe=False):
         regs[SMMU + 0xc00 + i * 4] = 0
     regs[SMMU + 0x800] = OFF | 0x60; regs[SMMU + 0xc00] = 1 << 16
     regs[SMMU + 0x804] = OFF | 0xe0; regs[SMMU + 0xc04] = 1 << 16
+    if driver_prep:
+        regs[SMMU + 0x808] = OFF | 0x16; regs[SMMU + 0xc08] = 1 << 16
+        regs.update({0x04e0c140: 32 << 24 | 2, 0x04e0c144: 1 << 15,
+                     0x04e0c14c: 6 << 12 | 3 << 18, 0x04e0c720: 0, 0x04e0c408: 0,
+                     0x04a8007c: 2, 0x04a80048: 4 << 4 | 1})
+        for i in range(5):
+            for off in (0x20000, 0x20080, 0x21000): regs[0x049f0000 + off + i * 0x4000] = 0
     route, io = 'BYPASS', 'GPT_PASS'
     touch, fw, usb = 'SPI_PIO_READY', 'LAYOUT_OK', 'HALTED'
     unsafe = case in ('restore_failed', 'touch_restore_failed', 'abort_stuck', 'host_lost')
@@ -245,9 +256,9 @@ def run(image, dtb, syms, case, context_probe=False):
         regs[0x0141a004] = 0; usb = 'POWER_OFF'
     elif case == 'usb_translated':
         regs[SMMU + 0xc04] = 3
-    elif case.startswith('context_') or case == 'both_translated':
+    elif case.startswith(('context_', 'walk_')) or case == 'both_translated':
         regs[SMMU + 0xc00] = 2; route, io = 'TRANSLATED', 'DMA_BLOCKED'
-        if case == 'both_translated': regs[SMMU + 0xc04] = 1
+        if case == 'both_translated' or case.startswith('walk_'): regs[SMMU + 0xc04] = 1
         elif case == 'context_layout': regs[SMMU + 0x24] = 32
         elif case == 'context_64k': regs[SMMU + 0x24] = (1 << 31) | (2 << 28) | 8
         elif case == 'context_handset_span':
@@ -258,6 +269,14 @@ def run(image, dtb, syms, case, context_probe=False):
         elif case == 'context_outside_resource': regs[SMMU + 0x24] = (7 << 28) | 32
         elif case == 'context_banks_outside_span': regs[SMMU + 0x24] = (5 << 28) | 65
         elif case == 'context_bank_out_of_range': regs[SMMU + 0x24] = (5 << 28) | 2
+    elif case == 'gpi_busy': regs[0x04a10000] = 2 << 20
+    elif case in ('gpi_translated_identity', 'gpi_translated_missing'): regs[SMMU + 0xc08] = 5
+    elif case == 'gpi_error': regs[0x04a10000] = 15 << 20
+    elif case == 'gpi_fault': fault_reads.add(0x04a10000)
+    elif case == 'spi_clock_unset': regs[0x04a80048] = 0
+    elif case == 'usb_caps_fault': fault_reads.add(0x04e0c140)
+    elif case == 'usb_caps_unsupported': regs[0x04e0c140] = 16 << 24 | 2
+    elif case == 'usb_resources_busy': regs[0x04e0c720] = 3
     elif case == 'dt_mismatch':
         route, io, touch, usb = 'NOT_READY', 'NOT_READY', 'DT_MISMATCH', 'DT_MISMATCH'
     expectations = {'ocs_error': 'BAD_RESPONSE', 'wrong_tag': 'BAD_RESPONSE',
@@ -268,6 +287,7 @@ def run(image, dtb, syms, case, context_probe=False):
                     'restore_failed': 'RESTORE_FAILED', 'abort_stuck': 'RESTORE_FAILED',
                     'host_lost': 'RESTORE_FAILED'}
     io = expectations.get(case, io)
+    table_values = {}
     if context_probe:
         pgshift = 16 if regs[SMMU + 0x24] & OFF else 12
         context_span = 1 << (((regs[SMMU + 0x24] >> 28) & 7) + 1 + pgshift)
@@ -288,10 +308,36 @@ def run(image, dtb, syms, case, context_probe=False):
         if case == 'context_stage2': regs[SMMU + (1 << pgshift) + 8] = 0
         if case == 'context_combined': regs[SMMU + (1 << pgshift) + 8] = 3 << 16
         if case == 'context_big_endian': regs[cb] |= 16
+        if driver_prep:
+            for bank in range(32 if pgshift == 12 else 8):
+                root = 0x110000000 + bank * 0x10000
+                context_base = SMMU + context_span + (bank << pgshift)
+                regs[context_base + 0x20] = root & 0xffffffff; regs[context_base + 0x24] = root >> 32
+                # Independent 3-level 4K identity maps for both private arenas.
+                for buffer in (syms['arena'], syms['usb_arena'], syms['spi_arena']):
+                    for offset in (0, 4096):
+                        address = buffer + offset
+                        l2, l3 = root + 4096, root + 8192
+                        table_values[root + (address >> 30 & 511) * 8] = l2 | 3
+                        table_values[l2 + (address >> 21 & 511) * 8] = l3 | 3
+                        table_values[l3 + (address >> 12 & 511) * 8] = address | 0x443
+            root = 0x110020000; leaf = root + 8192 + (syms['arena'] >> 12 & 511) * 8
+            if case == 'walk_missing': table_values[leaf] = 0
+            if case == 'walk_readonly': table_values[leaf] |= 128
+            if case == 'walk_other': table_values[leaf] += 0x100000
+            if case == 'walk_reserved': regs[cb + 0x20] = 0x85200000; regs[cb + 0x24] = 0
+            if case == 'walk_self_table': regs[cb + 0x20] = syms['arena']; regs[cb + 0x24] = 0
+            if case == 'walk_read_fault': fault_reads.add(leaf)
+            if case == 'walk_bad_granule': regs[cb + 0x30] |= 1 << 14
+            if case == 'gpi_translated_missing':
+                table_values[0x110050000 + 8192 + (syms['spi_arena'] >> 12 & 511) * 8] = 0
     initial = regs.copy()
     pages = {address & -4096 for address in regs}
     for page in pages: cpu.mem_map(page, 4096)
     for address, value in regs.items(): cpu.mem_write(address, struct.pack('<I', value))
+    if table_values:
+        for page in {a & -4096 for a in table_values}: cpu.mem_map(page, 4096)
+        for address, value in table_values.items(): cpu.mem_write(address, struct.pack('<Q', value))
     reads, writes, commands = set(), [], []
     context_high_reads = 0
     blocks = disk(case)
@@ -400,8 +446,23 @@ def run(image, dtb, syms, case, context_probe=False):
             uc.reg_write(register, special[key]); return 1
         return 0
 
+    table_reads, guarded_reads = set(), []
+    leaf_reads = 0
     def code(uc, pc, size, _):
-        nonlocal board_return, stopped_error
+        nonlocal board_return, stopped_error, leaf_reads
+        if pc == syms['dre_read32']:
+            address = uc.reg_read(UC_ARM64_REG_X0)
+            guarded_reads.append(address)
+            if address & ~7 in table_values: table_reads.add(address)
+            if driver_prep and case in ('walk_route_changed', 'walk_context_changed', 'walk_torn', 'walk_table_changed'):
+                if address == leaf:
+                    leaf_reads += 1
+                    if case == 'walk_route_changed': regs[SMMU + 0xc00] = 3
+                    if case == 'walk_context_changed': regs[cb + 0x30] = 33
+                    if case == 'walk_torn' and leaf_reads == 2:
+                        uc.mem_write(leaf, struct.pack('<Q', table_values[leaf] ^ 4096))
+                if case == 'walk_table_changed' and address == leaf + 4 and leaf_reads == 2:
+                    uc.mem_write(leaf, struct.pack('<Q', table_values[leaf] ^ 4096))
         if pc == syms['dre_read32'] and uc.reg_read(UC_ARM64_REG_X0) in fault_reads:
             uc.reg_write(UC_ARM64_REG_X0, 0); uc.reg_write(UC_ARM64_REG_PC, uc.reg_read(UC_ARM64_REG_X30))
         if pc == syms['dre_write32'] and case == 'touch_restore_failed':
@@ -426,12 +487,40 @@ def run(image, dtb, syms, case, context_probe=False):
     fields = bytes(cpu.mem_read(syms['report'], syms['report_size'])).split(b'\0')[0].decode().removeprefix('dre_report=').split('|')
     assert any(p.startswith('DMA_UFS=' + route + '/') for p in fields), fields
     assert any(p.startswith('UFS_IO=' + io + '/') for p in fields), fields
-    assert any(p.startswith('TOUCH=' + touch + '/') for p in fields), fields
+    assert any(p == 'TOUCH=' + touch or p.startswith('TOUCH=' + touch + '/') for p in fields), fields
     assert any(p.startswith('TOUCH_FW=' + fw + '/') for p in fields), fields
-    assert any(p.startswith('USB_STATE=' + usb + '/') for p in fields), fields
+    assert any(p == 'USB_STATE=' + usb or p.startswith('USB_STATE=' + usb + '/') for p in fields), fields
     assert {'SERIAL=ABL_DETECTED', 'SERIAL=ABL_MATCH'} & set(fields), fields
-    if case == 'usb_translated': assert 'DMA_USB=TRANSLATED/00000003' in fields
-    if case == 'panel_dsjm': assert any(p.startswith('TOUCH_FW=LAYOUT_OK/00000001/') for p in fields)
+    if case == 'usb_translated': assert ('DMA_USB=TRANSLATED/3' if driver_prep else 'DMA_USB=TRANSLATED/00000003') in fields
+    if case == 'panel_dsjm': assert any(p.startswith('TOUCH_FW=LAYOUT_OK/' + ('1/' if driver_prep else '00000001/')) for p in fields)
+    if driver_prep:
+        expected_walk = {'walk_missing': 'UNMAPPED', 'walk_readonly': 'LEAF_PERMISSION',
+            'walk_other': 'MAPPED_OTHER', 'walk_reserved': 'TABLE_RAM_BLOCKED',
+            'walk_self_table': 'TABLE_RAM_BLOCKED', 'walk_read_fault': 'TABLE_READ_FAULT',
+            'walk_bad_granule': 'TCR_UNSUPPORTED', 'walk_route_changed': 'ROUTE_CHANGED',
+            'walk_context_changed': 'CONTEXT_CHANGED', 'walk_torn': 'TABLE_TORN', 'walk_table_changed': 'TABLE_CHANGED'}
+        if case.startswith('walk_'):
+            wanted = expected_walk.get(case, 'IDENTITY_RW')
+            assert any(p.startswith('UMAP=' + wanted + '/') for p in fields), fields
+            assert 'XMAP=IDENTITY_RW/2' in fields, fields
+            if case == 'walk_reserved': assert not any(0x85200000 <= a < 0x85201000 for a in guarded_reads)
+            if case == 'walk_self_table': assert not any(syms['arena'] <= a < syms['arena'] + 4096 for a in guarded_reads)
+        if case == 'ready':
+            assert 'USB_PLAN=TRB_PLAN_OK/20/6/1' in fields and 'GPI=IDLE/1f/0' in fields
+            assert 'SPI_PLAN=SPI_PLAN_OK' in fields
+        wanted = {'gpi_error':'CHANNEL_ERROR', 'gpi_fault':'READ_FAULT'}.get(case)
+        if wanted: assert any(p.startswith('GPI=' + wanted + '/') for p in fields), fields
+        if case == 'gpi_busy': assert 'GPI=IDLE/1e/2' in fields
+        if case in ('gpi_translated_identity', 'gpi_translated_missing'):
+            assert 'GDMA=TRANSLATED/5' in fields
+            assert 'GMAP=' + ('IDENTITY_RW' if case.endswith('identity') else 'UNMAPPED') in fields
+        if case in ('gpi_ee_mismatch', 'gpi_dma_mismatch'):
+            assert 'GPI=DT_MISMATCH/0/0' in fields
+            assert not any(0x04a00000 <= a < 0x04a60000 for a in guarded_reads), 'GPI read with unchecked metadata'
+        if case == 'spi_clock_unset': assert 'SPI_PLAN=SPI_CLOCK_UNSET' in fields
+        wanted_usb = {'usb_caps_fault':'CAPS_READ_FAULT', 'usb_caps_unsupported':'CAPS_UNSUPPORTED',
+                      'usb_resources_busy':'RESOURCES_IN_USE'}.get(case)
+        if wanted_usb: assert any(p.startswith('USB_PLAN=' + wanted_usb + '/') for p in fields), fields
     if context_probe:
         expected_context = {'context_layout': 'LAYOUT', 'context_outside_resource': 'LAYOUT',
             'context_banks_outside_span': 'LAYOUT', 'context_bank_out_of_range': 'LAYOUT', 'context_read_fault': 'FAULT',
@@ -488,6 +577,7 @@ if __name__ == '__main__':
     ap.add_argument('--case', action='append')
     ap.add_argument('--report-json', type=Path, help='save synthetic model reports (no device identifiers)')
     ap.add_argument('--dma-context', action='store_true')
+    ap.add_argument('--driver-prep', action='store_true')
     args = ap.parse_args()
     cases = args.case or ('ready', 'translated', 'route_fault', 'route_reserved', 'unmatched_fault',
         'unmatched_bypass', 'ambiguous', 'masked', 'extended', 'bad_smmu_id', 'client_disabled',
@@ -505,9 +595,15 @@ if __name__ == '__main__':
                   'context_disabled', 'context_a32', 'context_stage2', 'context_combined',
                   'context_big_endian', 'context_changed', 'context_handset_span',
                   'context_outside_resource', 'context_banks_outside_span', 'context_bank_out_of_range')
+    if args.driver_prep and not args.case:
+        cases += ('walk_identity', 'walk_missing', 'walk_readonly', 'walk_other', 'walk_reserved',
+                  'walk_read_fault', 'walk_bad_granule', 'gpi_busy', 'gpi_error', 'gpi_fault',
+                  'spi_clock_unset', 'usb_caps_fault', 'usb_caps_unsupported', 'usb_resources_busy',
+                  'walk_self_table', 'walk_route_changed', 'walk_context_changed', 'walk_torn', 'walk_table_changed',
+                  'gpi_ee_mismatch', 'gpi_dma_mismatch', 'gpi_translated_identity', 'gpi_translated_missing')
     image, dtb = args.image.read_bytes(), args.device_dtb.read_bytes()
     kernel = image[4096:4096 + struct.unpack_from('<I', image, 8)[0]]
     syms = symbols(args.elf, kernel)
-    reports = {case: run(image, dtb, syms, case, args.dma_context) for case in cases}
+    reports = {case: run(image, dtb, syms, case, args.dma_context, args.driver_prep) for case in cases}
     if args.report_json:
         args.report_json.write_text(json.dumps(reports, indent=2) + '\n')

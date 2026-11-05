@@ -275,6 +275,40 @@ reservation: restored LineageOS reports 512 KiB inside a 1 MiB resource.
 Context offsets therefore come from ID1; every bank must still fit the
 hardware span and the complete layout must fit the validated reservation.
 
+`--driver-prep` requires `--dma-context --ufs-read-test --touch-preflight`.
+It adds three development paths to the existing eight-core/display test:
+
+* `UMAP` / `XMAP` inspect inherited AArch64 stage-1 4K page tables for the
+  private UFS and USB arenas. Tables must lie in live RAM, outside every
+  reservation, dynamic allocation range, shim, FDT and initrd. Descriptor
+  rereads and route/context snapshots reject changes. `IDENTITY_RW`
+  describes the tables only: ownership, translation caches and XPU access
+  are not proven. It never grants DMA permission. Translated UFS I/O
+  remains blocked.
+* `USB_PLAN` reads DWC3 capability registers and validates setup/data/status
+  transfer descriptors only while endpoints/event buffers are unused.
+  `usb/transport.c` also decodes bounded event-ring snapshots. HWO stays
+  clear, and no endpoint, pull-up or enumeration is started.
+* `GPI`, `GDMA`, `GMAP` and `SPI_PLAN` survey the AP's five GPI instances
+  under the checked temporary touch clock votes. Register offsets account
+  for `qcom,gpi-ee-offset`, as in the matching Android driver. The SPI
+  descriptor builder prepares one bounded CS0/8-bit full-duplex transfer.
+  No channel allocation, pin change, reset, transfer or firmware upload
+  occurs. Existing clock votes are restored before XNU starts.
+
+The portable table walker and RAM/SPI/USB wire-format checks can be run with:
+
+```sh
+python devices/dre/test_dma_walk.py --zig /path/to/zig --out /tmp/dre-walk
+python devices/dre/test_driver_prep.py --zig /path/to/zig --out /tmp/dre-prep
+```
+
+Pass `--driver-prep --dma-context` to `test_bundle.py` for exact-image MMIO
+cases covering the new paths. Hardware facts come from the pinned Holi
+[page-table implementation](https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/iommu/io-pgtable-arm.c),
+[GPI driver](https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/dma/qcom/gpi.c),
+and [DWC3 definitions](https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/usb/dwc3/core.h).
+
 The final filesystem will be sized against its verified target partition;
 the root-image script's default 16 GiB is not intended to limit usable space.
 Any later partition/layout write needs separate confirmation. No Android

@@ -5,6 +5,10 @@
 #include "ufs_clock.h"
 #include "peripheral_state.h"
 #include "identity.h"
+#ifdef DRE_DRIVER_PREP
+#include "dma_proof.h"
+#include "usb/prepare.h"
+#endif
 #ifdef DRE_DMA_PROBE
 #include "dma_route.h"
 #include "ufs_read.h"
@@ -19,7 +23,9 @@
 /* Returns 0 on a synchronous data abort, 1 on success. */
 extern int dre_read32(uintptr_t addr, uint32_t *out);
 
-#ifdef DRE_DMA_CONTEXT
+#ifdef DRE_DRIVER_PREP
+static char report[496];
+#elif defined(DRE_DMA_CONTEXT)
 /* Leave room for the UI profile's additional msgbuf boot argument. */
 static char report[512];
 #else
@@ -43,8 +49,30 @@ static void hex32(uint32_t word)
     for (int i = 0; i < 8; i++)
         value[i] = "0123456789abcdef"[(word >> ((7 - i) * 4)) & 15];
     value[8] = 0;
+#ifdef DRE_DRIVER_PREP
+    unsigned first = 0;
+    while (first < 7 && value[first] == '0') first++;
+    add(value + first);
+#else
     add(value);
+#endif
 }
+
+#ifdef DRE_DMA_CONTEXT
+static void hex64(uint64_t word)
+{
+    char value[17];
+    for (unsigned i = 0; i < 16; i++) value[i] = "0123456789abcdef"[(word >> ((15 - i) * 4)) & 15];
+    value[16] = 0;
+#ifdef DRE_DRIVER_PREP
+    unsigned first = 0;
+    while (first < 15 && value[first] == '0') first++;
+    add(value + first);
+#else
+    add(value);
+#endif
+}
+#endif
 
 static int has_reg(const void *dt, int node, uint32_t base, uint32_t size)
 {
@@ -129,9 +157,12 @@ static void context_report(const char *key, const struct dre_dma_route *route)
         if (!strcmp(state, "LAYOUT")) { add("/"); hex32(route->id1); }
         return;
     }
-    add("/"); hex32(ctx.cbar); add("/"); hex32(ctx.cba2r);
-    add("/"); hex32(ctx.control); add("/"); hex32(ctx.tcr);
-    add("/"); hex32(ctx.tcr2); add("/"); hex32(ctx.ttbr_hi); hex32(ctx.ttbr_lo);
+    add("/"); hex32(ctx.cbar);
+#ifndef DRE_DRIVER_PREP
+    add("/"); hex32(ctx.cba2r); add("/"); hex32(ctx.control);
+#endif
+    add("/"); hex32(ctx.tcr); add("/"); hex32(ctx.tcr2);
+    add("/"); hex64(((uint64_t)ctx.ttbr_hi << 32) | ctx.ttbr_lo);
 }
 #endif
 
@@ -143,6 +174,12 @@ static void check_dma_ufs(const void *dt)
     add("/"); hex32(route.s2cr);
 #ifdef DRE_DMA_CONTEXT
     context_report("|UCTX=", &route);
+#ifdef DRE_DRIVER_PREP
+    struct dre_dma_walk walk;
+    add("|UMAP="); add(dre_dma_proof(dt, &route, "/soc/ufshc@4804000", 0x60,
+                                       dre_ufs_probe_arena(), 8192, &walk));
+    add("/"); hex32(walk.pages);
+#endif
 #else
     add("|IOMMU="); hex32(route.id0); add("/"); hex32(route.control);
 #endif
@@ -186,7 +223,9 @@ static void check_peripherals(const void *dt)
 #else
     struct dre_usb_detail detail = {0};
     add("|USB_STATE="); add(dre_usb_detail(dt, &detail));
+#ifndef DRE_DRIVER_PREP
     add("/"); hex32(detail.control); add("/"); hex32(detail.status);
+#endif
 #ifndef DRE_DMA_CONTEXT
     add("/"); hex32(detail.config); add("/"); hex32(detail.endpoints);
     add("/"); hex32(detail.event_size);
@@ -199,14 +238,29 @@ static void check_peripherals(const void *dt)
     add("/"); hex32(route.s2cr);
 #ifdef DRE_DMA_CONTEXT
     context_report("|XCTX=", &route);
+#ifdef DRE_DRIVER_PREP
+    struct dre_dma_walk walk;
+    add("|XMAP="); add(dre_dma_proof(dt, &route, "/soc/ssusb@4e00000", 0xe0,
+                                       dre_usb_probe_arena(), 8192, &walk));
+    add("/"); hex32(walk.pages);
+    struct dre_usb_prepare plan;
+    add("|USB_PLAN="); add(dre_usb_prepare(dt, dre_usb_probe_arena(), &plan));
+    add("/"); hex32(plan.address_bits); add("/"); hex32(plan.endpoints); add("/"); hex32(plan.events);
+#endif
 #endif
 #endif
 #endif
 #ifdef DRE_TOUCH_PREFLIGHT
     struct dre_touch_preflight tp;
     add("|TOUCH="); add(dre_touch_preflight(dt, &tp));
+#ifndef DRE_DRIVER_PREP
     add("/"); hex32(tp.revision); add("/P="); hex32(tp.pin_match);
     add("/F="); hex32(tp.tx_geometry); add("/"); hex32(tp.rx_geometry);
+#else
+    add("|GPI="); add(tp.gpi_state); add("/"); hex32(tp.gpi.idle_mask); add("/"); hex32(tp.gpi.states);
+    add("|GDMA="); add(tp.gpi.dma_state); add("/"); hex32(tp.gpi.route);
+    add("|GMAP="); add(tp.gpi.map_state); add("|SPI_PLAN="); add(tp.gpi.spi_plan);
+#endif
 #ifndef DRE_DMA_CONTEXT
     add("|TVOTE="); hex32(tp.votes_before); add("/"); hex32(tp.votes_during);
     add("/"); hex32(tp.votes_after);

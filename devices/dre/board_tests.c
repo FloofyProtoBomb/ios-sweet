@@ -5,6 +5,44 @@
 #include "ufs_clock.h"
 #include "peripheral_state.h"
 #include "identity.h"
+#ifdef DRE_SCM_INFO_PROBE
+#include "gpu/platform/scm_probe.h"
+static struct dre_scm_probe_result scm_result;
+static const void *scm_fdt;
+static int scm_prepared;
+
+static int scm_result_valid(void)
+{
+    return scm_prepared&&scm_result.version==DRE_SCM_PROBE_VERSION&&
+        scm_result.struct_bytes==sizeof(scm_result)&&
+        scm_result.status>DRE_SCM_PROBE_NOT_RUN&&scm_result.status<=DRE_SCM_PROBE_ARCH_UNAVAILABLE&&
+        scm_result.query_count<=DRE_SCM_PROBE_QUERIES&&
+        !((scm_result.available_mask|scm_result.unavailable_mask)&~63u)&&
+        !(scm_result.available_mask&scm_result.unavailable_mask)&&
+        scm_result.uncertain<=1&&scm_result.boot_must_stop<=1;
+}
+
+const char *dre_board_scm_prepare(const void *dt)
+{
+    if(scm_prepared)return "SCM INFO preflight already consumed; no repeated secure calls";
+    scm_prepared=1;scm_fdt=dt;
+    if(!dt||fdt_check_header(dt))return "SCM INFO original FDT unavailable";
+    const char *status=dre_gpu_scm_probe_early(dt,fdt_totalsize(dt),&scm_result);
+    con_str("SCM_INFO",status);
+    con_hex("SCM_AVAIL",scm_result.available_mask);
+    con_hex("SCM_UNAVAIL",scm_result.unavailable_mask);
+    con_hex("SCM_UNCERTAIN",scm_result.uncertain);
+    if(scm_result.query_count&&scm_result.query_count<=DRE_SCM_PROBE_QUERIES) {
+        const struct dre_scm_probe_reply_record *last=&scm_result.replies[scm_result.query_count-1];
+        con_hex("SCM_LAST_T",(uint64_t)last->transport);
+        con_hex("SCM_LAST_S",(uint64_t)last->service);
+    }
+    if(!scm_result_valid()||scm_result.uncertain||scm_result.boot_must_stop||
+       scm_result.status==DRE_SCM_PROBE_ARGUMENT||scm_result.status==DRE_SCM_PROBE_ARCH_UNAVAILABLE)
+        return "SCM INFO preflight stopped; no later device operations or XNU handoff";
+    return 0;
+}
+#endif
 #ifdef DRE_DRIVER_PREP
 #include "dma_proof.h"
 #include "usb/prepare.h"
@@ -60,6 +98,23 @@ static void hex32(uint32_t word)
     add(value);
 #endif
 }
+
+#ifdef DRE_SCM_INFO_PROBE
+static void scm_hex(uint32_t value)
+{
+    char text[9];unsigned first=0;
+    for(unsigned i=0;i<8;i++)text[i]="0123456789abcdef"[(value>>((7-i)*4))&15];
+    text[8]=0;while(first<7&&text[first]=='0')first++;add(text+first);
+}
+static void scm_report(void)
+{
+    /* Schema1: status/availableMask/unavailableMask/uncertain/queryCount.
+     * INFO callable functions only: no PAS permission/authentication claim. */
+    add("|SCM_I=");scm_hex(scm_result.status);add("/");scm_hex(scm_result.available_mask);
+    add("/");scm_hex(scm_result.unavailable_mask);add("/");scm_hex(scm_result.uncertain);
+    add("/");scm_hex(scm_result.query_count);
+}
+#endif
 
 #ifdef DRE_DMA_CONTEXT
 static void hex64(uint64_t word)
@@ -301,6 +356,13 @@ const char *dre_board_report(const void *dt)
     used = 0;
     overflow = ufs_ready = 0;
     handoff_error = 0;
+#ifdef DRE_SCM_INFO_PROBE
+    if(!scm_result_valid()||scm_fdt!=dt||scm_result.uncertain||scm_result.boot_must_stop) {
+        add("dre_report=SCM_PRECONDITION_FAILED");scm_report();
+        handoff_error="SCM INFO precondition missing; no peripheral probes performed";
+        return report;
+    }
+#endif
     add("dre_report=UFS=");
     con_str("UFS", "reading power/clock state");
     check_ufs(dt);
@@ -339,6 +401,9 @@ const char *dre_board_report(const void *dt)
     add(match ? "|SERIAL=ABL_MATCH" : "|SERIAL=UNCONFIRMED");
 #else
     add(dre_identity_serial() ? "|SERIAL=ABL_DETECTED" : "|SERIAL=UNAVAILABLE");
+#endif
+#ifdef DRE_SCM_INFO_PROBE
+    scm_report();
 #endif
     return report;
 }

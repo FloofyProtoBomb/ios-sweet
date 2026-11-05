@@ -151,3 +151,43 @@ entry nor a matching metadata result. A subsequent source version emits
 autorelease pool or inspector. That checkpoint separates main entry from a
 later inspection stall if it is observed; absence remains inconclusive when
 the console operation itself is unproven. No automatic VM retry is performed.
+
+## Actual selected-image metadata compatibility
+
+The subsequent independently authorized experiment ran the SDK-linked observer
+as a normal child of the original iOS16.7.16/20H392 launchd in a disposable
+QEMU root clone. Observer SHA256
+`bd0a9a28b931367b7c550a274641551569d426b3e57e5358d91064792f4ac39a`
+from CI42090342034/artifact13444876514 emitted main entry, metadata status0,
+class extent528/NSObject8, all8 method records and all13 member records.
+The method counts match the existing source: accelerator initialization has
+3 arguments and the other7 methods have2. Status0 also means the inspector's
+original selected-image, type and same-image IMP-address checks passed.
+
+The actual observed member layout is below; values are byte metadata only.
+These are not initialized object contents or writable backing pointers.
+
+| Member ID | Offset | Bytes | Alignment |
+| --- | ---: | ---: | ---: |
+| 0 | 8 | 264 | 8 |
+| 1 | 272 | 8 | 8 |
+| 2 | 352 | 8 | 8 |
+| 3 | 312 | 8 | 8 |
+| 4 | 376 | 8 | 8 |
+| 5 | 384 | 8 | 8 |
+| 6 | 280 | 8 | 8 |
+| 7 | 288 | 8 | 8 |
+| 8 | 296 | 8 | 8 |
+| 9 | 456 | 8 | 8 |
+| 10 | 512 | 8 | 8 |
+| 11 | 504 | 8 | 8 |
+| 12 | 392 | 8 | 8 |
+
+Every range fits the existing528-byte class guard, meets its alignment and is
+disjoint from the other observed ranges. The selected frontend profile
+already accepts these exact observations; no runtime guard change or
+relaxation is needed. The observer explicitly reported device creation0,
+GPU work0 and private-table qualification0. This establishes metadata
+compatibility only. It does not establish initializer postconditions,
+failure cleanup, compiler execution or a functioning Metal device. The older
+PID1 timeout remains a separate incomplete observation with an unproven cause.

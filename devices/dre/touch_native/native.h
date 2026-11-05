@@ -25,8 +25,14 @@ struct dre_tn_profile {
 };
 
 /* No firmware bytes, FDT bytes or per-phone identifiers leave this API. */
+#ifdef __cplusplus
+extern "C" {
+#endif
 enum dre_tn_result dre_tn_profile_from_fdt(const void *fdt, size_t bytes,
                                           struct dre_tn_profile *out);
+#ifdef __cplusplus
+}
+#endif
 
 struct dre_tn_memory {
     volatile uint8_t *cpu;

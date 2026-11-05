@@ -66,3 +66,12 @@ the metadata observer, then Homebrew rejected the mutually exclusive fetch
 options `--force-bottle` and `--bottle-tag`. Fetch/cache now use only the exact
 bottle tag. Formula, SHA-256, actual host, receipt and tool-version checks
 remain required. No Rust target archive was produced by that failed job.
+# Real linker behavior
+
+The next actual SDK run compiled both C transport objects and the factory
+object. Its link failed because modern Apple ld warns that the explicit
+`-undefined error` spelling is deprecated and `-fatal_warnings` promoted that
+warning. The recipes now retain fatal warnings and use the strict default
+only after a real same-driver positive link and unresolved-symbol negative
+control. Missing-symbol success is refused. No dynamic-lookup/weak-import or
+warning waiver is added; actual SDK requalification is still pending.

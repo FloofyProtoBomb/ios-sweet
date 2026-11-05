@@ -233,6 +233,19 @@ whose installation logs are retained. The Mac bottle has not yet been qualified
 by a successful project CI execution; the committed metadata says so. Commands
 follow the [official Homebrew manual](https://docs.brew.sh/Manpage).
 
+The real CI installation subsequently poured that exact cached bottle and
+reported installed package `21.1.8_1`, but the helper incorrectly expected
+`source.revision` inside its receipt. Homebrew's actual
+[Tab creation schema](https://github.com/Homebrew/brew/blob/0f4d92d5f40c1c0e57ef4275f11fba055743c77c/Library/Homebrew/tab/tab.rb#L100-L134)
+stores source stable version, version scheme, spec and tap; revision is carried
+by the formula and installed package/keg version. The helper now checks all
+of those real locations, resolves the selected keg against the actual formula
+cellar, and preserves exact raw receipt bytes before validating. A mismatched
+optional revision field is still refused. The bottle hash and formula revision
+pin are unchanged. The original failed run did not preserve raw receipt bytes
+and never reached assembler execution or Rust compilation; the corrected
+receipt path still requires an actual successful SDK-runner execution.
+
 `build_bridge.py --target host` is available for real host-only compile checks.
 Both target modes use two Cargo jobs, the pinned lock, bounded commands and new
 output directories. Optional `--frontend-contract` runs the actual binary

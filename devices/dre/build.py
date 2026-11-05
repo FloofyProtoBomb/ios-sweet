@@ -44,6 +44,8 @@ def main():
     kernels.add_argument("--upstream-0027", type=Path, help="retarget the pinned upstream CI kernel")
     ap.add_argument("--identity", type=Path, help="optional private JSON with a serial expectation and/or IMEI")
     ap.add_argument("--board-tests", action="store_true", help="survey UFS power/link and live DT at handoff")
+    ap.add_argument("--scm-info-probe", action="store_true",
+                    help="explicit early read-only SCM INFO availability queries; requires --board-tests --xnu")
     ap.add_argument("--ufs-clock-enable", action="store_true",
                     help="enable UFS GCC branches with a bounded wait and rollback")
     ap.add_argument("--dma-probe", action="store_true", help="read UFS/USB SMMU stream routes")
@@ -79,6 +81,8 @@ def main():
         args.cpus=8; args.ram_mib=2048
     if (args.identity or args.board_tests) and not (args.xnu or args.upstream_0027):
         ap.error("--identity and --board-tests need an XNU kernel")
+    if args.scm_info_probe and not (args.board_tests and args.xnu):
+        ap.error("--scm-info-probe requires --board-tests and --xnu")
     if args.ufs_clock_enable and not args.board_tests:
         ap.error("--ufs-clock-enable requires --board-tests")
     if (args.dma_probe or args.touch_preflight) and not args.board_tests:
@@ -145,6 +149,10 @@ def main():
             init_flags += ["-DDRE_BOARD_TESTS"]
             sources += [HERE / name for name in ("board_tests.c", "guarded_read.S",
                                                 "ufs_clock.c", "peripheral_state.c")]
+            if args.scm_info_probe:
+                cc += ["-DDRE_SCM_INFO_PROBE"]
+                sources += [HERE / name for name in ("gpu/platform/scm_probe.c",
+                            "gpu/platform/scm_native.c", "gpu/a619_smc64.c")]
             if args.ufs_clock_enable:
                 cc += ["-DDRE_UFS_CLOCK_ENABLE"]
             if args.dma_probe or args.touch_preflight:
@@ -235,6 +243,8 @@ def main():
     output.write_bytes(boot_v3(code))
     info = {'device': 'DE2118', 'ui_services': args.ui_services, 'cpus': args.cpus, 'ram_mib': args.ram_mib,
             'board_tests': args.board_tests, 'dma_context': args.dma_context,
+            'scm_info_probe': args.scm_info_probe,
+            'scm_info_schema': 1 if args.scm_info_probe else None,
             'driver_prep': args.driver_prep,
             'ufs_handoff_read': args.ufs_handoff_read,
             'native_ufs': args.native_ufs,

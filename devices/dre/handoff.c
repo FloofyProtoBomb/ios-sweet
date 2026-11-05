@@ -39,6 +39,12 @@ static const char *fixup(void *adt, uint32_t size)
 const char *dre_board_report(const void *dt);
 const char *dre_board_error(void);
 #endif
+#ifdef DRE_SCM_INFO_PROBE
+#ifndef DRE_BOARD_TESTS
+#error DRE_SCM_INFO_PROBE requires DRE_BOARD_TESTS
+#endif
+const char *dre_board_scm_prepare(const void *dt);
+#endif
 
 #define BASE UINT64_C(0x100000000)
 #ifndef DRE_RAM_SIZE
@@ -116,6 +122,13 @@ const char *dre_handoff(const void *dt)
     if (el != 4 || !((granules >> 20) & 15) ||
         (mpidr & UINT64_C(0xff00ffffff)) || freq != 19200000)
         return "CPU handoff mismatch";
+#ifdef DRE_SCM_INFO_PROBE
+    /* First optional device interaction: unresolved secure continuation or
+     * changed architectural context MUST stop before topology, storage,
+     * peripheral probes, firmware preparation, fixups or XNU handoff. */
+    const char *scm_error = dre_board_scm_prepare(dt);
+    if (scm_error) return scm_error;
+#endif
 #ifdef DRE_SMP_COUNT
     const char *cpu_error = dre_cpu_topology(dt, DRE_SMP_COUNT);
     if (cpu_error) return cpu_error;

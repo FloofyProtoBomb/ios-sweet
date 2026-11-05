@@ -18,6 +18,7 @@ import sys
 
 from build_frontend import HERE, write_json
 from verify_bridge_exports import digest, verify as verify_exports
+from sdk_link import qualify_sdk_linker
 
 
 def run(argv, out: Path, name: str, timeout=180) -> str:
@@ -105,9 +106,10 @@ def package(args, out: Path) -> dict:
     frameworks = []
     for name in ("Foundation", "Metal", "IOSurface", "QuartzCore", "CoreGraphics", "CoreFoundation", "Security"):
         frameworks += ["-framework", name]
-    # No -undefined dynamic_lookup or synthetic import library. Genuine missing
-    # runtime symbols must stop the link and remain visible in its artifact log.
-    run([compiler, *flags, "-dynamiclib", "-ObjC", "-Wl,-dead_strip", "-Wl,-undefined,error", "-Wl,-fatal_warnings",
+    # Observe the actual SDK's strict default, without the deprecated
+    # '-undefined error' spelling. Genuine missing symbols must stop the link.
+    linker_proof = qualify_sdk_linker(compiler, flags, out)
+    run([compiler, *flags, "-dynamiclib", "-ObjC", "-Wl,-dead_strip", "-Wl,-fatal_warnings",
         "-Wl,-install_name,@rpath/DREMetal.bundle/DREMetal", bootstrap, *objects, archive,
         *frameworks, "-o", executable], out, "frontend-rust-link", timeout=600)
     check_ios_dylib(executable)
@@ -136,6 +138,7 @@ def package(args, out: Path) -> dict:
         "bundle": bundle.name, "files": files, "target": "arm64-apple-ios16.0",
         "factory_abi_selected": "20H392_Metal306_528_byte_MTLDevice", "original_metal_factory_replaced": False,
         "compiler_connection": connection, "compiler_runtime_exercised": False,
+        "strict_default_linker_proof": linker_proof,
         "device_policy": policy, "device_policy_runtime_exercised": False,
         "kernel_service_registered": False, "image_or_phone_modified": False,
         "private_apple_headers_used": False, "native_factory_exercised": False,

@@ -33,20 +33,39 @@ def validate_formula(info: dict, pin: dict) -> dict:
     bottle = f.get("bottle", {}).get("stable", {})
     actual = bottle.get("files", {}).get(pin["bottle_tag"], {})
     if (f.get("name") != pin["formula"] or f.get("versions", {}).get("stable") != pin["version"] or
-        f.get("revision") != pin["revision"] or bottle.get("rebuild") != pin["bottle_rebuild"] or
+        f.get("revision") != pin["revision"] or f.get("version_scheme") != pin["version_scheme"] or
+        bottle.get("rebuild") != pin["bottle_rebuild"] or
         actual.get("sha256") != pin["sha256"] or actual.get("url") != pin["url"]):
         raise ValueError("Homebrew formula/bottle changed from the qualified metadata pin")
     return f
 
 
+def validate_installed_formula(formula: dict, pin: dict) -> dict:
+    expected = pin["version"] + "_" + str(pin["revision"])
+    installed = [entry for entry in formula.get("installed", []) if entry.get("version") == expected]
+    if (len(installed) != 1 or installed[0].get("built_as_bottle") is not True or
+        installed[0].get("poured_from_bottle") is not True or installed[0].get("used_options") != []):
+        raise ValueError("formula does not report the exact installed bottle package version")
+    return installed[0]
+
+
 def validate_receipt(receipt: dict, prefix: Path, pin: dict) -> None:
     if (prefix.name != pin["version"] + "_" + str(pin["revision"]) or
+        prefix.parent.name != pin["formula"] or receipt.get("built_as_bottle") is not True or
         receipt.get("poured_from_bottle") is not True or receipt.get("arch") != pin["host_arch"]):
         raise ValueError("installed keg is not the matching ARM64 bottle revision")
     source = receipt.get("source", {})
-    if (source.get("versions", {}).get("stable") != pin["version"] or
-        source.get("revision") != pin["revision"]):
-        raise ValueError("installed bottle receipt source differs")
+    # Homebrew Tab.create stores source.versions.stable/version_scheme, spec
+    # and tap, NOT source.revision. The exact revision is checked through the
+    # real formula metadata, installed package version, resolved keg and bottle
+    # digest. Do not invent a receipt field or silently accept source drift.
+    versions = source.get("versions", {})
+    if (versions.get("stable") != pin["version"] or versions.get("version_scheme") != pin["version_scheme"] or
+        source.get("spec") != "stable" or source.get("tap") != "homebrew/core" or
+        ("revision" in source and source["revision"] != pin["revision"])):
+        observed = {"stable": versions.get("stable"), "version_scheme": versions.get("version_scheme"),
+            "spec": source.get("spec"), "tap": source.get("tap"), "revision": source.get("revision")}
+        raise ValueError("installed bottle receipt source differs: " + json.dumps(observed, sort_keys=True))
 
 
 def acquire(args, out: Path) -> dict:
@@ -66,6 +85,7 @@ def acquire(args, out: Path) -> dict:
     version = run(["sw_vers", "-productVersion"], "macos-version")
     validate_host(platform.system(), platform.machine(), version, pin)
     brew = str(args.brew)
+    run([brew, "--version"], "homebrew-version")
     validate_formula(json.loads(run([brew, "info", "--json=v2", pin["formula"]], "formula-before")), pin)
     # --bottle-tag already selects a bottle and is mutually exclusive with
     # --force-bottle in the real Homebrew CLI. Never drop the exact tag/hash.
@@ -78,10 +98,23 @@ def acquire(args, out: Path) -> dict:
     # Homebrew performs relocation and dependency handling. This never requests
     # a source build. Check the installed receipt rather than assuming success.
     run([brew, "install", "--force-bottle", pin["formula"]], "install-bottle", timeout=900)
-    validate_formula(json.loads(run([brew, "info", "--json=v2", pin["formula"]], "formula-after")), pin)
+    installed_formula = validate_formula(json.loads(run([brew, "info", "--json=v2", pin["formula"]], "formula-after")), pin)
+    installed_package = validate_installed_formula(installed_formula, pin)
     prefix = Path(run([brew, "--prefix", pin["formula"]], "installed-prefix")).resolve()
+    rack = Path(run([brew, "--cellar", pin["formula"]], "installed-cellar")).resolve()
+    if prefix.parent != rack:
+        raise ValueError("resolved selected keg is outside the actual formula cellar")
     receipt_file = prefix / "INSTALL_RECEIPT.json"
-    receipt = json.loads(receipt_file.read_text(encoding="utf-8"))
+    # Retain the actual receipt BEFORE validating so a schema/source mismatch
+    # can be diagnosed from evidence instead of guessed after the runner exits.
+    receipt_copy = out / "installed-receipt.json"
+    receipt_copy.write_bytes(receipt_file.read_bytes())
+    receipt_sha = digest(receipt_copy)
+    receipt = json.loads(receipt_copy.read_text(encoding="utf-8"))
+    write_json(out / "installation-observed.json", {"resolved_keg": str(prefix), "formula_cellar": str(rack),
+        "installed_package": installed_package, "bottle_sha256": digest(cache),
+        "receipt_sha256": receipt_sha, "assembler_executed": False,
+        "macos_installation_qualified": False, "metal_acceleration_pass": False})
     validate_receipt(receipt, prefix, pin)
     assembler = prefix / "bin/llvm-as"
     version_text = run([assembler, "--version"], "llvm-version")
@@ -93,7 +126,9 @@ def acquire(args, out: Path) -> dict:
     return {"status": "PINNED_MACOS_LLVM_INSTALLED", "pin": pin,
         "host": {"arch": platform.machine(), "macos_version": version},
         "bottle_sha256": digest(cache), "bottle_bytes": cache.stat().st_size,
-        "installed_receipt_sha256": digest(receipt_file), "llvm_as": str(assembler),
+        "installed_receipt_sha256": receipt_sha, "llvm_as": str(assembler),
+        "resolved_keg": str(prefix), "installed_package_version": installed_package["version"],
+        "receipt_source": receipt["source"],
         "llvm_as_sha256": digest(assembler), "llvm_version": version_text,
         "macos_installation_qualified": True, "rust_compiled": False,
         "publication_ready": False, "metal_acceleration_pass": False}

@@ -3,6 +3,7 @@
   "formula": "llvm@21",
   "version": "21.1.8",
   "revision": 1,
+  "version_scheme": 0,
   "bottle_rebuild": 0,
   "bottle_tag": "arm64_sequoia",
   "host_arch": "arm64",
@@ -11,5 +12,6 @@
   "sha256": "63d776e3c1865f647b9c3df8dba8ef2ab024f6f045a07b7f1cdf5af6e0d0e9c3",
   "metadata_source": "https://formulae.brew.sh/api/formula/llvm@21.json",
   "command_documentation": "https://docs.brew.sh/Manpage",
+  "receipt_schema_source": "https://github.com/Homebrew/brew/blob/0f4d92d5f40c1c0e57ef4275f11fba055743c77c/Library/Homebrew/tab/tab.rb#L100-L134",
   "macos_installation_qualified": false
 }

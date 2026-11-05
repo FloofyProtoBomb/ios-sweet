@@ -241,30 +241,3 @@ jobs:
           path: out/
           if-no-files-found: warn
 
-  metal-probe:
-    # Compile actual iOS API/shader tests in parallel with the kernel job.
-    # This artifact is a test workload, not an implementation of Metal.
-    if: inputs.machine_config == 'DRE' || startsWith(github.ref_name, 'dre-')
-    runs-on: macos-14
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - name: Select matching Xcode
-        run: |
-          XC=$(ls -d /Applications/Xcode_*.app | sort -V | head -1)
-          echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
-          sudo xcode-select -s "$XC"
-      - name: Build real Metal acceptance workload and GPU primitives
-        run: |
-          bash devices/dre/gpu/build_metal_probe.sh out/dre-metal-probe
-          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
-          for SOURCE in a619_backend a619_holi_power; do
-            xcrun --sdk iphoneos clang -target arm64-apple-ios16.0 -isysroot "$SDK" \
-              -ffreestanding -O2 -Wall -Wextra -Werror -c "devices/dre/gpu/$SOURCE.c" \
-              -o "out/dre-metal-probe/$SOURCE.o"
-          done
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dre-metal-probe
-          path: out/dre-metal-probe/
-          if-no-files-found: error

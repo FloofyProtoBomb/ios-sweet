@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import unittest
 
-from acquire_llvm_macos import validate_formula, validate_host, validate_receipt
+from acquire_llvm_macos import validate_formula, validate_host, validate_receipt, validate_installed_formula
 from verify_bridge_exports import compare, digest
 
 HERE = Path(__file__).resolve().parent
@@ -44,7 +44,7 @@ class BridgeGuards(unittest.TestCase):
 
     def test_metadata_drift_refused(self):
         pin = json.loads((HERE / "llvm21-macos.json").read_text())
-        f = {"name": pin["formula"], "versions": {"stable": pin["version"]}, "revision": 1,
+        f = {"name": pin["formula"], "versions": {"stable": pin["version"]}, "revision": 1, "version_scheme": 0,
             "bottle": {"stable": {"rebuild": 0, "files": {pin["bottle_tag"]:
                 {"sha256": pin["sha256"], "url": pin["url"]}}}}}
         validate_formula({"formulae": [f]}, pin)
@@ -55,12 +55,37 @@ class BridgeGuards(unittest.TestCase):
 
     def test_bottle_receipt_source_build_refused(self):
         pin = json.loads((HERE / "llvm21-macos.json").read_text())
-        receipt = {"poured_from_bottle": True, "arch": "arm64", "source":
-            {"versions": {"stable": "21.1.8"}, "revision": 1}}
-        validate_receipt(receipt, Path("/tool/21.1.8_1"), pin)
+        receipt = {"poured_from_bottle": True, "built_as_bottle": True, "arch": "arm64", "source":
+            {"versions": {"stable": "21.1.8", "version_scheme": 0}, "spec": "stable", "tap": "homebrew/core"}}
+        prefix = Path("/opt/homebrew/Cellar/llvm@21/21.1.8_1")
+        validate_receipt(receipt, prefix, pin)  # Official schema has no source.revision.
         receipt["poured_from_bottle"] = False
         with self.assertRaises(ValueError):
-            validate_receipt(receipt, Path("/tool/21.1.8_1"), pin)
+            validate_receipt(receipt, prefix, pin)
+
+    def test_receipt_source_and_keg_drift_refused(self):
+        pin = json.loads((HERE / "llvm21-macos.json").read_text())
+        good = {"poured_from_bottle": True, "built_as_bottle": True, "arch": "arm64", "source":
+            {"versions": {"stable": "21.1.8", "version_scheme": 0}, "spec": "stable", "tap": "homebrew/core"}}
+        prefix = Path("/opt/homebrew/Cellar/llvm@21/21.1.8_1")
+        for key,value in (("spec","head"),("tap","thirdparty/tool"),("revision",2)):
+            changed = copy.deepcopy(good); changed["source"][key]=value
+            with self.subTest(key=key), self.assertRaises(ValueError): validate_receipt(changed,prefix,pin)
+        for key,value in (("stable","21.1.7"),("version_scheme",1)):
+            changed = copy.deepcopy(good); changed["source"]["versions"][key]=value
+            with self.subTest(key=key), self.assertRaises(ValueError): validate_receipt(changed,prefix,pin)
+        for path in ("/opt/homebrew/Cellar/llvm@21/21.1.8", "/opt/homebrew/Cellar/llvm@22/21.1.8_1"):
+            with self.subTest(path=path), self.assertRaises(ValueError): validate_receipt(good,Path(path),pin)
+
+    def test_exact_installed_package_revision_and_bottle_required(self):
+        pin = json.loads((HERE / "llvm21-macos.json").read_text())
+        good = {"version":"21.1.8_1","built_as_bottle":True,"poured_from_bottle":True,"used_options":[]}
+        validate_installed_formula({"installed":[good]},pin)
+        for key,value in (("version","21.1.8"),("built_as_bottle",False),("poured_from_bottle",False),
+                          ("used_options",["--HEAD"])):
+            changed = copy.deepcopy(good); changed[key]=value
+            with self.subTest(key=key), self.assertRaises(ValueError): validate_installed_formula({"installed":[changed]},pin)
+        with self.assertRaises(ValueError): validate_installed_formula({"installed":[good,good]},pin)
 
 
 if __name__ == "__main__":

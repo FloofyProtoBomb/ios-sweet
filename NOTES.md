@@ -2,6 +2,86 @@
 
 ## DE2118 handoff, 2026-11-05
 
+SCM SHIM MILESTONE389ee68: explicit `--scm-info-probe` requires
+`--board-tests --xnu`; default and install-root profiles do not enable it.
+Actual freestanding link against frozen67 kernel2d388d12 passes in fresh
+`D:/CodexWork/dre-ios-install/scm-info-shim-probe-v3/`; image
+`dre-xnu-boot.img` SHA256f390f982e83729023c8c1e2b7809c5bfc8a014a0aa1d728c2a83e781ac81af1a.
+`integration-report.json` there records five actual parser/profile cases,
+three exact linked positive INFO/UFS models, and three exact linked early-stop
+models (64 unresolved continuations, changed DAIF, stalled physical counter).
+All PASS; six availability queries at most, synthetic instruction interception
+only, no real SMC/device access. Combined command lines523/524/522 of607 bytes
+retain the native-UFS summary. Schema1 adds `SCM_I=status/available/unavailable/uncertain/count`
+in compact hex; INFO availability is neither PAS13 authorization nor Metal.
+Linked execution caught and fixed origin-zero callback/string-table relocation
+bugs; the fatal fixture now models the probe's actual CNTPCT, not CNTVCT.
+The no-option build `scm-info-shim-default` matches `scm-info-shim-baseline`
+byte-for-byte after masking only the existing64-byte random-seed property.
+Probe runs before topology, identity, peripherals, storage and XNU handoff;
+any uncertain or boot-must-stop result prevents all those later operations.
+This fresh local diagnostic uses the old verified67 kernel, not an official
+link of the latest native drafts; it is not physical-install readiness. No new
+Actions, phone operation, partition write or firmware/PAS call occurred.
+
+LATEST LOCAL MILESTONE:251015f fixes the three actual C/C++ final-link failures
+and commits the workflow deduplication;52ccbb5 documents actual selected Metal
+metadata compatibility without changing runtime guards. Curated successful
+VM evidence is ../../outputs/metal306-metadata-child-observation.json and the
+independent source comparison ../../outputs/metal-runtime/metadata-compatibility.json.
+All25 actual observation records match; no device/private-table/GPU pass.
+Final Rust job127466406514 subsequently ran on actualARMmacOS15.8.2:18guards,
+all4matchingSDKobjects and source preparation PASS. LLVM21.1.8_1 installed,
+but actual receipt-source comparison FAILED before Rust installation/build.
+Artifact13444394895 SHA2c678bbb230c7161c10161380729657ee1d7bc18b3c952860fc78604ffa6cca1
+is digest-verified at native-validation-v3-20261105/rust-sdk-2201e807/extracted.
+Runtime agent inspecting pinned receipt/formula evidence; do not relax pins.
+All current Actions have now ended; no next retry has been triggered. Root's
+host C/C++ link/call regression passes and both actual affected XNU consumers
+compile locally. Three leaner workflows/28bash blocks parse successfully.
+GPU agent finishes the explicit SCM INFO shim integration in disjoint build.py,
+board_tests.c/handoff.c, preserving default code apart from random seed bytes.
+Runtime receipt correction69bf6ff follows actual Homebrew Tab schema: revision
+is qualified through the pinned formula/installed exact package/resolved keg,
+not an absent source.revision receipt member. Raw receipt is now retained before
+qualification; any present mismatched revision rejects.20guard tests pass and
+saved actual formula-after metadata matches21.1.8_1. The earlier raw receipt was
+not retained; no actual assembler/iOS Rust success is inferred from this fix.
+Standalone driver workflow also excludes unrelated runtime sources from its
+push filter, restoring only the exact factory/compiler C fixtures it consumes.
+
+DAYTIME UPDATE after2201e807 /local29135c5: user questioned three simultaneous
+Actions. They are independent XNU, portable/SDK driver, and real iOS graphics
+runtime gates, but duplication existed. LOCAL next-workflow changes remove the
+extra metal-probe job from XNU, make standalone four-frontend compilation an
+explicit manual choice (runtime owns matching objects), and923371b removes the
+duplicate Rust metadata-observer job step. Do not push/restart merely to apply
+this cleanup while the unique matching-ios-objects job remains queued.
+Run42090341730 driver checks SUCCESS. XNU42090341731 completed compilation and
+FAILED FINAL LINK ONLY: three C APIs were declared with C++ linkage in firmware
+and TLMM consumers. Corrected storage_abi.h, dma_memory.h, touch_native/native.h.
+Actual C definitions +C++ consumer now link and execute host boundary checks;
+both affected selected-header XNU objects compile. Official full link pending.
+Actual log artifact13445252585 SHA79b03d1b20185146da0c5082836575dfd5e51295be293cba4398f7db6b7ed321.
+Runtime42090342034 native SDK compiled transport/surface/factory, then FAILED
+link on deprecated '-undefined error' with fatal warnings.923371b removes the
+obsolete spelling while requiring real SDK positive/missing-symbol negative
+controls; strict unresolved rejection remains mandatory. Matching Rust job
+127466406514 still queued at last observation; full Turnip was skipped after
+the failed SDK dependency. No actual iOS runtime/Metal pass from these jobs.
+The observer CHECKPOINT did link/sign/verify in that failed SDK job: artifact
+13444876514 ZIPSHAb351b229fa1a23e0ce857a51f9606b5df9b43d23912ba3eacce813c9219deb6f,
+observer71856B SHAbd0a9a28b931367b7c550a274641551569d426b3e57e5358d91064792f4ac39a.
+Single coordinated180s normal-launchd child VM on the disposable named clone
+observed actual MAIN_ENTERED,STATUS0,CLASS528/8,8methods,13bounded members.
+Explicit DEVICE_CREATED=0 GPU_WORK=0 PRIVATE_TABLES_QUALIFIED=0. Own VM stopped;
+clone file readbacks and frozen base/kernel/build snapshots unchanged. Previous
+PID1 timeout remains historical and is not causally diagnosed by this pass.
+Read-only SCM early INFO probe4d5802e is being integrated as an explicit shim
+diagnostic option, with uncertain transport requiring STOP before all later
+operations/kernel handoff. No PAS/auth/ownership claim or default enablement.
+No phone/ADB/fastboot operation, partition write or full iOS install has run.
+
 LATEST DAYTIME STATE (Nov5): corrected tree c52bc99/2e953bf3 published exactly
 as80fb5d8c; XNU retry42086019796 applied ALL patches +native post-hook PASS,
 then failed during MIG header generation: MIG treated cache+clang CC as one

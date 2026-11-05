@@ -14,6 +14,7 @@ import subprocess
 
 from build_frontend import HERE, command, sha, write_json
 from test_runtime import check_ios_object
+from sdk_link import qualify_sdk_linker
 
 
 def build(out: Path) -> dict:
@@ -59,7 +60,8 @@ def build(out: Path) -> dict:
     if "_native_bridge_metal_open" not in {line.split()[-1] for line in factory_imports.splitlines() if line.split()}:
         raise ValueError("factory no longer requires its real matching frontend entrypoint")
     transport = objects / "libdre_native_transport.dylib"
-    command([cc, *flags, "-dynamiclib", "-Wl,-undefined,error", "-Wl,-fatal_warnings",
+    linker_proof = qualify_sdk_linker(cc, flags, out)
+    command([cc, *flags, "-dynamiclib", "-Wl,-fatal_warnings",
              "-Wl,-install_name,@rpath/libdre_native_transport.dylib", *compiled[:2],
              "-framework", "CoreFoundation", "-framework", "IOSurface", "-o", transport],
             out, "link-native-transport")
@@ -80,6 +82,7 @@ def build(out: Path) -> dict:
                     vulkan / "dre_darwin.c", vulkan / "dre_darwin.h", vulkan / "dre_iokit_loader.h",
                     vulkan / "dre_surface_iosurface.c", vulkan / "dre_surface_iosurface.h",
                     vulkan / "dre_iosurface_abi.h",
+                    HERE / "sdk_link.py",
                     kernel / "dre_gpu_uapi.h"]
     return {"status": "OFFICIAL_IOS_NATIVE_BOUNDARY_COMPILED_LINKED_ONLY",
         "target": "arm64-apple-ios16.0", "official_iphoneos_sdk_used": True, "sdk_path": sdk,
@@ -87,6 +90,7 @@ def build(out: Path) -> dict:
         "files": {p.name: {"bytes": p.stat().st_size, "sha256": sha(p)} for p in files},
         "source_sha256": {str(p.relative_to(HERE.parent)): sha(p) for p in source_files},
         "public_iokit_reference": public_reference,
+        "strict_default_linker_proof": linker_proof,
         "native_transport_dylib_strict_link": True, "factory_object_compiled": True,
         "factory_full_link": False, "factory_requires_real_frontend_and_ios_rust": True,
         "metadata_observer_linked": True, "metadata_observer_executed": False,

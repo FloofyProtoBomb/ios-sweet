@@ -185,5 +185,7 @@ finished. The new basic BO adapter and pmap proof are unvalidated. Neither an
 isolated untrusted task GPU VM/PM4 validator nor a real
 GPU cache/fence provider is supplied here. Persistent CPU mapping is absent.
 No native shader submission, IOSurface sharing/presentation, Vulkan driver
-execution or iOS Metal API acceptance has passed. Compilation and all further
-validation are intentionally deferred until the user resumes validation.
+execution or iOS Metal API acceptance has passed. Compilation and host
+validation have resumed: local selected-header objects and host models pass.
+The official native kernel reached final link; its C-linkage fix awaits an
+official retry. No physical native GPU execution is established by these checks.

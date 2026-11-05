@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import struct
 import subprocess
@@ -80,6 +81,9 @@ def build(args, out: Path) -> dict:
     command([args.meson, "--version"], out, "meson-version", env)
     command([args.ninja, "--version"], out, "ninja-version", env)
     flags = ["-target", "arm64-apple-ios16.0", "-isysroot", sdk, "-fstack-protector-strong"]
+    sys.path.insert(0, str(HERE.parent / "runtime"))
+    from sdk_link import qualify_sdk_linker
+    linker_proof = qualify_sdk_linker(tools["clang"], flags, out)
     cross = out / "iphoneos.cross"
     cross.write_text("[binaries]\n" + "\n".join(
         name + " = " + repr(value) for name, value in
@@ -87,7 +91,7 @@ def build(args, out: Path) -> dict:
          ("ar", tools["ar"]), ("strip", tools["strip"]), ("pkg-config", "/usr/bin/false"))) +
         "\n[host_machine]\nsystem = 'darwin'\ncpu_family = 'aarch64'\ncpu = 'arm64'\nendian = 'little'\n"
         "[properties]\nneeds_exe_wrapper = true\n[built-in options]\n" + "".join(
-            k + " = " + repr(flags + (["-Wl,-undefined,error"] if "link" in k else [])) + "\n" for k in
+            k + " = " + repr(flags) + "\n" for k in
             ("c_args", "cpp_args", "objc_args", "c_link_args", "cpp_link_args", "objc_link_args")), encoding="utf-8")
     options = ["-Dgallium-drivers=", "-Dvulkan-drivers=freedreno", "-Dfreedreno-kmds=darwin",
         "-Dtu-darwin-abi-dir=" + str(source / "src/freedreno/vulkan"), "-Dplatforms=[]", "-Dglx=disabled",
@@ -95,7 +99,7 @@ def build(args, out: Path) -> dict:
         "-Dllvm=disabled", "-Dshared-glapi=disabled", "-Dxmlconfig=disabled", "-Dshader-cache=enabled",
         "-Dtools=", "-Dbuild-tests=false", "-Dvideo-codecs=", "-Dvulkan-layers=", "-Dlibunwind=disabled",
         "-Dlmsensors=disabled", "-Dvalgrind=disabled", "-Dexpat=disabled", "-Dzstd=disabled",
-        "-Dbuildtype=release", "-Db_ndebug=true"]
+        "-Dbuildtype=release", "-Db_ndebug=true", "-Db_lundef=true"]
     compiler = command([tools["clang++"], "--version"], out, "compiler-version", env)
     identity = {"prepared_tree": profile["prepared_index_tree"], "compiler": compiler,
         "target": "arm64-apple-ios16.0", "options": options,
@@ -123,6 +127,14 @@ def build(args, out: Path) -> dict:
     build_dir = out / "build"
     command([args.meson, "setup", build_dir, source, "--cross-file", cross, "--wrap-mode=nodownload"] + options,
         out, "configure", env, timeout=600)
+    planned = command([args.ninja, "-C", build_dir, "-t", "commands"], out, "planned-commands", env)
+    # Inspect the actual generated commands, not just the removed source line.
+    # b_lundef=true requests Meson's real strict mode; no reference waiver may
+    # reappear through another link-argument producer or subproject.
+    words = planned.replace(",", " ")
+    if (re.search(r"(?:^|\s)-undefined\s+(?:dynamic_lookup|suppress|warning)(?:\s|$)", words) or
+        re.search(r"(?:^|\s)-flat_namespace(?:\s|$)", words)):
+        raise ValueError("generated Mesa command reintroduced an unresolved-import waiver")
     command([args.ninja, "-C", build_dir, "-j2"], out, "build", env, timeout=3600)
     dylib = build_dir / "src/freedreno/vulkan/libvulkan_freedreno.dylib"
     check_ios_dylib(dylib)
@@ -138,6 +150,7 @@ def build(args, out: Path) -> dict:
         "dylib": {"file": copied.name, "bytes": copied.stat().st_size, "sha256": sha(copied)},
         "official_iphoneos_sdk": sdk, "dependencies": dependencies,
         "strict_undefined_link": True, "unresolved_import_waiver": False,
+        "strict_default_linker_proof": linker_proof,
         "builtin_pack_sha256": pack_sha, "native_provider_exercised": False,
         "physical_device_enumerated": False, "runtime_executed": False,
         "publication_ready": False, "metal_acceleration_pass": False}

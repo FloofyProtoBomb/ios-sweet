@@ -2,11 +2,31 @@ name: dre-metal-probe
 
 on:
   workflow_dispatch:
+    inputs:
+      compile_frontend:
+        description: Optional standalone frontend compile; coordinated runtime workflow already builds matching objects
+        type: boolean
+        default: false
   push:
     branches: [dre-metal-build, dre-native-validation]
     paths:
       - 'devices/dre/gpu/**'
+      - '!devices/dre/gpu/vulkan/**'
+      - '!devices/dre/gpu/compiler/**'
+      - '!devices/dre/gpu/android_probe/**'
+      # Matching Rust/frontend/package work is owned by dre-ios-rust.
+      # Keep only runtime C fixtures actually consumed by this workflow.
+      - '!devices/dre/gpu/runtime/**'
+      - 'devices/dre/gpu/runtime/*factory*'
+      - 'devices/dre/gpu/runtime/compiler_request.*'
+      - 'devices/dre/gpu/runtime/test_compiler_request.c'
+      - 'devices/dre/touch_native/**'
+      - 'devices/dre/touch/**'
+      - 'devices/dre/libfdt/**'
+      - 'devices/dre/storage_abi.*'
+      - 'devices/dre/dma_memory.*'
       - 'tools/check-dre-gpu-host.py'
+      - 'tools/test-dre-c-linkage.py'
       - '.github/workflows/dre-metal-probe.yml'
 
 concurrency:
@@ -44,6 +64,7 @@ jobs:
         run: |
           python3 tools/check-dre-gpu-host.py --cc clang --out out/gpu-host-tests
           python3 devices/dre/test_firmware_handoff.py
+          python3 tools/test-dre-c-linkage.py --cc clang --cxx clang++ --out out/c-cpp-linkage
       - name: Run native touch protocol and lifetime fixtures
         if: ${{ !cancelled() }}
         run: |
@@ -55,7 +76,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: bash devices/dre/gpu/runtime/build_factory_probe.sh out/dre-metal-factory
       - name: Compile adapted Metal306 frontend translation units
-        if: ${{ !cancelled() }}
+        if: ${{ inputs.compile_frontend == true }}
         run: python3 devices/dre/gpu/runtime/build_frontend.py --out out/metal306-frontend --dre-compiler-service --dre-device-policy
       - uses: actions/upload-artifact@v4
         if: always()
@@ -65,6 +86,7 @@ jobs:
             out/dre-metal-probe/
             out/dre-metal-factory/
             out/gpu-host-tests/
+            out/c-cpp-linkage/
             out/touch-host-tests/
             out/metal306-frontend/*.json
             out/metal306-frontend/*.log

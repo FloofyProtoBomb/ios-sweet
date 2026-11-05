@@ -83,6 +83,9 @@ tick:
 #if defined(DRE_CHECK_NATIVE_UFS) && !defined(DRE_BOARD_TESTS)
 	bl	Ldre_check_native
 #endif
+#if defined(DRE_EXPECT_RAM_MIB) && !defined(DRE_BOARD_TESTS)
+	bl	Ldre_check_memory
+#endif
 	/* select(0, NULL, NULL, NULL, &5s) as a portable sleep */
 	mov	x0, #0
 	mov	x1, #0
@@ -135,4 +138,7 @@ alive_end:
 #endif
 #ifdef DRE_CHECK_NATIVE_UFS
 #include "../devices/dre/native-check.inc"
+#endif
+#ifdef DRE_EXPECT_RAM_MIB
+#include "../devices/dre/memory-check.inc"
 #endif

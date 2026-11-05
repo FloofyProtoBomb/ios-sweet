@@ -2,6 +2,99 @@
 
 ## DE2118 handoff, 2026-11-04
 
+LATEST PHYSICAL RESULT: ec927dc0 FAILED before PID1/native storage IO.
+User photo20261104_211540.jpg shows vm_map_delete panic: Attempting to
+remove permanent VM map entry @vm_map.c:7940. Symbolication against exact
+945a7ed6 kernel identifies dre_ufs_prepare_device+0x134 -> kmem_free_guard ->
+vm_map_remove_and_unlock -> vm_map_delete. Root cause is FDT clone cleanup:
+ml_io_map uses KMA_PERMANENT/io_submap, then our ml_io_unmap tries kmem_free
+on kernel_map. This is a driver mapping-lifetime bug, not evidence of media
+failure. RAM2047MiB/native BSD read results were not reached and remain
+UNPROVEN on the handset. Earlier QEMU only tested missing ownership and
+did not enter this mapping path. Never rerun ec927dc0.
+
+RESTORE COMPLETED AND VERIFIED: helper61991 exited0, wrote original boot_b
+and rebooted. verify-platform-restore.py session55560 exited0: target_match,
+boot_completed,B,Lineage22.2-20250815-NIGHTLY-dre, boot_b d12c5d92 and
+installed logo_b246df6f6 hashes match, adb uid2000. No watcher remains.
+The phone is NOW restored LineageOS. Approved test is consumed; only a new
+specifically approved image can be tested next.
+
+FIX IN PROGRESS: native_ufs.c now maps the transient input FDT with
+ml_io_map_unmappable(...,VM_WIMG_IO) while retaining permanent MMIO/arena
+mappings for lifetime. Temporary mapping still byte-copies into normal RAM
+then unmaps rounded16K pages. Add QEMU --native-map-test: synthetic Holi FDT
+crosses a16K boundary at0xa0003ff8, valid ownership, both explicit
+dre_ufs_map_test=1 and dre_qemu_affinity=1 required. Driver validates board,
+RAM/CRC, executes actual map/copy/unmap and returns ENXIO before any
+Qualcomm MMIO. Only this map-only path permits QEMU's non19.2MHz timer;
+normal/native hardware clock checks remain strict. Positive test must find
+"DRE UFS: transient FDT mapping lifetime PASS", plus PID1,8CPU,RAM2047MiB
+and display heartbeat. Also retain empty-ownership refusal QEMU separately.
+New CI build and new image are required; no new flash is authorized.
+
+USER NOW SPECIFICALLY APPROVED "Run combined test and restore" for ec927dc0
+(2GiB/native BSD reads). Fresh preflight PASSED local candidate ec927dc0 and
+restore d12c5d92 hashes, matching USB target, activeB and fully booted
+Lineage22.2-20250815-NIGHTLY-dre. Authorized action is temporary boot_b write,
+boot diagnostic, then restore original boot_b after return to fastboot.
+work/native-storage-operator.py is pinned to both hashes. Test is starting;
+do not reuse this approval for a later image. No userdata/layout write.
+FLASH/REBOOT SUCCEEDED by2026-11-05 02:14:20 UTC (test session86794 exited0).
+boot_b sending/writing both OKAY, then fastboot reboot OKAY. Restore helper
+is now ACTIVE exec session61991, started by02:14:49 UTC, waiting up to900s
+for the matching fastboot target. It will write d12c5d92 boot_b and reboot.
+Do not start another operator while61991 runs. Ask for screen results after
+about02:17:20 UTC; then user returns to fastboot using volume keys+Power.
+After restore helper exits successfully, run work/verify-platform-restore.py
+for on-device boot_b/logo_b hashes, boot_completed,B and adb unroot2000.
+The phone CURRENTLY HAS THE TEST boot_b; it is NOT restored yet. Hardware
+screen/native reads/RAM result are pending user observation. Approval is
+consumed for this test; restoration remains authorized and necessary.
+
+NEXT PHONE CANDIDATE IS HOST-VALIDATED AND READY, NOT YET FLASHED:
+work/build-native-storage-2g/dre-xnu-boot.img,16764928 bytes,SHA
+ec927dc08a201f7e980619aca2a5e77b33ba9ce612659350f34d0fe69015f882.
+Native-policy kernel CI41951808461 PASSED compilation/link/all66 UI patches,
+sourcecdd53443c638c64f191e495b3944befa13c94a00. Kernel is now
+work/native-storage-kernel-owned/kernel.development.dre,17202536 bytes,SHA
+945a7ed64f0f09d38c4ad5868341328e0721c101af55ff408ef96a0eb35749b2.
+Verified kernel ZIP SHA74ba1138e1f5930541fdbb2350f6a6cdcc8c350d6fca607f59707be3fc476611.
+Selected --ram-mib2048: 4G..6G upper physical window, with1MiB panic log
+excluded. QEMU PASSES with all8 CPUs, SGI,PID1,identity,display services,
+RAM_MIB=2047 PASS, and native disk refused before MMIO for empty ownership.
+The kernel bytes are unchanged in QEMU. Evidence work/qemu-native-storage-2g.
+All6 exact-image fault cases PASS (work/native-storage-model-reports.json),
+plus private real-GPT fixture5 commands and correct userdata boundaries
+(work/native-storage-real-gpt-report.json). Metadata CRC/arena/FDT/image PA
+handoff is verified by the actual shim executing in the model. Packaging
+checks the largest constructed command line as537/607
+boot argument bytes. Native engine/ownership/RAM cases47 PASS; exact PID1
+object matches the previously tested7-case object SHA0db36f944f0391e35cdfabd4bee924adc7b487e7e35da5bb7ef23e83a377e67b.
+No tests/processes/watchers remain active. No new partition write approved.
+The physical phone remains restored LineageOS from16dd2e95. New native BSD
+reads and2GiB RAM boot are not handset-proven. Test must temporarily write
+boot_b and restore d12c5d92... after user returns to fastboot. Never flash
+older f8a4615d or the mismatched-kernel host-only image. Packaging script is
+work/package-native-storage.py (paths updated for2G/owned kernel,47+7 cases).
+It requires a clean committed tree and scans candidate/source for private
+IDs, live FDT/GPT and firmware. It prepares a pinned operator but does not
+run it. Source RAM support is local0d33864, kernel-code parent78dd4aa.
+SOURCE PUBLISHED on dre-next-test at fecd41632d66d7a5783ef3356386e9753f4943ae,
+treec88bc65830113f4631342add456fd4ebf2c67735, identical to packaged local
+df1e319b6872cff6af48cc0683029b2aec71bb47. dre-storage stays at the passing
+CI commit. This final handoff-only note commit does not change the packaged
+source or candidate. Source archive stays pinned todf1e319.
+PACKAGING PASSED: outputs/de2118-native-storage-test.img,
+outputs/native-storage-test-manifest.json and
+outputs/ios-dre-native-storage-source.zip. Image/restore hashes and all
+privacy exclusions pass. work/native-storage-operator.py is pinned to
+ec927dc0 and d12c5d92 and is PREPARED ONLY. No phone write performed.
+Fresh user approval will be requested for ec927dc0/2GiB/native BSD reads,
+temporary boot_b and restore. Do not reuse any prior test approval. Key
+phone lines: RAM_MIB=2047 PASS and
+NATIVE_UFS=BSD_PARTITION+GPT_READ_PASS + WRITE_OPEN_REJECTED.
+
 CURRENT CANDIDATE GATE: run41950005082 PASSED compilation/link and all66
 patch checks. Kernel b7687a43b45aeeab4021aacc0bf6cb0282f544921d448786d5b2cdfe248c4e6d
 is work/native-storage-kernel/kernel.development.dre (17202464 bytes), ZIP
@@ -23,7 +116,24 @@ so it refuses the earlier b768 kernel. A new CI build is required.
 work/build-native-owned-model is HOST-ONLY with corrected shim but old
 kernel, for validating metadata before rebuilding; NEVER PACKAGE/FLASH IT.
 User asked whether iOS can use all RAM: answered current512MiB cap,4GiB
-hardware, expansion pending with firmware/modem reservations preserved.
+hardware, protected firmware/modem reservations. The existing conservative
+RAM policy accepts contiguous 4G..6G (2048MiB) and rejects2049MiB. Added an
+opt-in --ram-mib512/1024/2048 in builder/ADT/shim consistency checks, plus
+PID1 hw.memsize check (expected2047MiB after paniclog reservation), and QEMU
+virtual RAM sizing. These are SHIM/INIT/ADT changes, not kernel patch changes,
+so use the pending native-policy CI kernel; do not trigger another kernel
+build for them. Host tests now47 engine/ownership/RAM cases and7 PID1 cases
+including wrong-memory-size rejection PASS. Two exact HOST-ONLY shim cases
+also PASS with the new ownership policy and correct runtime metadata:
+work/native-owned-preflight-reports.json (handoff_m0 andready). The old
+kernel inside that host-only image still must never reach the phone.
+NEW CI run41951808461 is building sourcecdd53443c638c64f191e495b3944befa13c94a00
+(local78dd4aa/tree0b1965f44a43b2d6958b59adbc5edad182a3c3d7). When it passes,
+build a NEW native+2048MiB image to work/build-native-storage (save the old
+f8 build or use a different directory and adapt scripts). QEMU must show
+RAM_MIB=2047 PASS. Expand the packaging manifest to47 engine cases/7 PID1
+cases, document2GiB window and kernelCI4 IDs, then ask fresh boot_b test
+approval. No physical native reads or larger-RAM boot have happened yet.
 
 NATIVE STORAGE DEVELOPMENT (next test, NOT handset-proven): source now adds
 an opt-in native read-only BSD adapter and generated UI patch 0103. Explicit

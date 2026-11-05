@@ -18,9 +18,11 @@ SIZE = 0x20000000
 SPLASH = 0x85200000
 
 
-def tree(identity=None, ui=False, cpus=1, product_path=None, native_ufs=False):
+def tree(identity=None, ui=False, cpus=1, product_path=None, native_ufs=False, ram_mib=512):
     if not 1 <= cpus <= 8 or (cpus != 1 and not ui):
         raise ValueError("secondary CPUs require the UI/SMP kernel profile")
+    if ram_mib not in (512, 1024, 2048) or (ram_mib != 512 and not ui):
+        raise ValueError("unsupported DRE RAM window")
     # Reuse the common Apple boot properties and node encoding. Only the boot
     # CPU, interrupt controller, framebuffer, RAM and panic buffer are exposed.
     root = mkadt.build(qemu=True, include_product=False)
@@ -62,7 +64,7 @@ def tree(identity=None, ui=False, cpus=1, product_path=None, native_ufs=False):
     root.props.append(("serial-number", 0, serial_bytes))
     hardware.props.append(("serial-number", 0, serial_bytes))
     chosen.props.append(("dre,host-uuid", 0, host_bytes))
-    usable = SIZE - mkadt.PANIC_LOG_SIZE
+    usable = (ram_mib << 20) - mkadt.PANIC_LOG_SIZE
     put(chosen, "dram-base", mkadt.u64(BASE))
     put(chosen, "dram-size", mkadt.u64(usable))
     put(chosen, "firmware-version", b"dre-shim\0")
@@ -129,7 +131,7 @@ def tree(identity=None, ui=False, cpus=1, product_path=None, native_ufs=False):
 
 
 def embed(kernel, out, init_obj, donor=False, identity_path=None,
-          ui=False, cpus=1, product_path=None, native_ufs=False):
+          ui=False, cpus=1, product_path=None, native_ufs=False, ram_mib=512):
     data = kernel.read_bytes()
     if donor:
         data = retarget(data)
@@ -145,7 +147,7 @@ def embed(kernel, out, init_obj, donor=False, identity_path=None,
         raise ValueError("--native-ufs requires the native driver and explicit boot-owned RAM policy")
     adt_path = out / "dre.adt"
     identity = json.loads(identity_path.read_text()) if identity_path else None
-    adt_path.write_bytes(tree(identity, ui=ui, cpus=cpus, product_path=product_path, native_ufs=native_ufs))
+    adt_path.write_bytes(tree(identity, ui=ui, cpus=cpus, product_path=product_path, native_ufs=native_ufs, ram_mib=ram_mib))
     ramdisk = out / "dre-init.macho"
     ramdisk.write_bytes(mkinit.build(init_obj.read_bytes()))
     cmdline = f"debug=0xc serial=3 cpus={cpus} keepsyms=1 -enable_kprintf_spam -noprogress rd=md0"

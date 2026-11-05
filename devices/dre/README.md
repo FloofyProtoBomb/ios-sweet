@@ -7,6 +7,19 @@ uncached low-DDR DMA arena and checks reads through `/dev` from diagnostic
 PID 1. It requires the new native kernel, retains the RAM root and does not
 install iOS. The existing tested images remain unchanged.
 
+The next diagnostic also selects `--ram-mib 2048`: a 2 GiB upper-memory
+window validated against the live RAM and reservation map. QEMU boots with
+all eight cores and reports 2,047 MiB after the 1 MiB panic-log reservation.
+This larger window and the native disk still need a handset test. This does
+not expose all 4 GiB of installed RAM. The default remains 512 MiB.
+
+The first combined handset test reached a kernel panic in temporary FDT
+mapping cleanup, before PID 1. LineageOS was restored and hash-verified.
+The driver now uses XNU's removable mapping API for that temporary copy.
+`qemu_ui.py --native-map-test` exercises this positive ownership path across
+a 16 KiB page boundary, then returns before Qualcomm MMIO. Both this test
+and the empty-ownership refusal test must pass before another handset test.
+
 The validated diagnostic boots XNU 8796 with all eight CPUs and a small Mach-O as PID 1
 on a mockfs RAM disk. The eventual userland target is iPhone X
 (`iPhone10,3`, `D22AP`) iOS 16.7.16, build 20H392. The diagnostic image

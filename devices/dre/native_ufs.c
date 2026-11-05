@@ -15,6 +15,7 @@
 #include <kern/kalloc.h>
 #include <pexpert/pexpert.h>
 #include <libkern/libkern.h>
+#include <vm/pmap.h>
 #include "libfdt/libfdt.h"
 #include "storage_abi.h"
 #include "storage_live.h"
@@ -24,6 +25,7 @@
 #include "ufs_clock.h"
 
 extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
+extern vm_offset_t ml_io_map_unmappable(vm_offset_t, vm_size_t, unsigned int);
 extern void ml_io_unmap(vm_offset_t, vm_size_t);
 extern int dre_ufs_get_handoff(uint64_t words[8]);
 int dre_ufs_prepare_device(dev_t *device);
@@ -189,10 +191,16 @@ static int initialize(void)
     int enabled = 0;
     PE_parse_boot_argn("dre_ufs", &enabled, sizeof(enabled));
     if (enabled != 1 || !dre_ufs_get_handoff(w) || !dre_storage_abi_valid(w)) return ENXIO;
+    int map_test = 0, qemu = 0;
+    PE_parse_boot_argn("dre_ufs_map_test", &map_test, sizeof(map_test));
+    PE_parse_boot_argn("dre_qemu_affinity", &qemu, sizeof(qemu));
+    int mapping_only = map_test == 1 && qemu == 1;
     __asm__ volatile("mrs %0, cntfrq_el0" : "=r"(frequency));
-    if (frequency != 19200000) return ENXIO;
+    if (frequency != 19200000 && !mapping_only) return ENXIO;
     /* Byte copy from Device RAM: libc's unaligned/vector loads are unsuitable. */
-    vm_offset_t dt_map = ml_io_map(w[3], w[4]);
+    /* ml_io_map creates KMA_PERMANENT entries in io_submap. Temporary
+     * copies must use the removable kernel_map variant before ml_io_unmap. */
+    vm_offset_t dt_map = ml_io_map_unmappable(w[3], w[4], VM_WIMG_IO);
     if (!dt_map) return ENOMEM;
     void *dt = kalloc_data(w[4], Z_WAITOK | Z_ZERO);
     if (!dt) { ml_io_unmap(trunc_page(dt_map), round_page(w[4] + (dt_map & PAGE_MASK))); return ENOMEM; }
@@ -201,6 +209,14 @@ static int initialize(void)
     if (fdt_check_full(dt, w[4]) || fdt_totalsize(dt) != w[4] || !board_ok(dt) ||
         !dre_storage_live_valid(dt, w)) {
         kfree_data(dt, w[4]); return ENXIO;
+    }
+    /* QEMU-only positive ownership test: exercise the real allocation,
+     * byte-copy and unmap path without touching any Qualcomm MMIO. Both
+     * explicit test arguments are required; handset images set neither. */
+    if (mapping_only) {
+        kfree_data(dt, w[4]);
+        printf("DRE UFS: transient FDT mapping lifetime PASS\n");
+        return ENXIO;
     }
     /* Kept for the driver's lifetime: route queries use this private snapshot. */
     for (unsigned i = 0; i < sizeof(regions) / sizeof(regions[0]); i++) {

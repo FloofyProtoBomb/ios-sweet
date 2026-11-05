@@ -14,6 +14,7 @@ import struct
 import subprocess
 import sys
 import time
+import zlib
 
 from xnu import mkadt, mkpayload, SPLASH
 
@@ -44,6 +45,7 @@ if __name__ == '__main__':
     ap.add_argument('--zig', default='zig')
     ap.add_argument('--qemu', default='qemu-system-aarch64')
     ap.add_argument('--seconds', type=int, default=180)
+    ap.add_argument('--native-map-test', action='store_true', help='exercise positive FDT map/copy/unmap ownership path; no Qualcomm MMIO')
     args = ap.parse_args()
     if args.seconds <= 0:
         ap.error('--seconds must be positive')
@@ -60,9 +62,27 @@ if __name__ == '__main__':
     root, _ = mkadt.adt.parse((build / 'dre-virt.adt').read_bytes())
     cpus = next(c for c in root.children if c.name == 'cpus')
     assert len(cpus.children) == info['cpus']
+    extra_devices = []
+    if args.native_map_test:
+        if not info.get('native_ufs'):
+            ap.error('--native-map-test requires a native storage image')
+        from test_driver_prep import fixture
+        dt = fixture(initrd=(0xa4500000, 0xa5c00000), board=True)
+        # Deliberately cross a 16K page edge to test unmap rounding too.
+        dt_pa = 0xa0003ff8
+        (out / 'map-fdt.bin').write_bytes(dt)
+        words = (0x0031534655455244, 0xa8040000, 16384, dt_pa, len(dt), 0xa8000000, 0x1000000)
+        first = struct.pack('<7Q', *words)
+        handoff = first + struct.pack('<Q', zlib.crc32(first))
+        node = next(c for c in root.children if c.name == 'dre-ufs')
+        node.props = [(k, f, handoff if k == 'dre,handoff' else v) for k, f, v in node.props]
+        (build / 'dre-virt.adt').write_bytes(mkadt.adt.serialize(root))
+        extra_devices = ['-device', f'loader,file=map-fdt.bin,addr={dt_pa:#x},force-raw=on']
     cmd = (build / 'virt-payload.bin').read_bytes()[0x48:0x48 + 608].split(b'\0')[0].decode()
     cmd += (' dre_report=UFS=EMU_NO_HARDWARE|USB=EMU_NO_HARDWARE|TOUCH=EMU_NO_HARDWARE'
             '|GPU_HW=EMU_NO_HARDWARE|SERIAL=EMU_TEST')
+    if args.native_map_test:
+        cmd += ' dre_ufs_map_test=1'
     assert len(cmd.encode()) < 608
     payload, _ = mkpayload.build(str(kernel_path), str(build / 'dre-virt.adt'), cmd, str(build / 'dre-init.macho'))
     spec = importlib.util.spec_from_file_location('qemu_common', str(HERE.parents[1] / 'tools/qemu-sweet.py'))
@@ -75,14 +95,15 @@ if __name__ == '__main__':
                     str(HERE / 'qemu_start.S'), '-o', str(out / 'start.elf')], check=True)
     subprocess.run([args.zig, 'objcopy', '-O', 'binary', '-j', '.text', str(out / 'start.elf'), str(out / 'start.bin')], check=True)
     symbols = symbol_values(kernel, {'_iso_font', '_msgbufp'})
+    virtual_ram_gib = max(4, 3 + (info.get('ram_mib', 512) + 1023) // 1024)
     font = common.payload_data(payload, symbols['_iso_font'], 4096)
     command = [str(Path(args.qemu).resolve()) if Path(args.qemu).exists() else args.qemu,
         '-M', 'virt,gic-version=3,virtualization=on', '-cpu', 'cortex-a76',
-        '-smp', str(info['cpus']), '-m', '4G', '-display', 'none', '-serial', 'none',
+        '-smp', str(info['cpus']), '-m', f'{virtual_ram_gib}G', '-display', 'none', '-serial', 'none',
         '-nodefaults', '-qmp', 'stdio', '-no-reboot',
         '-device', f'loader,file=ram.bin,addr={base:#x},force-raw=on',
         '-device', f'loader,file=start.bin,addr={common.STUB_PA:#x},force-raw=on',
-        '-device', f'loader,addr={common.STUB_PA:#x},cpu-num=0']
+        '-device', f'loader,addr={common.STUB_PA:#x},cpu-num=0', *extra_devices]
     with (out / 'stderr.txt').open('w') as stderr:
         process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                    stderr=stderr, text=True, cwd=out)
@@ -102,6 +123,8 @@ if __name__ == '__main__':
             screen = ''
             tags = ('DRE identity checks PASS', f"CPUS={info['cpus']}/{info['cpus']} PASS",
                     'UI_DRIVER_LOGS=SURFACE+FRAMEBUFFER', 'DRE init: still alive')
+            if info.get('ram_mib', 512) != 512:
+                tags += (f"RAM_MIB={info['ram_mib'] - 1} PASS",)
             while time.monotonic() < deadline:
                 time.sleep(min(15, max(0, deadline - time.monotonic())))
                 qmp('stop')
@@ -130,13 +153,18 @@ if __name__ == '__main__':
                 # must refuse it before accessing any Qualcomm hardware.
                 assert 'NATIVE_UFS=UNAVAILABLE_OR_FAILED' in screen
                 assert 'DRE UFS: native disk unavailable (6)' in log
+                if args.native_map_test:
+                    assert 'DRE UFS: transient FDT mapping lifetime PASS' in log
             result = {'status': 'PASS', 'kernel_sha256': info['kernel_sha256'],
                       'physical_image_sha256': info['image_sha256'], 'cpus_active': info['cpus'],
                       'pid1_identity_checks': 'PASS', 'surface_and_framebuffer_start': 'PASS',
                       'kernel_bytes_modified': False, 'hardware_report': 'simulated',
                       'qemu': version, 'ios_user_interface_rendered': False, 'phone_tested': False}
             if info.get('native_ufs'):
-                result['native_ufs_missing_ownership_refused'] = True
+                result['native_ufs_missing_ownership_refused'] = not args.native_map_test
+                result['native_fdt_mapping_lifetime_test'] = args.native_map_test
+            result['ram_window_mib'] = info.get('ram_mib', 512)
+            result['virtual_machine_ram_gib'] = virtual_ram_gib
             (out / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
             print(f"PASS QEMU {info['cpus']} active CPUs, SGIs, PID 1, identity and display services", flush=True)
         finally:

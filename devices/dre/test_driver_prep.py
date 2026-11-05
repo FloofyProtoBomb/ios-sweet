@@ -9,7 +9,7 @@ import subprocess
 
 HERE = Path(__file__).resolve().parent
 
-def fixture(*, reserve=(), dynamic=(), memreserve=(), memory=((0x80000000, 0x100000000),), broken=False, initrd=None, owned_pools=()):
+def fixture(*, reserve=(), dynamic=(), memreserve=(), memory=((0x80000000, 0x100000000),), broken=False, initrd=None, owned_pools=(), board=False):
     strings = bytearray()
     def prop(k, v):
         index = len(strings); strings.extend(k.encode() + b'\0')
@@ -22,6 +22,10 @@ def fixture(*, reserve=(), dynamic=(), memreserve=(), memory=((0x80000000, 0x100
     if initrd is not None:
         children += node('chosen', prop('linux,initrd-start', struct.pack('>Q', initrd[0])) +
                          prop('linux,initrd-end', struct.pack('>Q', initrd[1])))
+    if board:
+        children += node('soc', prop('#address-cells', struct.pack('>I', 1)) +
+                         prop('#size-cells', struct.pack('>I', 1)),
+                         node('ufshc@4804000', prop('reg', struct.pack('>II', 0x04804000, 0x3000))))
     reservations = b''.join(node(f'fixed{i}', prop('reg', ranges([v]))) for i, v in enumerate(reserve))
     reservations += b''.join(node(f'dynamic{i}', prop('alloc-ranges', ranges([v]))) for i, v in enumerate(dynamic))
     reservations += b''.join(node(f'pool{i}', prop('alloc-ranges', ranges([v])) +
@@ -30,7 +34,10 @@ def fixture(*, reserve=(), dynamic=(), memreserve=(), memory=((0x80000000, 0x100
     if broken: reservations += node('unknown', prop('size', struct.pack('>Q', 4096)))
     children += node('reserved-memory', prop('#address-cells', struct.pack('>I', 2)) +
                      prop('#size-cells', struct.pack('>I', 2)) + prop('ranges', b''), reservations)
-    tree = node('', prop('#address-cells', struct.pack('>I', 2)) + prop('#size-cells', struct.pack('>I', 2)), children) + struct.pack('>I', 9)
+    properties = prop('#address-cells', struct.pack('>I', 2)) + prop('#size-cells', struct.pack('>I', 2))
+    if board:
+        properties += prop('compatible', b'qcom,holi\0') + prop('oplus,dtsi_no', struct.pack('>I', 133180))
+    tree = node('', properties, children) + struct.pack('>I', 9)
     reserved = ranges(memreserve) + bytes(16)
     offset = 40 + len(reserved)
     return struct.pack('>10I', 0xd00dfeed, offset + len(tree) + len(strings), offset,

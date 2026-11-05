@@ -230,7 +230,7 @@ def validate_recipe(args, src, obj, sdk, classes, cwd):
     roots = (src / "iokit", src / "osfmk", src / "bsd", obj / "bsd", src / "EXTERNAL_HEADERS")
     require(all(arg.startswith("-I") and Path(arg[2:]).is_absolute() and
                 Path(arg[2:]).resolve() == root.resolve()
-                for arg, root in zip(args[9:14], roots, strict=True)),
+                for arg, root in zip(args[9:14], roots)),
             "IIG include roots or ordering differ")
     require(args[14] == "-isysroot" and Path(args[15]).is_absolute() and
             Path(args[15]).resolve() == sdk and tuple(args[16:]) == CPP_FLAGS,

@@ -2,6 +2,21 @@
 
 ## DE2118 handoff, 2026-11-05
 
+ACTIVE RETRY: local5f27d3ed1b556179bcfdbf8a92852960d255942e/tree39105dcc
+was published tree-identically ased176f143c90466a1d2766e146a7c4f843942266.
+New queued runs42102692953 XNU and42102692822 runtime. Dedicated probe did
+NOT retrigger for these unrelated runtime/replay-only changes; prior whole
+probe PASS stands. gpu_metal monitors the kernel; install_readiness monitors
+actual Rust/Mesa/nativeSDK outcomes. No extra CI restart or phone operation.
+Current physical state: original Lineage restored/ADBboot complete onslotb.
+Latest user asked 'are we able to install ios now?'; unequivocal answer NO:
+native UFS stilltimesout and GPU/Metal isn't functional. New fault telemetry
+is source-complete, but a new kernel/image needs qualification +freshapproval.
+No watcher, no pending approved partition write. Original f390 consent used.
+Publication helper giant NOTES group exceeded80K output tokens; recovered
+by reading groupJSON in16K-character JSON-string chunks and reconstructing it
+inside functions.exec, then required exact local/remote tree equality.
+
 LATEST CI AND INSTALL ANSWER: still NOT ready to install iOS. Physical native
 UFS READ(10) timeout remains, so native system-root mounting is unavailable;
 GPU/Metal is also unproven. Original Lineage is restored/boot-complete onb.

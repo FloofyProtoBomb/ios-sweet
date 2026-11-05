@@ -18,7 +18,7 @@ SIZE = 0x20000000
 SPLASH = 0x85200000
 
 
-def tree(identity=None, ui=False, cpus=1, product_path=None):
+def tree(identity=None, ui=False, cpus=1, product_path=None, native_ufs=False):
     if not 1 <= cpus <= 8 or (cpus != 1 and not ui):
         raise ValueError("secondary CPUs require the UI/SMP kernel profile")
     # Reuse the common Apple boot properties and node encoding. Only the boot
@@ -35,6 +35,9 @@ def tree(identity=None, ui=False, cpus=1, product_path=None):
     hardware = mkadt.node("oneplus-hardware", [
         ("model", b"DE2118\0"), ("board", b"dre\0"), ("soc", b"SM4350\0")])
     root.children.append(hardware)
+    if native_ufs:
+        root.children.append(mkadt.node("dre-ufs", [
+            ("compatible", b"oneplus,dre-ufs\0"), ("dre,handoff", bytes(64))]))
     chosen = child(root, "chosen")
     # 0027 predates the SHA-1 provider. Publishing these optional identity
     # values invokes SHA1Init in IOPlatformExpertDevice::generatePlatformUUID.
@@ -126,7 +129,7 @@ def tree(identity=None, ui=False, cpus=1, product_path=None):
 
 
 def embed(kernel, out, init_obj, donor=False, identity_path=None,
-          ui=False, cpus=1, product_path=None):
+          ui=False, cpus=1, product_path=None, native_ufs=False):
     data = kernel.read_bytes()
     if donor:
         data = retarget(data)
@@ -137,13 +140,17 @@ def embed(kernel, out, init_obj, donor=False, identity_path=None,
     if ui and not all(marker in data for marker in
                       (b"IOCoreSurfaceRoot", b"AppleCLCD", b"sweet_secondary_entry")):
         raise ValueError("--ui-services requires a kernel built with the DRE ui profile")
+    if native_ufs and b"_dre_ufs_prepare_device\0" not in data:
+        raise ValueError("--native-ufs requires a kernel with the native DRE storage driver")
     adt_path = out / "dre.adt"
     identity = json.loads(identity_path.read_text()) if identity_path else None
-    adt_path.write_bytes(tree(identity, ui=ui, cpus=cpus, product_path=product_path))
+    adt_path.write_bytes(tree(identity, ui=ui, cpus=cpus, product_path=product_path, native_ufs=native_ufs))
     ramdisk = out / "dre-init.macho"
     ramdisk.write_bytes(mkinit.build(init_obj.read_bytes()))
     cmdline = f"debug=0xc serial=3 cpus={cpus} keepsyms=1 -enable_kprintf_spam -noprogress rd=md0"
     if ui:
         cmdline += " msgbuf=65536"  # Retain driver-start records until diagnostic PID 1.
+    if native_ufs:
+        cmdline += " dre_ufs=1"
     data, _ = mkpayload.build(str(kernel), str(adt_path), cmdline, str(ramdisk))
     (out / "payload.bin").write_bytes(data)

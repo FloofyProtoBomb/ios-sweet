@@ -113,6 +113,9 @@ Ldre_print_report:
 #ifdef DRE_CHECK_UI_SERVICES
     bl Ldre_check_ui
 #endif
+#ifdef DRE_CHECK_NATIVE_UFS
+    bl Ldre_check_native
+#endif
     adr x0, Largs_name
     mov x1, #13                   /* strlen("kern.bootargs") */
     add x2, sp, #32

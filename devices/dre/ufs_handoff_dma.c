@@ -34,6 +34,6 @@ const char *dre_ufs_handoff_begin(const void *dt, const struct dre_dma_route *ro
      * attribute behavior. Do not reinterpret reserved or forced-cache modes. */
     if ((s->context.cbar & 0x3ff00u) != 0x1f000u || (s->context.control & 0x3f100000u))
         return "ATTRIBUTES_UNSUPPORTED";
-    if ((uint64_t)dre_ufs_probe_arena() + 8191 >= (UINT64_C(1) << 32)) return "ARENA_WIDTH";
+    if ((uint64_t)dre_ufs_probe_arena() + dre_ufs_probe_size() - 1 >= (UINT64_C(1) << 32)) return "ARENA_WIDTH";
     return dre_ufs_handoff_valid(s) ? "HANDOFF_BYPASS" : "STATE_OR_FAULT_BLOCKED";
 }

@@ -1,0 +1,74 @@
+--- a/iokit/bsddev/IOKitBSDInit.cpp
++++ b/iokit/bsddev/IOKitBSDInit.cpp
+@@ -651,6 +651,26 @@
+ 	return true;
+ }
+ 
++#if defined(ARM64_BOARD_CONFIG_DRE)
++extern "C" int dre_ufs_prepare_device(dev_t *device);
++extern "C" int dre_ufs_get_handoff(uint64_t words[8]);
++extern "C" int
++dre_ufs_get_handoff(uint64_t words[8])
++{
++    IORegistryEntry *entry = IORegistryEntry::fromPath("/dre-ufs", gIODTPlane);
++    if (!entry) return 0;
++    OSData *compatible = OSDynamicCast(OSData, entry->getProperty("compatible"));
++    OSData *handoff = OSDynamicCast(OSData, entry->getProperty("dre,handoff"));
++    const char expected[] = "oneplus,dre-ufs";
++    int valid = compatible && compatible->getLength() == sizeof(expected) &&
++        !memcmp(compatible->getBytesNoCopy(), expected, sizeof(expected)) &&
++        handoff && handoff->getLength() == 64;
++    if (valid) memcpy(words, handoff->getBytesNoCopy(), 64);
++    entry->release();
++    return valid;
++}
++#endif
++
+ kern_return_t
+ IOFindBSDRoot( char * rootName, unsigned int rootNameSize,
+     dev_t * root, u_int32_t * oflags )
+@@ -706,6 +726,23 @@
+ 	    && !PE_parse_boot_argn("rootdev", rdBootVar, kMaxBootVar )) {
+ 		rdBootVar[0] = 0;
+ 	}
++
++#if defined(ARM64_BOARD_CONFIG_DRE)
++    // Register read-only diagnostic devices even while the root remains md0.
++    int dreUfsEnabled = 0;
++    PE_parse_boot_argn("dre_ufs", &dreUfsEnabled, sizeof(dreUfsEnabled));
++    if (dreUfsEnabled == 1) {
++        dev_t dreDevice = NODEV;
++        int dreError = dre_ufs_prepare_device(&dreDevice);
++        if (!strcmp(rdBootVar, "ufsroot0")) {
++            if (dreError) panic("DRE UFS root unavailable: %d", dreError);
++            *root = dreDevice;
++            strlcpy(rootName, rdBootVar, rootNameSize);
++            *oflags = 0;
++            goto iofrootx;
++        }
++    }
++#endif
+ 
+ 	if ((regEntry = IORegistryEntry::fromPath( "/chosen", gIODTPlane ))) {
+ 		do {
+--- a/bsd/conf/files
++++ b/bsd/conf/files
+@@ -104,6 +104,18 @@
+ bsd/dev/random/randomdev.c		standard
+ 
+ bsd/dev/memdev.c			standard
++bsd/dev/dre/native_ufs.c			standard
++bsd/dev/dre/storage_abi.c			standard
++bsd/dev/dre/ufs_read.c			standard
++bsd/dev/dre/ufs_handoff_dma.c			standard
++bsd/dev/dre/ufs_clock.c			standard
++bsd/dev/dre/dma_route.c			standard
++bsd/dev/dre/dma_context.c			standard
++bsd/dev/dre/dma_memory.c			standard
++bsd/dev/dre/libfdt/fdt.c			standard
++bsd/dev/dre/libfdt/fdt_ro.c			standard
++bsd/dev/dre/libfdt/fdt_check.c			standard
++bsd/dev/dre/libfdt/fdt_addresses.c			standard
+ bsd/dev/mem.c				standard
+ bsd/dev/munge.c 			optional config_requires_u32_munging
+ bsd/dev/unix_startup.c			standard

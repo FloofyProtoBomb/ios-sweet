@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import difflib
 
 SRC = Path(__file__).resolve().parents[2] / "xnu/patches"
 
@@ -12,6 +13,36 @@ SRC = Path(__file__).resolve().parents[2] / "xnu/patches"
 UI_PATCHES = {29, 31, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
               46, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 61, 64, 65,
               67, 68, 70, 78}
+
+
+def native_storage_assets():
+    """Generate additions from reviewed shared sources, avoiding forked engines."""
+    here = Path(__file__).parent
+    common = ('native_ufs.c', 'storage_abi.c', 'storage_abi.h', 'ufs_read.c', 'ufs_read.h',
+              'ufs_handoff_dma.c', 'ufs_handoff_dma.h', 'ufs_clock.c', 'ufs_clock.h',
+              'dma_route.c', 'dma_route.h', 'dma_context.c', 'dma_context.h',
+              'dma_memory.c', 'dma_memory.h')
+    libfdt = ('fdt.c', 'fdt_ro.c', 'fdt_check.c', 'fdt_addresses.c',
+              'libfdt.h', 'fdt.h', 'libfdt_env.h', 'libfdt_internal.h')
+    result = []
+    for name in (*common, *(f'libfdt/{n}' for n in libfdt)):
+        content = (here / name).read_text()
+        if name.startswith('libfdt/'):
+            content = content.replace('<libfdt.h>', '"libfdt.h"').replace('<fdt.h>', '"fdt.h"')
+            content = content.replace('<libfdt_env.h>', '"libfdt_env.h"')
+            if name.endswith('libfdt_env.h'):
+                content = content.replace('#include <stdlib.h>\n#include <string.h>', '#include <libkern/libkern.h>')
+            if name.endswith('fdt_addresses.c'):
+                # Kernel reads only; exclude the writer and its dependencies.
+                content = content.split('/* This function assumes')[0].rstrip() + '\n'
+        else:
+            content = content.replace('<libfdt.h>', '"libfdt/libfdt.h"')
+            if name.endswith('.c'):
+                content = '#define DRE_UFS_KERNEL 1\n' + content
+        target = 'bsd/dev/dre/' + name
+        result.extend(difflib.unified_diff([], content.splitlines(True),
+                                         fromfile='/dev/null', tofile='b/' + target))
+    return ''.join(result)
 
 
 def select_files(patch, paths):
@@ -83,7 +114,10 @@ def stage(out, profile="bringup"):
         (out / local.name).write_bytes(local.read_bytes())
     if profile == "ui":
         for local in (Path(__file__).parent / "ui").glob("*.patch"):
-            (out / local.name).write_bytes(local.read_bytes())
+            content = local.read_bytes()
+            if local.name.startswith('0103-'):
+                content += native_storage_assets().encode()
+            (out / local.name).write_bytes(content)
     manifest = {"profile": profile, "patches": {
         p.name: hashlib.sha256(p.read_bytes()).hexdigest()
         for p in sorted(out.glob("[0-9][0-9][0-9][0-9]-*.patch"))}}

@@ -9,6 +9,7 @@ from pathlib import Path
 import struct
 import sys
 import uuid
+import zlib
 
 from unicorn import Uc, UC_ARCH_ARM64, UC_MODE_ARM, UC_HOOK_INTR
 from unicorn import arm64_const as A
@@ -21,7 +22,7 @@ SURFACE = b'DRE SURF: IOCoreSurfaceRoot registered\n'
 FRAMEBUFFER = b'DRE FB: AppleCLCD 1080x2400 stride 4320\n'
 
 
-def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3):
+def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3, native=None):
     image = mkinit.build(obj)
     macho = mkpayload.parse_macho(image)
     cpu = Uc(UC_ARCH_ARM64, UC_MODE_ARM)
@@ -33,6 +34,11 @@ def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3):
     cpu.mem_map(stack, stack_size)
     cpu.reg_write(A.UC_ARM64_REG_SP, stack + stack_size - 15)  # crt0 must align it.
     output, ticks, opens = bytearray(), 0, 0
+    native_reads = 0
+    gpt = bytearray(4096)
+    struct.pack_into('<8sIIIIQQ', gpt, 0, b'EFI PART', 0x10000, 92, 0, 0, 1, 0xffffff)
+    struct.pack_into('<I', gpt, 16, zlib.crc32(gpt[:92]))
+    if native == 'bad_crc': gpt[60] ^= 1
     chunks = list(chunks)
     keys = {'hw.machine': b'iPhone10,3\0', 'hw.product': b'iPhone10,3\0',
             'hw.model': b'D22AP\0', 'hw.target': b'D22AP\0',
@@ -45,12 +51,33 @@ def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3):
         flags = cpu.reg_read(A.UC_ARM64_REG_NZCV) & ~(1 << 29)
         cpu.reg_write(A.UC_ARM64_REG_NZCV, flags | ((1 << 29) if error else 0))
     def syscall(uc, number, _):
-        nonlocal ticks, opens
+        nonlocal ticks, opens, native_reads
         call = reg(16)
         if call == 5:
             path = bytes(cpu.mem_read(reg(0), 32)).split(b'\0')[0]
-            assert path == b'/dev/console', path
-            finish(0)
+            if path == b'/dev/console': finish(0)
+            elif native is not None and path in (b'/dev/rufsroot0', b'/dev/rdremedia0'):
+                if native == 'missing': finish(6, True)
+                elif reg(1) == 1: finish(30, True)
+                else: finish(10 if path.endswith(b'rufsroot0') else 20)
+            else: raise AssertionError(path)
+        elif native is not None and call == 6:
+            assert reg(0) in (10, 20); finish(0)
+        elif native is not None and call == 54:
+            assert reg(0) in (10, 20)
+            if native == 'ioctl_error': finish(5, True)
+            else:
+                values = {0x40046418: struct.pack('<I', 512),
+                          0x40086419: struct.pack('<Q', 0x8000000),
+                          0x4004641d: struct.pack('<I', int(native == 'writable'))}
+                assert reg(1) in values
+                cpu.mem_write(reg(2), values[reg(1)]); finish(0)
+        elif native is not None and call == 199:
+            assert [reg(i) for i in range(3)] == [20, 4096, 0]; finish(4096)
+        elif native is not None and call == 3:
+            assert reg(0) == 20 and reg(2) == 4096
+            native_reads += 1
+            cpu.mem_write(reg(1), bytes(gpt)); finish(512 if native == 'short_read' else 4096)
         elif call == 336:
             opens += 1
             assert [reg(i) for i in range(4)] == [4, 0, 0, 0] and reg(5) == 65536
@@ -85,6 +112,10 @@ def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3):
     assert 'DRE identity checks PASS' in text, text
     assert expected in text, text
     assert 'FAKE-PRIVATE-IDENTIFIER' not in text, 'raw kernel log leaked to console'
+    if native is not None:
+        result = 'BSD_GPT_READ_PASS + WRITE_OPEN_REJECTED' if native == 'pass' else 'UNAVAILABLE_OR_FAILED'
+        assert text.count('NATIVE_UFS=' + result) == cycles, text
+        assert native_reads == int(native in ('pass', 'short_read', 'bad_crc')), 'native result was not cached'
     if expected.endswith('SURFACE+FRAMEBUFFER') and len(chunks) == 0:
         assert opens <= 2, 'successful startup evidence was not cached'
     print('PASS', name)
@@ -93,8 +124,13 @@ def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3):
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('object', type=Path, help='Mach-O object assembled with CPU/UI/board flags')
+    ap.add_argument('--native-ufs', action='store_true')
     args = ap.parse_args()
     obj = args.object.read_bytes()
+    if args.native_ufs:
+        for mode in ('pass', 'missing', 'bad_crc', 'short_read', 'ioctl_error', 'writable'):
+            run(obj, 'native ' + mode, [SURFACE + FRAMEBUFFER], 'UI_DRIVER_LOGS=SURFACE+FRAMEBUFFER', native=mode)
+        sys.exit(0)
     run(obj, 'both', [b'FAKE-PRIVATE-IDENTIFIER\n' + SURFACE + FRAMEBUFFER], 'UI_DRIVER_LOGS=SURFACE+FRAMEBUFFER')
     run(obj, 'separate reads', [SURFACE, FRAMEBUFFER], 'UI_DRIVER_LOGS=SURFACE+FRAMEBUFFER')
     run(obj, 'empty', [b''], 'UI_DRIVER_LOGS=NOT_BOTH_SEEN')

@@ -50,6 +50,7 @@ def main():
     ap.add_argument("--dma-context", action="store_true", help="read translated UFS/USB context metadata; no SMMU writes")
     ap.add_argument("--driver-prep", action="store_true", help="inspect bounded DMA tables, GPI channels and unowned SPI/USB descriptor plans")
     ap.add_argument("--ufs-handoff-read", action="store_true", help="opt-in read-only UFS test in stable stage-1-disabled/stage-2-bypass handoff mode")
+    ap.add_argument("--native-ufs", action="store_true", help="transfer owned DMA memory to the opt-in native read-only XNU driver")
     ap.add_argument("--ufs-read-test", action="store_true",
                     help="read capacity/GPT on LUN 0 only if physical DMA is verified")
     ap.add_argument("--touch-preflight", action="store_true",
@@ -72,6 +73,8 @@ def main():
         ap.error("--driver-prep requires --dma-context --ufs-read-test --touch-preflight")
     if args.ufs_handoff_read and not args.driver_prep:
         ap.error("--ufs-handoff-read requires --driver-prep")
+    if args.native_ufs and not (args.ufs_handoff_read and args.ui_services):
+        ap.error("--native-ufs requires --ufs-handoff-read and --ui-services")
     if (args.ui_services or args.product_adt) and not args.xnu:
         ap.error("--ui-services/--product-adt require a native UI/SMP kernel via --xnu")
     if (args.cpus != 1 or args.product_adt) and not args.ui_services:
@@ -95,6 +98,10 @@ def main():
         # No phone storage controller is linked into the 0027 kernel.
         init_obj = out / "init.o"
         init_flags = ["-DDRE_CHECK_IDENTIFIERS"]
+        if args.native_ufs:
+            init_flags += ["-DDRE_CHECK_NATIVE_UFS"]
+            cc += ["-DDRE_NATIVE_UFS"]
+            sources += [HERE / "storage_handoff.c", HERE / "storage_abi.c"]
         if args.ui_services:
             init_flags += [f"-DDRE_EXPECT_CPUS={args.cpus}", "-DDRE_CHECK_UI_SERVICES"]
             cc += [f"-DDRE_SMP_COUNT={args.cpus}"]
@@ -141,7 +148,8 @@ def main():
                         '-DINIT_BOARD="DRE"', *init_flags, "-c", str(SHIM.parent / "tools/sweet-init.S"),
                         "-o", str(init_obj)], check=True)
         embed(kernel, out, init_obj, donor=args.upstream_0027 is not None, identity_path=args.identity,
-              ui=args.ui_services, cpus=args.cpus, product_path=args.product_adt)
+              ui=args.ui_services, cpus=args.cpus, product_path=args.product_adt,
+              native_ufs=args.native_ufs)
         source = out / "embedded.S"
         payload = (out / "payload.bin").read_bytes()
         # Zig's assembly cache does not track the file named by .incbin.
@@ -175,6 +183,7 @@ def main():
             'board_tests': args.board_tests, 'dma_context': args.dma_context,
             'driver_prep': args.driver_prep,
             'ufs_handoff_read': args.ufs_handoff_read,
+            'native_ufs': args.native_ufs,
             'private_identity_provisioned': args.identity is not None,
             'product_metadata_imported': args.product_adt is not None,
             'image_sha256': hashlib.sha256(output.read_bytes()).hexdigest(),

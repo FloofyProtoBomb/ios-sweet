@@ -3,6 +3,16 @@
 #include <libfdt.h>
 #include "loader.h"
 #include "identity.h"
+#ifdef DRE_NATIVE_UFS
+#include "storage_handoff.h"
+static const char *fixup(void *adt, uint32_t size)
+{
+    const char *error = dre_identity_fixup(adt, size);
+    return error ? error : dre_storage_fixup(adt, size);
+}
+#else
+#define fixup dre_identity_fixup
+#endif
 #ifdef DRE_SMP_COUNT
 #include "cpu_topology.h"
 #endif
@@ -110,6 +120,10 @@ const char *dre_handoff(const void *dt)
     const char *board_error = dre_board_error();
     if (board_error) return board_error;
 #endif
+#ifdef DRE_NATIVE_UFS
+    const char *storage_error = dre_storage_prepare(dt);
+    if (storage_error) return storage_error;
+#endif
     return loader_boot_range_with_adt((uintptr_t)p, (uintptr_t)_payload_end,
-                                      extra, dre_identity_fixup);
+                                      extra, fixup);
 }

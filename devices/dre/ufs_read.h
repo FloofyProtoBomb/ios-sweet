@@ -14,13 +14,21 @@ struct dre_ufs_read_state {
 };
 
 /* Polled, LUN-0-only read test with a private, below-4G-capable DMA arena.
- * Requires a positively identified physical DMA route and the caller's
+ * Requires a physical DMA route or the explicit revalidated bypass guard, and
+ * the caller's
  * existing Holi UFS power/clock/resource checks. Restores the original UTRL.
  * A false safe_to_handoff MUST stop booting XNU until a hardware reset. */
 const char *dre_ufs_read_test(const struct dre_dma_route *route,
                             struct dre_ufs_read_state *out);
 uintptr_t dre_ufs_probe_arena(void);
+unsigned dre_ufs_probe_size(void);
 /* Optional opt-in handoff guard; rechecked before/after every command. */
 const char *dre_ufs_read_guarded(const struct dre_dma_route *route,
                                struct dre_ufs_read_state *out,
                                dre_ufs_dma_guard guard, void *cookie);
+/* Caller serializes access and supplies geometry from a successful probe.
+ * Copies one native block to normal CPU memory only after safe restoration. */
+const char *dre_ufs_read_block_guarded(const struct dre_dma_route *route,
+                                     struct dre_ufs_read_state *state,
+                                     dre_ufs_dma_guard guard, void *cookie,
+                                     uint32_t lba, uint8_t out[4096]);

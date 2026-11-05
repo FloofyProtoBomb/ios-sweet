@@ -21,7 +21,7 @@ on:
         description: make -k (collect all compile errors in one run)
         default: "true"
   push:
-    branches: [main, dre-n200, dre-ui]
+    branches: [main, dre-n200, dre-ui, dre-storage]
     paths:
       - "xnu/patches/**"
       - "devices/dre/**"
@@ -37,7 +37,7 @@ env:
   MACOS_VERSION: ${{ inputs.macos_version || '13.5' }}
   KERNEL_CONFIG: ${{ inputs.kernel_config || 'DEVELOPMENT' }}
   MACHINE_CONFIG: ${{ inputs.machine_config || (startsWith(github.ref_name, 'dre-') && 'DRE') || 'SWEET' }}
-  DRE_PROFILE: ${{ inputs.dre_profile || (github.ref_name == 'dre-ui' && 'ui') || 'bringup' }}
+  DRE_PROFILE: ${{ inputs.dre_profile || ((github.ref_name == 'dre-ui' || github.ref_name == 'dre-storage') && 'ui') || 'bringup' }}
 
 jobs:
   build:

@@ -40,6 +40,9 @@ _start:
 	svc	#0x80
 	b.cs	hang			/* no console: nothing to report to */
 	mov	x19, x0
+#ifdef DRE_CHECK_NATIVE_UFS
+	mov	w28, #0
+#endif
 #ifdef DRE_CHECK_UI_SERVICES
 	mov	w27, #0
 #endif
@@ -76,6 +79,9 @@ tick:
 #endif
 #ifdef DRE_BOARD_TESTS
 	bl	Ldre_print_report
+#endif
+#if defined(DRE_CHECK_NATIVE_UFS) && !defined(DRE_BOARD_TESTS)
+	bl	Ldre_check_native
 #endif
 	/* select(0, NULL, NULL, NULL, &5s) as a portable sleep */
 	mov	x0, #0
@@ -126,4 +132,7 @@ alive_end:
 #endif
 #ifdef DRE_CHECK_UI_SERVICES
 #include "../devices/dre/ui-check.inc"
+#endif
+#ifdef DRE_CHECK_NATIVE_UFS
+#include "../devices/dre/native-check.inc"
 #endif

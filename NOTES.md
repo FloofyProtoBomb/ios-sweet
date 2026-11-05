@@ -2,6 +2,27 @@
 
 ## DE2118 handoff, 2026-11-04
 
+NATIVE STORAGE DEVELOPMENT (next test, NOT handset-proven): source now adds
+an opt-in native read-only BSD adapter and generated UI patch 0103. Explicit
+64-byte /dre-ufs ownership metadata transfers one 16K-aligned low-DDR arena
+and the live Android FDT location. XNU maps the arena Device/uncached outside
+its managed RAM, copies the FDT bytewise into normal memory, independently
+checks board/RAM/route/context/clocks and probes CRC-checked GPT again. The
+shared engine separates kernel VA from DMA PA, serializes one-block reads,
+and restores the inherited list after each transaction. No SMMU/GCC/media
+write is allowed by the native adapter. Unsafe restoration panics for reset.
+/dev/rufsroot0 is userdata, /dev/rdremedia0 is whole LUN0, root-only and
+read-only. PID1 checks geometry, EROFS on write-open and a real BSD GPT read
+with header CRC. It does not issue a write or mount/install an iOS system.
+
+Host validation so far: 31 production-C ownership/VA-PA/read/restore cases,
+six executed PID1 syscall cases (success, missing, CRC, short read, ioctl,
+writable failure) and six exact-image early engine regressions PASS. Patch
+0103 applies to the staged 65-patch UI tree. Full macOS compilation is the
+next gate; no new image/test is approved and no phone write occurred.
+Phone remains VERIFIED RESTORED LINEAGEOS from the 16dd2e95 test below.
+Build branch will be dre-storage (UI profile); keep dre-ui/tested images.
+
 LATEST PHONE TEST: user specifically approved "Run UFS read test and
 restore" for 16dd2e95. Target USB Android matched; candidate/original
 backup hashes rechecked; pinned helper flashed boot_b and rebooted by

@@ -16,9 +16,28 @@ extern int dre_write32(uintptr_t address, uint32_t value);
 #define IE 0x24
 #define BLOCK 4096u
 
-/* 32 UTRDs, one 128-byte-aligned UCD and one block. MMU/caches are off. */
-static volatile uint8_t arena[0x2000] __attribute__((aligned(4096)));
-uintptr_t dre_ufs_probe_arena(void) { return (uintptr_t)arena; }
+/* Kernel ownership uses an entire 16K page outside XNU's managed RAM.
+ * The native adapter maps it Device/uncached and provides its physical
+ * address separately: a kernel VA must never enter a hardware descriptor. */
+#ifdef DRE_UFS_KERNEL
+extern volatile uint8_t *dre_kernel_ufs_arena;
+extern uint64_t dre_kernel_ufs_arena_pa;
+#define arena dre_kernel_ufs_arena
+#define ARENA_BYTES 0x4000u
+#define ARENA_PA dre_kernel_ufs_arena_pa
+#else
+#ifdef DRE_NATIVE_UFS
+#define ARENA_BYTES 0x4000u
+#define ARENA_ALIGNMENT 0x4000
+#else
+#define ARENA_BYTES 0x2000u
+#define ARENA_ALIGNMENT 4096
+#endif
+static volatile uint8_t arena[ARENA_BYTES] __attribute__((aligned(ARENA_ALIGNMENT)));
+#define ARENA_PA ((uint64_t)(uintptr_t)arena)
+#endif
+uintptr_t dre_ufs_probe_arena(void) { return (uintptr_t)ARENA_PA; }
+unsigned dre_ufs_probe_size(void) { return ARENA_BYTES; }
 #define DMA_RING ((volatile uint32_t *)arena)
 #define DMA_COMMAND (arena + 0x400)
 #define DMA_RESPONSE (arena + 0x600)
@@ -27,12 +46,23 @@ uintptr_t dre_ufs_probe_arena(void) { return (uintptr_t)arena; }
 
 static uint64_t ticks(void)
 {
+#ifdef DRE_UFS_HOST_TEST
+    extern uint64_t dre_ufs_test_ticks(void);
+    return dre_ufs_test_ticks();
+#else
     uint64_t value;
     __asm__ volatile("isb; mrs %0, cntvct_el0" : "=r"(value));
     return value;
+#endif
 }
 
-static void fence(void) { __asm__ volatile("dsb sy" ::: "memory"); }
+static void fence(void) {
+#ifdef DRE_UFS_HOST_TEST
+    __sync_synchronize();
+#else
+    __asm__ volatile("dsb sy" ::: "memory");
+#endif
+}
 static int read_reg(uint32_t off, uint32_t *out) { return dre_read32(HOST + off, out); }
 static int write_reg(uint32_t off, uint32_t value) { return dre_write32(HOST + off, value); }
 
@@ -71,7 +101,7 @@ static uint32_t crc_step(uint32_t crc, uint8_t byte)
 static void clear_arena(void)
 {
     volatile uint64_t *p = (volatile uint64_t *)arena;
-    for (unsigned i = 0; i < sizeof(arena) / 8; i++) p[i] = 0;
+    for (unsigned i = 0; i < ARENA_BYTES / 8; i++) p[i] = 0;
 }
 
 /* This interface accepts only the four commands constructed here. */
@@ -99,7 +129,7 @@ static const char *submit(struct dre_ufs_read_state *s, unsigned op, uint32_t lb
         for (unsigned i = 0; i < 4; i++) DMA_COMMAND[18 + i] = lba >> (24 - 8 * i);
         DMA_COMMAND[24] = 1;
     }
-    uintptr_t ucd = (uintptr_t)DMA_COMMAND, block = (uintptr_t)DMA_DATA;
+    uint64_t ucd = ARENA_PA + 0x400, block = ARENA_PA + 0x1000;
     DMA_RING[0] = (1u << 28) | (1u << 24) | (len ? 2u << 25 : 0);
     DMA_RING[2] = 0xf;
     DMA_RING[4] = (uint32_t)ucd; DMA_RING[5] = (uint64_t)ucd >> 32;
@@ -182,27 +212,40 @@ const char *dre_ufs_read_test(const struct dre_dma_route *route, struct dre_ufs_
     return dre_ufs_read_guarded(route, s, 0, 0);
 }
 
-const char *dre_ufs_read_guarded(const struct dre_dma_route *route, struct dre_ufs_read_state *s,
-                               dre_ufs_dma_guard guard, void *cookie)
+static const char *transaction(const struct dre_dma_route *route, struct dre_ufs_read_state *s,
+                              dre_ufs_dma_guard guard, void *cookie, uint32_t lba,
+                              uint8_t *block_out)
 {
+    uint64_t last = s->last_lba, first = s->userdata_first, blocks = s->userdata_blocks;
     *s = (struct dre_ufs_read_state){.safe_to_handoff = 1, .guard = guard, .guard_cookie = cookie};
+    if (block_out) {
+        s->last_lba = last; s->userdata_first = first; s->userdata_blocks = blocks;
+        s->block_size = BLOCK;
+        if (!last || lba > last) return "LBA_RANGE";
+    }
     if (!route->physical_dma && !guard) return "DMA_BLOCKED";
     if (guard && !guard(cookie)) return "DMA_GUARD_BLOCKED";
+#ifndef DRE_UFS_KERNEL
     uint64_t control;
     __asm__ volatile("mrs %0, sctlr_el1" : "=r"(control));
     if (control & 5) return "CACHE_OR_MMU_ON"; /* Arena uses physical, uncached CPU accesses. */
+#endif
     uint32_t enable, status, busy, task_busy, lo, hi, run, interrupts;
     if (!read_reg(0, &s->capabilities) || !read_reg(0x34, &enable) || !read_reg(0x30, &status) ||
         !read_reg(DOORBELL, &busy) || !read_reg(0x78, &task_busy) ||
         !read_reg(UTRL_LO, &lo) || !read_reg(UTRL_HI, &hi) ||
         !read_reg(RUN_STOP, &run) || !read_reg(IE, &interrupts)) return "HCI_READ_FAULT";
     if (!(enable & 1) || (status & 3) != 3 || busy || task_busy || run > 1) return "HOST_NOT_IDLE";
-    uintptr_t dma = (uintptr_t)arena;
-    if (((uint64_t)dma + sizeof(arena) - 1) >> 32 && !(s->capabilities & (1u << 24)))
+    uint64_t dma = ARENA_PA;
+#ifdef DRE_UFS_KERNEL
+    if (!arena) return "ARENA_INVALID";
+#endif
+    if (!dma || (dma & 4095) || dma > UINT64_MAX - ARENA_BYTES) return "ARENA_INVALID";
+    if ((dma + ARENA_BYTES - 1) >> 32 && !(s->capabilities & (1u << 24)))
         return "ADDRESS_WIDTH";
     uint64_t old_ring = (uint64_t)lo | ((uint64_t)hi << 32);
     if (old_ring > UINT64_MAX - 1024 ||
-        (old_ring < (uint64_t)dma + sizeof(arena) && old_ring + 1024 > dma))
+        (old_ring < dma + ARENA_BYTES && old_ring + 1024 > dma))
         return "RING_OVERLAP";
     s->safe_to_handoff = 0;
     const char *error = "ATTACH_FAILED";
@@ -211,6 +254,10 @@ const char *dre_ufs_read_guarded(const struct dre_dma_route *route, struct dre_u
         !wait_reg(UTRL_LO, UINT32_MAX, (uint32_t)dma) ||
         !wait_reg(UTRL_HI, UINT32_MAX, (uint64_t)dma >> 32) ||
         !write_reg(RUN_STOP, 1) || !wait_reg(RUN_STOP, 1, 1)) goto restore;
+    if (block_out) {
+        error = submit(s, 0x28, lba);
+        goto restore;
+    }
     error = submit(s, 0xff, 0);
     if (error) goto restore;
     for (unsigned attempt = 0; attempt < 3; attempt++) {
@@ -237,6 +284,25 @@ restore:
         !(enable & 1) || (status & 3) != 3) return "RESTORE_FAILED";
     if (s->guard && (s->guard_lost || !s->guard(s->guard_cookie))) return "DMA_GUARD_CHANGED";
     s->safe_to_handoff = 1;
+    if (!error && block_out)
+        for (unsigned i = 0; i < BLOCK; i++) block_out[i] = DMA_DATA[i];
     clear_arena();
-    return error ? error : "GPT_PASS";
+    return error ? error : block_out ? "READ_PASS" : "GPT_PASS";
+}
+
+const char *dre_ufs_read_guarded(const struct dre_dma_route *route, struct dre_ufs_read_state *s,
+                               dre_ufs_dma_guard guard, void *cookie)
+{
+    /* The probe caller need not initialize its output structure. */
+    *s = (struct dre_ufs_read_state){0};
+    return transaction(route, s, guard, cookie, 0, 0);
+}
+
+const char *dre_ufs_read_block_guarded(const struct dre_dma_route *route,
+                                     struct dre_ufs_read_state *s,
+                                     dre_ufs_dma_guard guard, void *cookie,
+                                     uint32_t lba, uint8_t out[4096])
+{
+    if (!out) return "BUFFER_INVALID";
+    return transaction(route, s, guard, cookie, lba, out);
 }

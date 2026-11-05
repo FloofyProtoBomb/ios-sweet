@@ -50,9 +50,14 @@ Evidence: work/qemu-driver-prep/result.json and kernel-log.txt. Privacy scan
 passes (no device identifiers or proprietary firmware in the image).
 The QEMU-only CPU-affinity option is absent from phone boot arguments.
 
-Package this as outputs/de2118-dma-touch-test.img, with
+Packaged as outputs/de2118-dma-touch-test.img (16719872 bytes), with
 dma-touch-test-manifest.json and ios-dre-driver-source.zip using
-work/package-driver-prep.py after committing. Its operator helper waits
+work/package-driver-prep.py. Functional source baddfef412bbc4ffdc977222fd82d1a889834861
+was published on dre-next-test as 663708ccaa5da9171df0664d361efda26995e212;
+both source trees are bfb36b8fec0bb67dcc04f74527af17d399f57cdb. The
+source archive and image passed private-identifier exclusion scans.
+work/driver-prep-operator.py is pinned to image ce4ffafd and restore d12c5d92.
+Its operator helper waits
 up to 15 minutes for fastboot restoration, rather than expiring while the
 user takes a photo. Do not start it until a specifically approved test
 flash/reboot has completed. No new test is authorized yet.

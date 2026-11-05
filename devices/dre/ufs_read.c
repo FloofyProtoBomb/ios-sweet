@@ -16,6 +16,8 @@ extern int dre_write32(uintptr_t address, uint32_t value);
 #define RUN_STOP 0x60
 #define IE 0x24
 #define BLOCK 4096u
+#define WAIT_TICKS UINT64_C(9600000) /* 500 ms at the checked 19.2 MHz */
+#define WAIT_STALLED_POLLS (1u << 20)
 
 /* Kernel ownership uses an entire 16K page outside XNU's managed RAM.
  * The native adapter maps RAM Normal Non-cacheable and provides its physical
@@ -67,15 +69,36 @@ static void fence(void) {
 static int read_reg(uint32_t off, uint32_t *out) { return dre_read32(HOST + off, out); }
 static int write_reg(uint32_t off, uint32_t value) { return dre_write32(HOST + off, value); }
 
-static int wait_reg(uint32_t off, uint32_t mask, uint32_t expected)
+static int wait_reg_elapsed(uint32_t off, uint32_t mask, uint32_t expected,
+                            uint64_t *duration)
 {
     uint64_t start = ticks();
-    uint32_t value;
-    do {
-        if (!read_reg(off, &value)) return 0;
-        if ((value & mask) == expected) return 1;
-    } while (ticks() - start < 9600000); /* 500 ms at the checked 19.2 MHz */
-    return 0;
+    uint64_t elapsed = 0;
+    unsigned stalled_polls = 0;
+    int matched = 0;
+    while (elapsed < WAIT_TICKS && stalled_polls < WAIT_STALLED_POLLS) {
+        uint32_t value;
+        if (!read_reg(off, &value)) break;
+        matched = (value & mask) == expected;
+        if (matched && !duration) break;
+        /* Ignore backward samples but accept small forward deltas across wrap.
+         * Bound polling even if the counter stops advancing. */
+        uint64_t delta = ticks() - start;
+        if (delta < (UINT64_C(1) << 63) && delta > elapsed) {
+            elapsed = delta;
+            stalled_polls = 0;
+        } else {
+            stalled_polls++;
+        }
+        if (matched) break;
+    }
+    if (duration) *duration = elapsed;
+    return matched;
+}
+
+static int wait_reg(uint32_t off, uint32_t mask, uint32_t expected)
+{
+    return wait_reg_elapsed(off, mask, expected, 0);
 }
 
 static uint64_t be(const volatile uint8_t *p, unsigned bytes)
@@ -105,9 +128,8 @@ static void clear_arena(void)
     for (unsigned i = 0; i < ARENA_BYTES / 8; i++) p[i] = 0;
 }
 
-static void timeout_snapshot(struct dre_ufs_read_state *s, uint64_t start)
+static void timeout_snapshot(struct dre_ufs_read_state *s)
 {
-    s->command_ticks = ticks() - start;
     s->fault_valid = DRE_UFS_FAULT_CAPTURED;
     fence();
     s->fault_ocs = DMA_RING[2] & 255;
@@ -163,9 +185,10 @@ static const char *submit_data(struct dre_ufs_read_state *s, unsigned op, uint32
     if (op == 0x2a) for (unsigned i = 0; i < BLOCK; i++) DMA_DATA[i] = input[i];
     fence();
     if (!write_reg(DOORBELL, 1)) return "DOORBELL_FAULT";
-    uint64_t start = ticks();
-    if (!wait_reg(DOORBELL, 1, 0)) { timeout_snapshot(s, start); return "COMMAND_TIMEOUT"; }
-    s->command_ticks = ticks() - start;
+    if (!wait_reg_elapsed(DOORBELL, 1, 0, &s->command_ticks)) {
+        timeout_snapshot(s);
+        return "COMMAND_TIMEOUT";
+    }
     fence();
     if (s->guard && !s->guard(s->guard_cookie)) { s->guard_lost = 1; return "DMA_GUARD_CHANGED"; }
     if (!write_reg(0x20, 1)) return "ACK_FAULT";

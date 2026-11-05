@@ -17,6 +17,7 @@ HERE = Path(__file__).resolve().parent
 READ = C.CFUNCTYPE(C.c_int, C.c_size_t, C.POINTER(C.c_uint32))
 WRITE = C.CFUNCTYPE(C.c_int, C.c_size_t, C.c_uint32)
 GUARD = C.CFUNCTYPE(C.c_int, C.c_void_p)
+TICKS = C.CFUNCTYPE(C.c_uint64)
 class Route(C.Structure):
     _fields_ = [('v', C.c_uint32 * 6), ('matches', C.c_uint), ('physical', C.c_int), ('translated', C.c_int)]
 class State(C.Structure):
@@ -43,9 +44,10 @@ volatile uint8_t *dre_kernel_ufs_arena;
 uint64_t dre_kernel_ufs_arena_pa;
 int (*read_cb)(uintptr_t, uint32_t *);
 int (*write_cb)(uintptr_t, uint32_t);
+uint64_t (*tick_cb)(void);
 int dre_read32(uintptr_t a, uint32_t *v) { return read_cb(a,v); }
 int dre_write32(uintptr_t a, uint32_t v) { return write_cb(a,v); }
-uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return t += 1000000; }
+uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return tick_cb ? tick_cb() : (t += 1000000); }
 ''')
     dll = args.out / ('engine.dll' if sys.platform == 'win32' else 'engine.so')
     cells = args.out / 'cells.c'
@@ -128,23 +130,37 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return t += 1000000; }
     struct.pack_into('<I', header, 16, zlib.crc32(header[:92]))
     payload = bytes((i * 17 + 3) % 256 for i in range(4096))
     disk = {1: bytes(header), 2: bytes(entries), 100: payload}
+    tick_hook = C.c_void_p.in_dll(api, 'tick_cb')
     for mode in ('pass', 'guard_before', 'guard_after', 'timeout', 'ocs', 'restore', 'short',
                  'timeout_restore', 'timeout_power_off', 'timeout_power_unreadable', 'timeout_layer_unreadable'):
         regs = {0: 1 << 24, 0x34: 1, 0x30: 3, 0x58: 0, 0x78: 0,
                 0x50: 0x81000000, 0x54: 0, 0x60: 1, 0x24: 0x1234, 0x20: 0x100}
         regs.update({0x38 + i * 4: 0x80000001 + i for i in range(5)})
         commands = []; active_mode = 'pass'; callback_errors = []
+        pending_polls = 0
+        timer_samples = iter(())
+        @TICKS
+        def counter():
+            return next(timer_samples, 100000001)
         @READ
         def rd(address, out):
+            nonlocal pending_polls
             if address == 0x01445004:
                 if active_mode == 'timeout_power_unreadable': return 0
                 out[0] = 0 if active_mode == 'timeout_power_off' else 1 << 31
                 return 1
             if active_mode == 'timeout_layer_unreadable' and address == 0x04804040: return 0
             if address - 0x04804000 not in regs: return 0
-            out[0] = regs[address - 0x04804000]; return 1
+            offset = address - 0x04804000
+            out[0] = regs[offset]
+            if offset == 0x58 and pending_polls:
+                pending_polls -= 1
+                if not pending_polls:
+                    regs[0x58] = 0
+            return 1
         @WRITE
         def wr(address, value):
+            nonlocal pending_polls, timer_samples
             try:
                 off = address - 0x04804000
                 assert off in (0x20, 0x24, 0x50, 0x54, 0x58, 0x5c, 0x60)
@@ -181,7 +197,12 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return t += 1000000; }
                 arena[0x600] = 0x20 if op == 0xff else 0x21
                 arena[0x603] = command[3]
                 if active_mode == 'short': arena[0x601] = 0x20
-                regs[0x58] = 0
+                if active_mode == 'counter_backstep' and op == 0x28 and command[18:22] == bytes.fromhex('00000002'):
+                    pending_polls = 2
+                    timer_samples = iter((100000000, 100000000, 99999999, 100000001))
+                    tick_hook.value = C.cast(counter, C.c_void_p).value
+                else:
+                    regs[0x58] = 0
                 return 1
             except BaseException as error:
                 callback_errors.append(error); return 0
@@ -227,6 +248,16 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return t += 1000000; }
             commands.clear()
             assert read(C.byref(route), C.byref(state), guard, None, 1000, out) == b'LBA_RANGE'
             assert not commands; checks += 1
+            # Keep the fifth command pending while CNTVCT moves backward one tick.
+            active_mode = 'counter_backstep'
+            try:
+                result = probe(C.byref(route), C.byref(state), guard, None)
+            finally:
+                tick_hook.value = None
+            assert result == b'GPT_PASS', (active_mode, result)
+            assert commands == [0xff, 0, 0x9e, 0x28, 0x28]
+            assert state.command_lba == 2 and state.command_ticks == 1 and not state.fault_valid
+            checks += 1
     for mode, expected, issued in (
         ('pass', b'WRITE_PASS', [0x2a,0x35]),
         ('guard_before', b'DMA_GUARD_BLOCKED', []),

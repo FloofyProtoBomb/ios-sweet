@@ -108,3 +108,54 @@ SpringBoard display, Setup.app or physical interrupt performance.
 latency tracing instead of the development panic, because host scheduling
 delays under TCG are not handset timing evidence. It does not change the
 production build; the handset readiness validator forbids that argument.
+
+The following virtual run progressed through many real daemons, including
+backboardd, keybagd and watchdogd, before a ticket-lock timeout in the
+processor-set scheduler lock. The observed threshold was only three million
+ticks (48 ms at the virtual 62.5 MHz timebase). The owner diagnostic was zero,
+which can occur in the documented acquisition-before-owner-store window;
+the captured post-panic register dump cannot identify the preceding owner.
+Host descheduling is a hypothesis, not a demonstrated deadlock fix.
+
+For that bounded experiment, `--virtual-ticket-timeout-us 1000000` uses XNU's
+existing `tlto_us` control to retain a one-second ticket-lock panic threshold
+in the virtual payload. This override is also forbidden in handset artifacts.
+A repeated one-second stall still fails and must be investigated; do not
+disable lock diagnostics or describe a threshold change as a kernel fix.
+
+That experiment completed a bounded 300-second observation without a panic.
+Backboardd created two 1125x2436 IOSurfaces and submitted seven observed CLCD
+swaps. Visual inspection of the captured framebuffer showed an Apple logo
+boot screen produced by the actual iOS userspace pipeline; it did not show
+Setup's Hello screen. This is CPU rendering through the simulated framebuffer,
+not Adreno/Metal execution or a physical handset result.
+
+Repeated datamigrator process starts do not establish active migration. A
+separate read-only appliance inspected the stopped scratch image: the plain
+mobile migration preference retained build 20H392, the expected disposition
+and uid/gid 501 with mode 0600; there was no migration sentinel, ByHost
+directory or DataMigration log. Setup completion, local activation and the
+reason the boot display had not advanced remain unproven. The run is recorded
+as `OBSERVED_WITHOUT_PASS_CRITERIA`, not a functional-install PASS.
+
+## Offline process inspection
+
+`ram.bin` is only the initial loader image; it cannot describe later process
+state. For a private offline analysis, add `--capture-final-ram`. After the
+bounded run, with guest CPUs still paused, the runner reads the selected upper
+RAM window into `final-ram.bin` and captures eight bytes at the matching
+kernel's `cpu_ttep`, `allproc`, `native_pt_attr`, `kernel_pmap` and
+`proc_struct_size` globals. These addresses and files, physical base, exact
+length and SHA-256 are recorded in `result.json`. The page-table root and
+process list are required. All-CPU registers and the kernel-log observations
+are captured separately. Guest execution is not extended for this snapshot.
+Keep runtime RAM dumps local and out of Git; they contain userspace/kernel
+memory and are analysis inputs, not portable build artifacts.
+
+The combined 67-patch kernel
+`2d388d12a28ed31dcffb316099604950c747127c5f6edd182985be72a8223f79`
+repeated the eight-core HFS write/flush fixture and independent file readback
+successfully. Its subsequent bounded 300-second iOS run produced eight
+observed CLCD swaps without a panic and retained the Apple-logo boot display.
+Setup had not executed. The paused two-GiB runtime capture completed for
+further process/stack analysis; these observations remain QEMU-only.

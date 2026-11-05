@@ -1,8 +1,11 @@
 # ios-sweet
 
-**OnePlus Nord N200 DE2118.** This fork includes a single-core XNU and RAM-root
-development target. Its build, test results, hardware-driver status and
-Setup Assistant preparation are in [devices/dre/README.md](devices/dre/README.md).
+**OnePlus Nord N200 DE2118.** This fork includes an eight-core XNU development
+target and iPhone X iOS 16.7.16 installation-image preparation. The physical
+phone has passed the diagnostic RAM-root tests; real iOS CPU-rendered frames
+have been observed in QEMU. Setup and native GPU/Metal are unfinished.
+Device-specific evidence and remaining drivers are in
+[devices/dre/README.md](devices/dre/README.md).
 The installation steps below target the Redmi Note 10 Pro.
 
 **Apple's iOS 16 running on a Redmi Note 10 Pro.**

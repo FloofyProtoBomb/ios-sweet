@@ -34,7 +34,7 @@ REQUIRED_ARGS = {'rd':'ufsroot0', 'dre_ufs':'1', 'dre_ufs_rw':'1', 'rootrw':'1',
                  'launchd_unsecure_cache':'1',
                  'sweetfb_noconsole':'1', 'sweetfb_hz':'30'}
 QEMU_ARGS = {'dre_qemu_affinity', 'dre_ufs_map_test', 'dre_ufs_bsd_test', 'dre_ufs_qemu_file',
-             'interrupt-masked-debug-mode'}
+             'interrupt-masked-debug-mode', 'tlto_us'}
 
 
 def require(condition, reason):

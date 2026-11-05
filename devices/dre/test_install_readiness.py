@@ -30,7 +30,7 @@ def main():
     command = ' '.join(f'{key}={value}' for key,value in r.REQUIRED_ARGS.items())
     assert r.inspect_install_arguments(command)['rd'] == 'ufsroot0'; checks += 1
     for option in ('dre_qemu_affinity=1', 'dre_ufs_map_test=1', 'dre_ufs_bsd_test=1',
-                   'dre_ufs_qemu_file=1', 'interrupt-masked-debug-mode=1'):
+                   'dre_ufs_qemu_file=1', 'interrupt-masked-debug-mode=1', 'tlto_us=1000000'):
         reject(lambda:r.inspect_install_arguments(command + ' ' + option), 'QEMU-only')
     reject(lambda:r.inspect_install_arguments(command + ' rootrw=0'), 'duplicate')
     reject(lambda:r.inspect_install_arguments(command.replace('rootrw=1', 'rootrw=0')), 'writable-iOS-root')

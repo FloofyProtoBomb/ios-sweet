@@ -30,6 +30,7 @@ on:
       - "devices/dre/**/*.patch"
       - "devices/dre/stage_xnu.py"
       - "tools/enable-xnu-ccache.py"
+      - "tools/test-enable-xnu-ccache.py"
       - ".github/workflows/xnu.yml"
 
 concurrency:
@@ -87,6 +88,10 @@ jobs:
           xcodebuild -version
           xcrun --find iig
 
+      - name: Verify compiler cache selection
+        if: env.MACHINE_CONFIG == 'DRE'
+        run: python3 tools/test-enable-xnu-ccache.py
+
       - name: Identify compiler cache
         if: env.MACHINE_CONFIG == 'DRE'
         id: compiler-cache
@@ -108,6 +113,7 @@ jobs:
           CCACHE_DIR: ${{ runner.temp }}/ios-sweet-ccache
           CCACHE_COMPILERCHECK: content
           CCACHE_MAXSIZE: 1G
+          CCACHE_STATSLOG: ${{ runner.temp }}/ios-sweet-ccache-${{ github.run_id }}.stats.log
           # keep going after errors so one run reports every compile failure
           MAKEFLAGS: ${{ inputs.keep_going == 'false' && '' || '-k' }}
         run: |
@@ -118,7 +124,20 @@ jobs:
         if: always() && env.MACHINE_CONFIG == 'DRE'
         env:
           CCACHE_DIR: ${{ runner.temp }}/ios-sweet-ccache
-        run: ccache --show-stats
+          CCACHE_STATSLOG: ${{ runner.temp }}/ios-sweet-ccache-${{ github.run_id }}.stats.log
+        run: |
+          mkdir -p out
+          ccache --show-stats
+          test -s "$CCACHE_STATSLOG"
+          ccache --show-log-stats
+          ccache --print-log-stats --format=json > out/compiler-cache-stats.json
+          cp "$CCACHE_STATSLOG" out/compiler-cache-stats.log
+          CALLS=$(jq '(.direct_cache_hit // 0) + (.preprocessed_cache_hit // 0) + (.cache_miss // 0)' out/compiler-cache-stats.json)
+          if [ "$CALLS" -le 0 ]; then
+            echo "::error::No cacheable compiler calls reached ccache in this build"
+            exit 1
+          fi
+          echo "Verified $CALLS cacheable compiler calls in this build"
 
       - name: Verify DRE patch application
         if: always() && env.MACHINE_CONFIG == 'DRE'

@@ -1,11 +1,34 @@
 # OnePlus Nord N200 DE2118
 
-Native storage development: the UI profile now includes an opt-in read-only
-BSD adapter using the UFS engine that passed the handset GPT test. This new
-adapter is not yet handset-validated. `--native-ufs` transfers a dedicated
-uncached low-DDR DMA arena and checks reads through `/dev` from diagnostic
-PID 1. It requires the new native kernel, retains the RAM root and does not
-install iOS. The existing tested images remain unchanged.
+**Measured status, 2026-11-05.** The target is iPhone X (`iPhone10,3`/D22AP)
+iOS 16.7.16, build 20H392. The phone still runs its restored LineageOS image.
+The port's full iOS image is prepared locally; it has not been installed on
+the N200. The original Redmi instructions and results do not establish N200
+hardware support.
+
+| Area | Physical DE2118 evidence | Local validation |
+| --- | --- | --- |
+| CPU and RAM | Eight CPUs, diagnostic PID 1 and a 2,047 MiB usable window passed | Eight-core XNU and real HFS/iOS userspace boot in QEMU; all 4 GiB are not exposed |
+| Storage | Early shim reads the real GPT; latest native adapter test timed out before disk registration | New Normal-NC/power/timeout candidate, guarded engine, BSD interface, real HFS writes/flushes and independent file readback pass; physical correction remains untested |
+| iOS filesystem | No iOS userdata install performed | Exact 54,431,395,840-byte journaled HFSX image, 41,844,289,536 bytes free, complete sparse transport and clean filesystem audit |
+| IOSurface/display | Diagnostic console works | Actual backboardd creates surfaces and produces CPU-rendered Apple-logo frames; retained-reference/category fixes pass full-kernel checks |
+| Setup/activation | Not demonstrated | SpringBoard starts; latest five-minute run ends at the Apple logo, with LaunchServices database initialization still waiting |
+| GPU/Metal | GPU observed powered off | Guarded A619 primitives and a real compiled Metal acceptance workload exist; native execution, graphics synchronization/presentation and a compatible Metal runtime/compiler remain unfinished |
+| Touch/USB | Hardware and firmware/layout probes only | No working native touch input, USB gadget or iTunes restore compatibility |
+| Wi-Fi/Bluetooth | No native radio tests | [Pinned resource/dependency inventory](radio/README.md); drivers are absent |
+
+The combined kernel [CI 41976101399](https://github.com/FloofyProtoBomb/ios-sweet/actions/runs/41976101399)
+passes compilation, linking, all 67 patches and Metal test-program compilation.
+Its kernel SHA-256 is `2d388d12a28ed31dcffb316099604950c747127c5f6edd182985be72a8223f79`.
+These host and simulator results do not establish native UFS, Setup or Metal
+operation on the phone. The actual Metal acceptance workload has not passed.
+
+`--native-ufs` retains the diagnostic RAM root and read-only userdata checks.
+The separate `--install-root` profile omits that RAM disk and enables the
+userdata-only write capability for the real HFS root; see
+[installation prerequisites and evidence gates](INSTALL_READINESS.md).
+Every phone partition write still needs its specific approval. Existing
+tested images and original backups remain unchanged.
 
 The next diagnostic also selects `--ram-mib 2048`: a 2 GiB upper-memory
 window validated against the live RAM and reservation map. QEMU boots with
@@ -60,7 +83,8 @@ valid synthetic FDT ownership. It exercises the real devfs registration,
 open, ioctl, seek, physio/strategy read and rejected write-open paths with an
 in-memory disk, without accessing Qualcomm MMIO. Its driver status begins
 `VIRTUAL_TEST`; success does not establish physical UFS operation. Handset
-payloads must omit all three QEMU-only arguments. The empty-ownership,
+payloads must omit every QEMU-only argument, including file-provider and
+simulator timing options. The empty-ownership,
 mapping-lifetime and simulated BSD cases must pass before another handset
 test.
 
@@ -90,7 +114,11 @@ Setup.app and the iOS system volume are separate.
 The DRE Actions workflow prepares a content-checked compiler cache, separated
 by Xcode/SDK, build-script revision and profile. It caches compiler results,
 keeps full patch verification and linking, and prints hit/miss statistics.
-The first run fills the cache; the time saved on later runs must be measured.
+The original hook was bypassed by DXB's exported compiler variables; the
+corrected hook now wraps the selected compiler after those guards. Ten real
+GNU make tests pass, and the workflow requires per-build cacheable-call
+statistics. Actual macOS cache population, hits and time savings remain to be
+measured on the next necessary kernel build.
 Documentation and standalone diagnostic-test changes do not trigger a new
 kernel build. A missing cache still performs the normal compilation.
 

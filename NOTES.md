@@ -1,6 +1,6 @@
 # iOS 16 on sweet (Redmi Note 10 Pro, SM7150) - working notes
 
-## DE2118 handoff, 2026-11-04
+## DE2118 handoff, 2026-11-05
 
 ACTIVE INSTALL PREPARATION, UPDATED2026-11-05 (USER AUTHORIZED SUBAGENTS).
 User wants native UFS timeout fixed and iOS install prerequisites including
@@ -9,13 +9,41 @@ write/test approval exists. Phone is verified restored Lineage, NO WATCHER.
 Keep original boot/logo, modem/persist/recovery/GPT intact. Apple inputs/private
 identifiers never enter git. Large working artifacts on D:/CodexWork/dre-ios-install.
 
-CURRENT KERNEL fce3ae657868be30c164dc6d2eb9001f3c215a53597813ea8998ba2172754a4d
-at kernel/kernel.development.dre. Full CI41972412354 build job127063457920
-SUCCESS, all66patches. Workflow failure was only old Metal SDK header error;
+CURRENT KERNEL 2d388d12a28ed31dcffb316099604950c747127c5f6edd182985be72a8223f79
+at kernel-combined-67/kernel.development.dre. Combined CI41976101399 SUCCESS
+both build127075195281 and metal-probe127075195751, all67patches.
+ZIP610e22e2f7f2d90057a31845c9b0abb5f6d4c843db942d6499b58a8d43e6f311,
+artifact13392495691, ZIPdigest/CRC/memberSHA verified. Prior kernel fce3ae...
+at kernel/kernel.development.dre remains immutable baseline from41972412354.
+That old workflow failure was only an old Metal SDK header error;
 dedicated actual Metal compile CI41972992128 SUCCESS after public CoreVideo fix.
 Metal executable/metallib/MSL installed in immutable root; never run, not driver.
 Remote dre-storage7a56fea treefcf47bed matches local7526af7 kernel sources.
-Next combined kernel CI must include new UFS power/timeout and IOSurface fix.
+Combined kernel CI41976101399 built remotef69ff18073e22dc5ca8dd45995212c76ef383170,
+treecb180e7f0f7d2ecece9fcaf9fd24f5b691b0463c byte-identical to local006594b.
+It includes UFS power/timeout guards and the tested IOSurface fix (67patches).
+Build-combined-67 diagnostic and build-ios-root-v3 install boot both built.
+Install SHA c015e7ac99ff4d1d45deb34eca2dcd9f69e7ac168dff66bbbbeed05e35a6d094.
+All3 fullkernel diagnostic QEMU paths PASS (BSD, owned NC/FDT map, refusal),
+6 exact-image guarded cases +private GPT and27 init syscall cases PASS.
+New67kernel actualHFS RW/flush fixture +independent hostreadback PASS.
+The combined67 full run finished300s without panic,8 actual CPU-rendered
+CLCD swaps, Apple-logo-only (Setup not exec-observed). Private paused2GiB
+upperRAM/globals capture SHA530a436f1d2180b1321512eba0f13f0687c38cf445ac9dc1eac9e28196ffa2af.
+Fresh full root/transport/boot/backup audit67 PASSES host_prepared=true;
+installation_hardware_ready/requested_scope_ready false, exact report
+outputs/ios-root-preparation/install-readiness-67.json and combined-67-status.json.
+All short VMs stopped. Readiness agent NOW runs fresh900s observation
+qemu-ios-combined-67-long session71802 from immutable8ba root/current2d
+kernel and c015installboot, same QEMU-only timing controls and final snapshot.
+GPU agent's read-only stack walk found128processes, backboardd29threads,
+SpringBoard10; proc_struct_size1920 confirmed compiled layout. SpringBoard
+waits _LSContextInitCommon, lsd waits database seeding and GetEligiblePersonaForBundle
+via UserManagement. usermanagerd main normalrunloop; workerTH_RUN in CFString/
+NSXPC incoming-peer initialization. No persona API error or deadlock proven;
+no datamigrator alive at pause. Longer observation distinguishes slow first
+initialization before any configuration change. No renderer/migration forcing.
+This remains QEMU file provider, not physical native UFS proof.
 
 FULL ROOT images/ios-dre-20H392-full.img exact54431395840B, SHA
 8ba6026a82bcd6e4b9903cd1d33061e8d914a97800f61d0575025b95acdb20bc.
@@ -39,8 +67,17 @@ SHAd8f4d111b77a1faddaf7aa46aa5f3bf6c3d01afbc1a49b61f325f09173cae862.
 Fullroot qemu-ios-root-v2 passed early boot and exec SpringBoard PID26, then
 TCG interrupt-latency hygiene panic. No Setup/UI rendering proof. v3 uses
 QEMU-only interrupt-masked-debug-mode=1 TRACE; physical checks unchanged.
-Readiness agent owns qemu-ios-root-v3 session57057 (clone/boot), cumulative
-kernel logs/framebuffer/register snapshots.45 artifact checks PASS (f0a1936).
+v3 passed prior faults and started many Apple daemons, then ticket-spinlock
+timeout on pset0 scheduler lock at48ms virtual threshold; TCG scheduling delay
+is plausible but not proven. Preserve v3. Readiness agent owns fresh v4 with
+QEMU-only tlto_us=1000000 (still bounded1s), never handset timing overrides.
+Cumulative logs/registers retained.45 artifact checks PASS (f0a1936); adding
+explicit phone rejection for tlto_us. v4 finished300s NO PANIC with real
+backboardd IOSurface creation and7 CLCD swaps, visually Apple-logo-only.
+No Setup launch/Hello/interaction proven. Frozen screenshot/observations in
+outputs/ios-root-preparation. All baseline VMs stopped. Migration prefs20H392
+correct after RO readback; no migration sentinel/plugin logs/progressbar,
+so datamigrator process launches do not establish active migration.
 
 REAL HFS REGRESSION qemu-hfs-root-v1 PASS with unchanged kernel and actual
 64MiB journaled HFSX file root: static PID1 create/write/fsync/F_FULLFSYNC,
@@ -83,6 +120,13 @@ sources. WiFi/BT drivers absent; no working radio claim. No phone operations.
 Subagents: gpu_metal owns gpu/**; install_readiness owns validator/QEMU root;
 ios_install_image finished frozen image, radio inventory and independent
 native UFS review. Root owns staging/UFS/builder/NOTES/publishing.
+Compiler-cache actual bypass diagnosed: DXB exports CC/CXX, so old guarded
+default-only prefixes never ran (1059 directcompiles,0ccache in old25MB log).
+87dafff wraps selected compilers after guards;10 realGNUmake tests and actual
+MakeInc.cmd byte preservation/idempotence PASS.39a6e8a adds workflow test,
+per-build CCACHE_STATSLOG/JSON and requires cacheable calls>0. YAML/all13 shell
+blocks PASS. NOT RUN ON MACOS YET; no measured cache-hit/speedup claim. Do not
+rebuild kernel solely for cache measurement; include in next needed source CI.
 This active block supersedes all preparation statuses below.
 
 LATEST PHYSICAL RESULT1104ecab: photo20261104_233145.jpg confirms

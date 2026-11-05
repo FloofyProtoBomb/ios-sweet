@@ -23,11 +23,11 @@ import time
 import uuid
 import zlib
 
-from xnu import mkadt, mkpayload, SPLASH
+from xnu import mkadt, mkpayload, SPLASH, BASE
 from virt_payload import virtualize
 from qemu_ui import symbol_values
 from test_driver_prep import fixture
-from install_readiness import digest, inspect_hfs, require
+from install_readiness import digest, inspect_hfs, inspect_install_arguments, require
 
 HERE = Path(__file__).resolve().parent
 CHECK_CONTENT = b'DRE disposable QEMU HFSX root write/readback, not physical UFS.\n'
@@ -133,7 +133,7 @@ def sparse_copy(source, target):
     return sha.hexdigest()
 
 
-def virtual_payload(build, kernel, out, latency_trace=False):
+def virtual_payload(build, kernel, out, latency_trace=False, ticket_timeout_us=None):
     info = json.loads((build / 'build-info.json').read_text(encoding='utf-8'))
     require(info.get('install_root') and info.get('ui_services') and info.get('native_ufs'),
             'requires a production --install-root UI/native-UFS build')
@@ -162,6 +162,7 @@ def virtual_payload(build, kernel, out, latency_trace=False):
         first + struct.pack('<Q', zlib.crc32(first)))
     adt = out / 'qemu-root.adt'; adt.write_bytes(mkadt.adt.serialize(root))
     command = (build / 'payload.bin').read_bytes()[0x48:0x48 + 608].split(b'\0', 1)[0].decode()
+    inspect_install_arguments(command)
     tokens = shlex.split(command)
     require('rd=ufsroot0' in tokens and 'rootrw=1' in tokens and 'dre_ufs_rw=1' in tokens,
             'production payload is not the writable HFS root profile')
@@ -173,6 +174,9 @@ def virtual_payload(build, kernel, out, latency_trace=False):
         # XNU arm_init.c's existing tunable retains trace checks, avoiding
         # its development-only 0xd0000-tick panic threshold in the VM.
         command += ' interrupt-masked-debug-mode=1'
+    if ticket_timeout_us is not None:
+        require(ticket_timeout_us == 1000000, 'only the bounded one-second virtual ticket timeout is supported')
+        command += ' tlto_us=1000000'
     require(len(command.encode()) < 608, 'virtual root arguments exceed boot header')
     payload, _ = mkpayload.build(str(kernel), str(adt), command, None)
     (out / 'qemu-payload.bin').write_bytes(payload)
@@ -192,8 +196,10 @@ def run(args):
     try:
         result['source_root_sha256'] = sparse_copy(source, out / 'dre-root.img')
         print('Copied root into isolated writable QEMU scratch file', flush=True)
-        info, payload, dt_pa = virtual_payload(build, kernel, out, args.virtual_latency_trace)
+        info, payload, dt_pa = virtual_payload(build, kernel, out, args.virtual_latency_trace,
+                                              args.virtual_ticket_timeout_us)
         result['virtual_interrupt_hygiene_mode'] = 'trace' if args.virtual_latency_trace else 'production-default'
+        result['virtual_ticket_timeout_us'] = args.virtual_ticket_timeout_us
         result['kernel_sha256'] = info['kernel_sha256']
         result['production_boot_sha256'] = info['image_sha256']
         spec = importlib.util.spec_from_file_location('qemu_common', HERE.parents[1] / 'tools/qemu-sweet.py')
@@ -206,7 +212,8 @@ def run(args):
                         f'-DENTRY_PA={entry}', str(HERE / 'qemu_start.S'), '-o', str(out / 'start.elf')], check=True)
         subprocess.run([args.zig, 'objcopy', '-O', 'binary', '-j', '.text', str(out / 'start.elf'),
                         str(out / 'start.bin')], check=True)
-        symbols = symbol_values(kernel.read_bytes(), {'_iso_font', '_msgbufp'})
+        symbols = symbol_values(kernel.read_bytes(), {'_iso_font', '_msgbufp', '_cpu_ttep', '_allproc',
+                                '_native_pt_attr', '_kernel_pmap', '_proc_struct_size'})
         font = common.payload_data(payload, symbols['_iso_font'], 4096)
         ram_gib = max(4, 3 + (info.get('ram_mib', 512) + 1023) // 1024)
         command = [args.qemu, '-M', 'virt,gic-version=3,virtualization=on', '-cpu', 'cortex-a76',
@@ -227,18 +234,18 @@ def run(args):
                     replies.put(line)
                 replies.put(None)
             threading.Thread(target=read_replies, daemon=True).start()
-            def receive():
+            def receive(timeout=30):
                 try:
-                    line = replies.get(timeout=30)
+                    line = replies.get(timeout=timeout)
                 except queue.Empty as error:
-                    raise TimeoutError('QEMU did not answer QMP within 30 seconds') from error
+                    raise TimeoutError(f'QEMU did not answer QMP within {timeout} seconds') from error
                 require(line is not None, 'QEMU closed QMP: ' + (out / 'stderr.txt').read_text(encoding='utf-8'))
                 return json.loads(line)
-            def qmp(operation, arguments=None):
+            def qmp(operation, arguments=None, timeout=30):
                 process.stdin.write(json.dumps({'execute':operation, 'arguments':arguments or {}}) + '\n')
                 process.stdin.flush()
                 while True:
-                    reply = receive()
+                    reply = receive(timeout)
                     if 'error' in reply:
                         raise RuntimeError(str(reply['error']))
                     if 'return' in reply:
@@ -291,10 +298,11 @@ def run(args):
                 result['status'] = 'TIMEOUT' if tags else 'OBSERVED_WITHOUT_PASS_CRITERIA'
             result['expected_markers'] = list(tags)
             result['observed_markers'] = [tag for tag in tags if tag in screen + '\n' + log]
-            result['simulated_file_provider_registered'] = 'DRE UFS: QEMU file provider registered' in log
             result['framebuffer_png'] = str(out / 'fb.png')
             all_text = '\n'.join(history) + '\n' + screen
+            result['simulated_file_provider_registered'] = 'DRE UFS: QEMU file provider registered' in all_text
             result['hfs_mount_records'] = re.findall(r'hfs: mounted [^\r\n]+', all_text)
+            result['framebuffer_swap_records'] = re.findall(r'DRE FB: swap [^\r\n]+', all_text)
             result['launchd_exec_logged'] = bool(re.search(r'\bexec launchd\b', all_text))
             result['userspace_exec_records'] = sorted(set(re.findall(r'\bexec ([A-Za-z0-9_.-]+)', all_text)))
             result['panic_observed'] = 'panic(cpu' in all_text
@@ -306,6 +314,30 @@ def run(args):
                         'fixture did not initialize every requested virtual CPU')
                 result['hfs_pid1_posix_write_readback'] = True
                 result['hfs_fullfsync_and_both_flush_ioctls'] = True
+            if args.capture_final_ram:
+                # Guest CPUs remain stopped throughout the globals and RAM
+                # reads. This is a private runtime snapshot, unlike ram.bin
+                # which contains only the initial loader image.
+                capture = {'status':'INCOMPLETE', 'cpus_paused':True, 'physical_base':BASE,
+                           'bytes':info['ram_mib'] << 20, 'globals':{},
+                           'missing_optional_globals':[]}
+                result['final_memory_capture'] = capture
+                for name in ('_cpu_ttep', '_allproc', '_native_pt_attr', '_kernel_pmap', '_proc_struct_size'):
+                    if name in symbols:
+                        filename = name.lstrip('_') + '.bin'
+                        virtual(symbols[name], 8, filename)
+                        capture['globals'][name] = {'address':symbols[name], 'bytes':8, 'file':filename}
+                    else:
+                        capture['missing_optional_globals'].append(name)
+                require('_cpu_ttep' in capture['globals'] and '_allproc' in capture['globals'],
+                        'runtime capture requires the page-table root and process-list symbols')
+                print('Capturing paused upper RAM for offline process/stack analysis', flush=True)
+                qmp('pmemsave', {'val':BASE, 'size':capture['bytes'], 'filename':'final-ram.bin'}, timeout=60)
+                dump = out / 'final-ram.bin'
+                require(dump.stat().st_size == capture['bytes'], 'truncated final RAM snapshot')
+                capture['file'] = str(dump)
+                capture['sha256'] = digest(dump)
+                capture['status'] = 'COMPLETE'
             print(json.dumps({'status':result['status'], 'observed_markers':result['observed_markers']}, indent=2), flush=True)
     except Exception as error:
         result['status'] = 'FAIL'; result['error'] = str(error)
@@ -331,6 +363,10 @@ if __name__ == '__main__':
     parser.add_argument('--fixture', action='store_true', help='require the static HFS PID1 write/flush acceptance markers')
     parser.add_argument('--virtual-latency-trace', action='store_true',
                         help='QEMU payload only: trace slow interrupt handlers instead of the development panic')
+    parser.add_argument('--virtual-ticket-timeout-us', type=int, choices=(1000000,),
+                        help='QEMU payload only: retain a bounded one-second ticket-lock timeout')
+    parser.add_argument('--capture-final-ram', action='store_true',
+                        help='at final pause, privately capture upper RAM and translation/process globals for offline analysis')
     parser.add_argument('--expect', action='append', help='additional literal boot marker required for PASS')
     arguments = parser.parse_args()
     require(arguments.seconds > 0, 'timeout must be positive')

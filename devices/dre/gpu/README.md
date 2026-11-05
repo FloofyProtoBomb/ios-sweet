@@ -103,6 +103,11 @@ the real CPU allocation/mapping implementation, and the incremental kernel
 lifetime/use-count patch with production-method concurrency tests. This is
 separate from A619 GPU mapping, synchronization and Metal support.
 
+[UI_BOOT_DIAGNOSIS.md](UI_BOOT_DIAGNOSIS.md) records the actual CPU-frame boot
+evidence and LaunchServices dependency observed in frozen QEMU memory. The
+included configuration-derived, read-only saved-stack inspector verifies
+capture hashes before inspection; it does not attach to or modify the phone.
+
 ## Metal acceptance executable
 
 `metal_probe.m` calls Apple's real Metal API. `build_metal_probe.sh OUT`

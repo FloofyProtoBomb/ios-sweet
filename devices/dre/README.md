@@ -12,7 +12,8 @@ window validated against the live RAM and reservation map. QEMU boots with
 all eight cores and reports 2,047 MiB after the 1 MiB panic-log reservation.
 The corrected handset test reported eight active CPUs, 2,047 MiB and a
 running PID 1. This validates the reported window, not every RAM cell. Native
-BSD disk access still fails at an unknown stage. This does not expose all
+UFS initialization reaches its probe, then reports `IO:COMMAND_TIMEOUT`.
+BSD disk devices are not registered, so the first open returns ENOENT. This does not expose all
 4 GiB of installed RAM. The default remains 512 MiB.
 
 The first combined handset test reached a kernel panic in temporary FDT
@@ -24,6 +25,12 @@ and the empty-ownership refusal test must pass before another handset test.
 The corrected kernel passed both QEMU cases and then booted the handset
 without the mapping panic. Its early shim read the real GPT successfully;
 the native BSD check reported failure. These are separate storage paths.
+The subsequent image `1104ecab` confirmed the native failure is a command
+timeout during driver initialization, before device registration. It retained
+eight CPUs, 2,047 MiB, PID 1 and the early GPT pass. Its command number and
+opcode are not yet known. LineageOS was restored and its boot/logo hashes
+verified afterward. Successful simulated BSD tests do not establish physical
+native UFS operation.
 
 The next diagnostic exposes read-only `kern.dre_ufs_state` as
 `NATIVE_DRIVER=phase:reason` and caches the first failing PID 1 stage and
@@ -79,6 +86,13 @@ Setup.app and the iOS system volume are separate.
 | Native hardware survey | The handset's native generic image reached PID 1 with identity checks PASS. UFS reports LINK_READY with its existing clocks; USB identifies DWC3 v3.30a in device mode. Touch lacks the expected APSS clock votes, and both GPU domains report powered off. These results do not establish sector reads, USB enumeration, touch input or rendering. The original LineageOS boot image and installed artwork were verified by device readback after the approved restore. |
 
 ## Rebuild
+
+The DRE Actions workflow prepares a content-checked compiler cache, separated
+by Xcode/SDK, build-script revision and profile. It caches compiler results,
+keeps full patch verification and linking, and prints hit/miss statistics.
+The first run fills the cache; the time saved on later runs must be measured.
+Documentation and standalone diagnostic-test changes do not trigger a new
+kernel build. A missing cache still performs the normal compilation.
 
 Use Python 3.10 or later and Zig 0.14.1 on the host. The probe has no Apple
 firmware dependency. From the repository root run

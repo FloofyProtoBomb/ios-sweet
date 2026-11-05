@@ -21,10 +21,14 @@ set -euo pipefail
 [[ $# -ge 4 ]] || { sed -n '2,12p' "$0"; exit 2; }
 os=$(realpath "$1") sysos=$(realpath "$2") appos=$(realpath "$3") out=$4 size=${5:-16G}
 [[ ! -e $out ]] || { echo "refusing to overwrite $out" >&2; exit 1; }
+backend=${DRE_ROOT_MOUNT_BACKEND:-kernel}
+[[ $backend == kernel || $backend == guestfs ]] || { echo "invalid root mount backend" >&2; exit 2; }
 
 # Pre-flight tool check
 missing_tools=()
-for tool in apfs-fuse mkfs.hfsplus rsync; do
+required=(apfs-fuse mkfs.hfsplus fsck.hfsplus rsync)
+[[ $backend == guestfs ]] && required+=(guestfish tar)
+for tool in "${required[@]}"; do
 	command -v "$tool" >/dev/null 2>&1 || missing_tools+=("$tool")
 done
 
@@ -39,8 +43,12 @@ fi
 
 work=$(mktemp -d)
 mounts=()
+unmount_root() {
+	if mountpoint -q "$work/root"; then sudo umount "$work/root"; fi
+}
 cleanup() {
 	local busy=0
+	unmount_root || busy=1
 	for m in "${mounts[@]}"; do
 		if mountpoint -q "$m"; then
 			sudo umount "$m" 2>/dev/null || true
@@ -72,9 +80,17 @@ apfs_mount "$sysos" sysos
 apfs_mount "$appos" appos
 
 truncate -s "$size" "$out"
+expected_bytes=$(stat -c %s "$out")
 mkfs.hfsplus -s -J -v iOSRoot "$out"
 mkdir "$work/root"
-sudo mount -t hfsplus -o loop,force "$out" "$work/root"
+if [[ $backend == guestfs ]]; then
+	# Stage on the Linux filesystem, then upload a single tar stream. This
+	# preserves owners, modes and hard links without per-file FUSE round trips.
+	# It also works on WSL hosts whose own kernel has no HFS+ module.
+	echo "root staging directory: $work/root"
+else
+	sudo mount -t hfsplus -o loop,force "$out" "$work/root"
+fi
 mounts=("$work/root" "${mounts[@]}")
 
 copy() {
@@ -127,9 +143,29 @@ printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
 	'<plist version="1.0"><dict><key>KeyBagKeys</key><data>U1dFRVQ=</data></dict></plist>' |
 	sudo install -m 0600 -o 0 -g 0 /dev/stdin "$work/root/private/var/keybags/systembag.kb"
 
+if [[ ${DRE_ROOT_FIRST_RUN_SETUP:-0} == 1 ]]; then
+	sudo python3 "$(dirname "$0")/sweet-root-tweaks.py" "$work/root" --first-run-setup
+fi
 df -h "$work/root"
-sudo umount "$work/root"
+if [[ $backend == guestfs ]]; then
+	sudo tar --numeric-owner -C "$work/root" -cpf - . |
+		sudo env LIBGUESTFS_BACKEND=direct \
+			"LIBGUESTFS_CACHEDIR=${LIBGUESTFS_CACHEDIR:-/var/tmp}" \
+			"LIBGUESTFS_BACKEND_SETTINGS=${LIBGUESTFS_BACKEND_SETTINGS:-}" \
+			guestfish --rw --format=raw -a "$(realpath "$out")" \
+			run : mount-options rw,force /dev/sda / : tar-in - / : umount-all : sync
+	# A successful guestfish exit closes the appliance before fsck below.
+else
+	unmount_root
+fi
 # Linux hfsplus decomposes some non-ASCII names (localized Shortcuts examples)
 # differently from Apple's tables; let fsck_hfs rewrite them, then verify.
-fsck.hfsplus -f -y "$out" | grep -v 'Illegal name' || true
-fsck.hfsplus -f -n "$out"
+for attempt in 1 2 3; do
+	# Repairing the Unicode catalog can leave volume-header accounting for
+	# the next pass. Only a subsequent successful read-only check is proof.
+	fsck.hfsplus -f -y "$out" | grep -v 'Illegal name' || true
+	python3 "$(dirname "$0")/normalize-hfs-image-size.py" "$out" "$expected_bytes"
+	if fsck.hfsplus -f -n "$out"; then exit 0; fi
+done
+echo "HFS image still fails read-only validation after three repair passes" >&2
+exit 1

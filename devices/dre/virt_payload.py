@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Retain the DRE kernel, init and identity, substituting QEMU virt's GIC/timer."""
 import argparse
+import json
 from pathlib import Path
 import re
 import uuid
@@ -55,5 +56,7 @@ if __name__ == "__main__":
     cmd = (args.out / "payload.bin").read_bytes()[0x48:0x48 + 608].split(b"\0", 1)[0].decode()
     if args.qemu_smp:
         cmd += " dre_qemu_affinity=1"
-    data, _ = mkpayload.build(str(args.kernel), str(adt), cmd, str(args.out / "dre-init.macho"))
+    info=json.loads((args.out/'build-info.json').read_text())
+    ramdisk=None if info.get('install_root') else str(args.out/'dre-init.macho')
+    data, _ = mkpayload.build(str(args.kernel), str(adt), cmd, ramdisk)
     (args.out / "virt-payload.bin").write_bytes(data)

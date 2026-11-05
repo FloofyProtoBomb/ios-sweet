@@ -131,7 +131,7 @@ def tree(identity=None, ui=False, cpus=1, product_path=None, native_ufs=False, r
 
 
 def embed(kernel, out, init_obj, donor=False, identity_path=None,
-          ui=False, cpus=1, product_path=None, native_ufs=False, ram_mib=512):
+          ui=False, cpus=1, product_path=None, native_ufs=False, ram_mib=512, install_root=False):
     data = kernel.read_bytes()
     if donor:
         data = retarget(data)
@@ -144,17 +144,28 @@ def embed(kernel, out, init_obj, donor=False, identity_path=None,
         raise ValueError("--ui-services requires a kernel built with the DRE ui profile")
     if native_ufs and not all(marker in data for marker in
         (b"_dre_ufs_prepare_device\0", b"_dre_dma_boot_owned_ram_allowed\0",
-         b"DRE UFS: transient FDT mapping lifetime PASS", b"dre_ufs_state\0")):
-        raise ValueError("--native-ufs requires the native driver with removable FDT mapping and stage reporting")
+         b"DRE UFS: transient FDT mapping lifetime PASS", b"dre_ufs_state\0",
+         b"DRE UFS: owned Normal-NC DMA mapping PASS")):
+        raise ValueError("--native-ufs requires the native driver with owned Normal-NC DMA and stage reporting")
+    if install_root and (not native_ufs or not ui or not product_path or
+        b'DRE UFS: userdata read-write enabled' not in data):
+        raise ValueError('--install-root requires UI, product metadata and a userdata-RW native kernel')
     adt_path = out / "dre.adt"
     identity = json.loads(identity_path.read_text()) if identity_path else None
     adt_path.write_bytes(tree(identity, ui=ui, cpus=cpus, product_path=product_path, native_ufs=native_ufs, ram_mib=ram_mib))
-    ramdisk = out / "dre-init.macho"
-    ramdisk.write_bytes(mkinit.build(init_obj.read_bytes()))
-    cmdline = f"debug=0xc serial=3 cpus={cpus} keepsyms=1 -enable_kprintf_spam -noprogress rd=md0"
+    ramdisk = None
+    if not install_root:
+        ramdisk = out / "dre-init.macho"
+        ramdisk.write_bytes(mkinit.build(init_obj.read_bytes()))
+    root_device = 'ufsroot0' if install_root else 'md0'
+    cmdline = f"debug=0xc serial=3 cpus={cpus} keepsyms=1 -enable_kprintf_spam -noprogress rd={root_device}"
     if ui:
         cmdline += " msgbuf=65536"  # Retain driver-start records until diagnostic PID 1.
     if native_ufs:
         cmdline += " dre_ufs=1"
-    data, _ = mkpayload.build(str(kernel), str(adt_path), cmdline, str(ramdisk))
+    if install_root:
+        cmdline += (' dre_ufs_rw=1 rootrw=1 unentitled_ios_sim_launch=1 ignition_level=1'
+                    ' sweetfb_noconsole=1 sweetfb_hz=30')
+    if len(cmdline.encode()) >= 608: raise ValueError('boot arguments exceed shim limit')
+    data, _ = mkpayload.build(str(kernel), str(adt_path), cmdline, str(ramdisk) if ramdisk else None)
     (out / "payload.bin").write_bytes(data)

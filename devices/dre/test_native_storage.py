@@ -22,7 +22,9 @@ class Route(C.Structure):
 class State(C.Structure):
     _fields_ = [(n, C.c_uint32) for n in ('caps', 'block', 'ocs', 'response', 'status')] + \
         [(n, C.c_uint64) for n in ('last', 'first', 'blocks')] + \
-        [('commands', C.c_uint), ('safe', C.c_int), ('guard', C.c_void_p), ('cookie', C.c_void_p), ('lost', C.c_int)]
+        [('commands', C.c_uint), ('safe', C.c_int), ('guard', C.c_void_p), ('cookie', C.c_void_p), ('lost', C.c_int)] + \
+        [(n,C.c_uint32) for n in ('last_opcode','command_lba','fault_doorbell','fault_interrupts','fault_hcs','fault_ocs')] + \
+        [('fault_uec',C.c_uint32*5),('command_ticks',C.c_uint64)]
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
@@ -58,6 +60,12 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return t += 1000000; }
     read = api.dre_ufs_read_block_guarded
     read.argtypes = [C.POINTER(Route), C.POINTER(State), GUARD, C.c_void_p, C.c_uint32, C.c_void_p]
     read.restype = C.c_char_p
+    write = api.dre_ufs_write_userdata_guarded
+    write.argtypes = [C.POINTER(Route), C.POINTER(State), GUARD, C.c_void_p, C.c_uint64, C.c_void_p]
+    write.restype = C.c_char_p
+    flush = api.dre_ufs_flush_guarded
+    flush.argtypes = [C.POINTER(Route), C.POINTER(State), GUARD, C.c_void_p]
+    flush.restype = C.c_char_p
     valid = api.dre_storage_abi_valid; valid.argtypes = [C.POINTER(C.c_uint64)]; valid.restype = C.c_int
     checks = 0
     base = [0x0031534655455244, 0xa8040000, 0x4000, 0xb2000000, 0x100000, 0xa8000000, 0x2000000, 0]
@@ -131,7 +139,7 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return t += 1000000; }
             try:
                 off = address - 0x04804000
                 assert off in (0x20, 0x24, 0x50, 0x54, 0x58, 0x5c, 0x60)
-                if active_mode == 'restore' and off == 0x50 and value == 0x81000000: return 0
+                if active_mode in ('restore', 'write_restore') and off == 0x50 and value == 0x81000000: return 0
                 if off == 0x5c: regs[0x58] = 0; return 1
                 regs[off] = value
                 if off != 0x58: return 1
@@ -139,19 +147,26 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return t += 1000000; }
                 words = struct.unpack('<8I', bytes(arena[:32]))
                 assert words[4:6] == (pa + 0x400, 0), words
                 command = bytes(arena[0x400:0x480]); op = 0xff if command[0] == 0 else command[16]
-                assert op in (0xff, 0, 0x9e, 0x28) and command[2] == 0
+                assert op in (0xff, 0, 0x9e, 0x28, 0x2a, 0x35) and command[2] == 0
                 length = int.from_bytes(command[12:16], 'big')
                 if length:
                     assert struct.unpack('<II', bytes(arena[0x800:0x808])) == (pa + 0x1000, 0)
+                    assert command[1] == (0x20 if op == 0x2a else 0x40)
+                    assert (words[0] >> 25) & 3 == (1 if op == 0x2a else 2)
                 commands.append(op)
-                if active_mode == 'timeout': return 1
+                if active_mode == 'timeout' or active_mode == 'write_timeout' and op == 0x2a or active_mode == 'flush_timeout' and op == 0x35: return 1
                 data = b''
                 if op == 0x9e: data = struct.pack('>QI', 999, 4096) + bytes(20)
                 if op == 0x28:
                     assert command[24] == 1
                     data = disk[int.from_bytes(command[18:22], 'big')]
+                if op == 0x2a:
+                    assert command[24] == 1 and length == 4096
+                    lba = int.from_bytes(command[18:22], 'big')
+                    assert 100 <= lba < 200, 'write escaped userdata'
+                    disk[lba] = bytes(arena[0x1000:0x2000])
                 for i, v in enumerate(data): arena[0x1000 + i] = v
-                arena[8] = int(active_mode == 'ocs')
+                arena[8] = int(active_mode == 'ocs' or active_mode == 'write_ocs' and op == 0x2a or active_mode == 'flush_ocs' and op == 0x35)
                 arena[0x600] = 0x20 if op == 0xff else 0x21
                 arena[0x603] = command[3]
                 if active_mode == 'short': arena[0x601] = 0x20
@@ -166,6 +181,7 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return t += 1000000; }
         C.c_void_p.in_dll(api, 'write_cb').value = C.cast(wr, C.c_void_p).value
         route, state = Route(), State()
         assert probe(C.byref(route), C.byref(state), guard, None) == b'GPT_PASS'
+        assert commands == [0xff, 0, 0x9e, 0x28, 0x28], 'read-only probe submitted a write'
         assert (state.first, state.blocks, state.last, state.safe) == (100, 100, 999, 1)
         checks += 1; commands.clear(); active_mode = mode
         out = C.create_string_buffer(b'Z' * 4096, 4096)
@@ -175,6 +191,10 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return t += 1000000; }
                     'ocs': b'BAD_RESPONSE', 'restore': b'RESTORE_FAILED', 'short': b'SHORT_TRANSFER'}[mode]
         assert not callback_errors, callback_errors
         assert result == expected, (mode, result)
+        if mode == 'timeout':
+            assert state.last_opcode == 0x28 and state.command_lba == 100
+            assert state.fault_doorbell == 1 and state.fault_ocs == 0xf
+            assert state.command_ticks >= 9600000
         assert bool(state.safe) == (mode not in ('guard_after', 'restore'))
         assert out.raw == (payload if mode == 'pass' else b'Z' * 4096)
         assert commands == ([] if mode == 'guard_before' else [0x28])
@@ -184,6 +204,49 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return t += 1000000; }
             commands.clear()
             assert read(C.byref(route), C.byref(state), guard, None, 1000, out) == b'LBA_RANGE'
             assert not commands; checks += 1
-    print(f'PASS {checks} native ownership/VA-PA/read/restore checks')
+    for mode, expected, issued in (
+        ('pass', b'WRITE_PASS', [0x2a,0x35]),
+        ('guard_before', b'DMA_GUARD_BLOCKED', []),
+        ('guard_after', b'DMA_GUARD_CHANGED', [0x2a]),
+        ('write_timeout', b'COMMAND_TIMEOUT', [0x2a]),
+        ('write_ocs', b'BAD_RESPONSE', [0x2a]),
+        ('flush_timeout', b'COMMAND_TIMEOUT', [0x2a,0x35]),
+        ('flush_ocs', b'BAD_RESPONSE', [0x2a,0x35]),
+        ('write_restore', b'RESTORE_FAILED', [0x2a,0x35])):
+        active_mode='pass'; commands.clear(); regs[0x50]=0x81000000; regs[0x60]=1
+        assert probe(C.byref(route), C.byref(state), guard, None) == b'GPT_PASS'
+        before={n:disk[n] for n in (1,2)}
+        replacement=C.create_string_buffer(bytes([0xa5])*4096,4096)
+        active_mode=mode; commands.clear()
+        assert write(C.byref(route),C.byref(state),guard,None,0,replacement)==expected,mode
+        assert commands==issued,(mode,commands)
+        assert not callback_errors,callback_errors
+        assert {n:disk[n] for n in (1,2)}==before
+        assert bool(state.safe)==(mode not in ('guard_after','write_restore'))
+        checks+=1
+    active_mode='pass'; commands.clear(); regs[0x50]=0x81000000; regs[0x60]=1
+    assert probe(C.byref(route),C.byref(state),guard,None)==b'GPT_PASS'
+    for relative in (100,0xffffffffffffffff):
+        commands.clear()
+        assert write(C.byref(route),C.byref(state),guard,None,relative,replacement)==b'WRITE_RANGE'
+        assert not commands; checks+=1
+    for field,value in (('first',5),('blocks',999),('last',4),('block',512)):
+        old=getattr(state,field); setattr(state,field,value); commands.clear()
+        assert write(C.byref(route),C.byref(state),guard,None,0,replacement)==b'WRITE_RANGE'
+        assert not commands; setattr(state,field,old); checks+=1
+    for callback,data in ((GUARD(),replacement),(guard,None)):
+        commands.clear()
+        assert write(C.byref(route),C.byref(state),callback,None,0,data)==b'WRITE_GUARD_REQUIRED'
+        assert not commands; checks+=1
+    commands.clear()
+    assert write(C.byref(route),C.byref(state),guard,None,99,replacement)==b'WRITE_PASS'
+    assert commands==[0x2a,0x35] and disk[199]==replacement.raw; checks+=1
+    commands.clear()
+    assert flush(C.byref(route),C.byref(state),guard,None)==b'FLUSH_PASS'
+    assert commands==[0x35]; checks+=1
+    commands.clear()
+    assert flush(C.byref(route),C.byref(state),GUARD(),None)==b'WRITE_GUARD_REQUIRED'
+    assert not commands; checks+=1
+    print(f'PASS {checks} native ownership/VA-PA/read/write/flush/restore checks')
 
 if __name__ == '__main__': main()

@@ -51,6 +51,8 @@ def main():
     ap.add_argument("--driver-prep", action="store_true", help="inspect bounded DMA tables, GPI channels and unowned SPI/USB descriptor plans")
     ap.add_argument("--ufs-handoff-read", action="store_true", help="opt-in read-only UFS test in stable stage-1-disabled/stage-2-bypass handoff mode")
     ap.add_argument("--native-ufs", action="store_true", help="transfer owned DMA memory to the opt-in native read-only XNU driver")
+    ap.add_argument("--install-root", action="store_true",
+                    help="boot writable iOS from userdata; no diagnostic RAM root (requires private product ADT)")
     ap.add_argument("--ufs-read-test", action="store_true",
                     help="read capacity/GPT on LUN 0 only if physical DMA is verified")
     ap.add_argument("--touch-preflight", action="store_true",
@@ -61,6 +63,16 @@ def main():
                     help="upper-RAM window; checked against live RAM and every reservation before XNU")
     ap.add_argument("--product-adt", type=Path, help="optional private D22AP Apple ADT for /product metadata")
     args = ap.parse_args()
+    if args.install_root:
+        if not args.xnu or not args.product_adt:
+            ap.error('--install-root requires --xnu and --product-adt')
+        # One coherent installation profile, retaining the validated RAM/CPU
+        # topology and early handoff guards instead of independent toggles.
+        for key in ('native_ufs','ui_services','board_tests','ufs_clock_enable',
+                    'dma_probe','dma_context','ufs_read_test','touch_preflight',
+                    'driver_prep','ufs_handoff_read'):
+            setattr(args,key,True)
+        args.cpus=8; args.ram_mib=2048
     if (args.identity or args.board_tests) and not (args.xnu or args.upstream_0027):
         ap.error("--identity and --board-tests need an XNU kernel")
     if args.ufs_clock_enable and not args.board_tests:
@@ -106,6 +118,7 @@ def main():
             init_flags += ["-DDRE_CHECK_NATIVE_UFS"]
             cc += ["-DDRE_NATIVE_UFS"]
             sources += [HERE / "storage_handoff.c", HERE / "storage_abi.c"]
+        if args.install_root: cc += ['-DDRE_INSTALL_ROOT']
         cc += [f"-DDRE_RAM_SIZE=0x{args.ram_mib << 20:x}ULL"]
         if args.ram_mib != 512:
             init_flags += [f"-DDRE_EXPECT_RAM_MIB={args.ram_mib - 1}"]
@@ -151,12 +164,13 @@ def main():
                 header = out / "dre_serial.h"
                 header.write_text('#define DRE_EXPECT_SERIAL "' + serial + '"\n', encoding="ascii")
                 cc += ["-include", str(header)]
-        subprocess.run([zig, "cc", "-target", "aarch64-macos-none", "-g0",
+        if not args.install_root:
+            subprocess.run([zig, "cc", "-target", "aarch64-macos-none", "-g0",
                         '-DINIT_BOARD="DRE"', *init_flags, "-c", str(SHIM.parent / "tools/sweet-init.S"),
                         "-o", str(init_obj)], check=True)
         embed(kernel, out, init_obj, donor=args.upstream_0027 is not None, identity_path=args.identity,
               ui=args.ui_services, cpus=args.cpus, product_path=args.product_adt,
-              native_ufs=args.native_ufs, ram_mib=args.ram_mib)
+              native_ufs=args.native_ufs, ram_mib=args.ram_mib, install_root=args.install_root)
         source = out / "embedded.S"
         payload = (out / "payload.bin").read_bytes()
         # Zig's assembly cache does not track the file named by .incbin.
@@ -191,6 +205,8 @@ def main():
             'driver_prep': args.driver_prep,
             'ufs_handoff_read': args.ufs_handoff_read,
             'native_ufs': args.native_ufs,
+            'install_root': args.install_root, 'diagnostic_ram_root': not args.install_root,
+            'storage_mode': 'userdata-rw' if args.install_root else 'read-only',
             'private_identity_provisioned': args.identity is not None,
             'product_metadata_imported': args.product_adt is not None,
             'image_sha256': hashlib.sha256(output.read_bytes()).hexdigest(),

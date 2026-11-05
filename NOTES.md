@@ -2,6 +2,166 @@
 
 ## DE2118 handoff, 2026-11-04
 
+ACTIVE INSTALL PREPARATION (USER AUTHORIZED SUBAGENTS): user asks fix native
+UFS timeout and prepare all iOS installation prerequisites before next test,
+explicitly requires Metal acceleration and asks WiFi/BT. Explained current
+Metal/WiFi/BT are NOT IMPLEMENTED; all hardware requirements must be tracked
+without claiming generic GPU probes equal Metal. No phone test/write
+authorization for any new image; phone remains verified Lineage, no watcher.
+Subagents ios_install_image owns root image/tools (CodexDreBuild WSL distro
+created specifically at D:/CodexWork/dre-ios-install/linux/distro), gpu_metal
+owns gpu/**, install_readiness owns validator and now QEMU-only file disk.
+Large artifacts on D:. Ubuntu24.04.5 base verified via official SHA256SUMS.
+All3 official Apple DMGs downloaded/ZIP-CRC+SHA verified in
+D:/CodexWork/dre-ios-install/firmware: OS80f426d5..., SystemOS9cd738f3...,
+AppOS391f2df3..., BuildManifest20H392/D22AP verified. Private; never upload.
+Image agent constructing exact54431395840-byte journaled HFSX with real
+Setup.app and44dyld cache files, first-run setup; host guestfs backend,
+no phone media write. Final image/fsck/sparse proof still pending.
+Native UFS candidate changes UNPROVEN ON PHONE: map validated owned DMA RAM
+Normal-NC with ml_io_map_wcomb (registers remain Device), verify kvtophys
+endpoints; capture failed command/op/doorbell/interrupts/OCS before abort.
+Photo previously onlyIO:COMMAND_TIMEOUT, no opcode known. New mapping is a
+grounded DMA-memory correction, NOT a confirmed physical timeout fix yet.
+Added opt-in userdata-only WRITE10+mandatory SYNCHRONIZE_CACHE API, default
+read-only, exclude bothGPT areas, no SMMU/reset/clock/media writes by tests.
+Native RW handles512-byte read-modify-write and structured+legacy HFS flush
+ioctls; advertises no FUA/UNMAP.66 portable engine/ownership/read/write/
+flush/restore checks PASS, all12 staged native C compiles/symbol closure PASS.
+Still need real QEMU RW/HFS regression, install-root builder mode (no md0),
+private /product D22AP extraction, kernel CI including compiler-cache, Metal
+probe compile and integration. File-backed QEMU provider agent will enable
+actual iOS userspace validation on a scratch image without handset writes.
+Fresh mobileactivationd MCM container absent; activation completion remains
+pending first boot, do not fabricate metadata. Full Metal and native GPU cold
+start remain missing; agent adding bounded actual backend primitives and
+real Metal acceptance executable, not an acceleration claim. WiFi/BT etc
+not implemented. Current source contains agents' committed tools plus root
+uncommitted native changes. Preserve all prior tested images and backups.
+
+LATEST PHYSICAL RESULT1104ecab: photo20261104_233145.jpg confirms
+NATIVE_DRIVER=IO:COMMAND_TIMEOUT, NATIVE_UFS=UNAVAILABLE_OR_FAILED,
+NATIVE_STAGE=001 ERRNO=002. Native initialization reached the guarded UFS
+probe, then a command timed out before devfs registration. Stage1 ENOENT
+is a consequence of no disk device, not a missing diagnostic-root directory.
+Exact command number/opcode and timeout HCI/DMA snapshot are not yet known.
+DO NOT claim native physical disk success or infer which command failed.
+PID1/heartbeat/identity,8CPU,2047MiB and SURFACE+FRAMEBUFFER logs PASS.
+Early shim still reads real GPT, N5/userdata1b1228/cac5d3, link/clocks READY.
+UFS/USB M_OFF bypass, USB halted/TRB plan, GPI idle/unmatched fault,
+touch firmware layout/vote restoration, GPU off retained. Full result in
+outputs/native-status-handset-results.json. No iOS system/Setup installed.
+RESTORE FULLY VERIFIED: helper43298 exited0, original boot_b flashed and
+rebooted; verifier19301 exited0. USB target, boot_completed,slotB,
+Lineage22.2-20250815-NIGHTLY-dre, boot_b d12c5d92/logo_b246df6f6 match,
+ADB uid2000. NO WATCHER OR TEST PROCESS REMAINS. Phone NOW restored Lineage.
+Approval consumed. Next investigation: native descriptor/DMA visibility and
+host completion state; add command identity and bounded timeout snapshot
+before another physical test. No blind SMMU/clock/reset/media-write change.
+Compiler-cache workflow is prepared on dre-next-test but has NOT RUN yet;
+future necessary kernel build should include it, then measure hit rate/time.
+Preserve1104ecab, cc1 baseline and both failed QEMU interface regressions.
+
+NATIVE STATUS OPERATION verified at2026-11-05T04:35:23+00:00.
+Restoration verified: target match, fully booted LineageOS, slotB,
+original boot_b hash d12c5d92 and installed logo_b246df6f6 match; ADB uid2000.
+NO watcher remains. Phone NOW runs restored LineageOS. Approval consumed.
+Physical result should be recorded separately from this restoration proof.
+
+NATIVE STATUS OPERATION flashed at2026-11-05T04:31:07+00:00.
+Test operator exited0, boot_b flash and fastboot reboot both OKAY.
+Phone NOW has diagnostic1104ecab boot_b; restoration is not yet complete.
+Restore helper ACTIVE exec session43298; waits up to900s for fastboot,
+then writes original d12c5d92 boot_b and reboots. Do not start another writer.
+Wait~3min for results; capture NATIVE_DRIVER, NATIVE_UFS, NATIVE_STAGE/ERRNO,
+CPU/RAM and peripheral lines, then user returns with volume keys+Power.
+After helper exits0 run verify-platform-restore.py to verify boot/logo hashes
+and fully booted Lineage, and drop ADB root back to2000. Approval consumed;
+restoration remains authorized and required. Physical result pending.
+
+NATIVE STATUS OPERATION authorized at2026-11-05T04:30:15+00:00.
+USER EXPLICITLY APPROVED "Run corrected test and restore" for image
+1104ecabd07c9302fae263a871b05cf097a7723a6446193a4eef4612710d4699.
+Fresh preflight PASS: image1104ecab/backup d12c5d92 hashes, USB target match,
+fully booted Lineage22.2-20250815-NIGHTLY-dre, slotB. No old operator process
+is active. Starting work/native-status-operator.py test, then restore action.
+Approval covers this single temporary boot_b write and original restoration;
+no userdata or other partition write. Do not reuse approval for another image.
+
+READY FOR FRESH TEST CONSENT: outputs/de2118-native-status-test.img,
+16764928 bytes, SHA1104ecabd07c9302fae263a871b05cf097a7723a6446193a4eef4612710d4699.
+outputs/native-status-test-manifest.json records all validation and scope.
+Source archive outputs/ios-dre-native-status-source.zip SHA
+1789bb108ed2691ba6c706bf80bc98637eba5a080234824f6cfeb5f7c82b4574,
+pins local7ed95f258354db5dd8b2221cb81c6ae40e3f2744, tree
+78e1945ca33bb6d27c9bfd14e510fb81aed6e9d1. Published identical tree on
+dre-next-test atdcd6054b7432516f30e27ab1b5bb2c542ae026ab, merging CI76f1
+with prior3cb08 history. dre-storage remains76f1 so no redundant CI started.
+Kernel687e9ec9 from successful CI41966851551; ZIP SHA
+6b70a80d6c89f9bba12341902dc97f99b56452aa25943b563d3fac6e0c064e31.
+Privacy scans PASS (no private identity/UUID/FDT/GPT/firmware in image or
+source archive), all3 QEMU-only boot args absent, max537/607 cmdline bytes.
+Preflight PASSES: image1104ecab/restore d12c5d92 hashes, USB target match,
+booted Lineage22.2-20250815-NIGHTLY-dre, slotB. Phone remains restored.
+work/native-status-operator.py is PINNED1104ecab/d12c5d92, PREPARED ONLY,
+NEVER RUN. NO WATCHER. Ask fresh consent for temporary boot_b replacement
+and original restoration, read-only userdata tests only. No iOS system or
+Setup.app installed. Wait for photo after~3min if approved, then restore.
+This final handoff-only commit does not alter archived source/image.
+C drive has~357MB free; put future large intermediates on D:/CodexWork.
+
+USER REQUESTED FASTER ITERATION. Added DRE compiler caching in workflow
+with standard compiler-content checking (no sloppiness), isolated Xcode/SDK
+and profile keys, full patch verification/linking and hit/miss statistics.
+New tools/enable-xnu-ccache.py prefixes only target CC/CXX; actual staged
+MakeInc.cmd fixture, no other byte changes, idempotence, unsupported layout
+rejection, YAML parse and all shell syntax PASS. Cache is PREPARED and has
+NOT RUN on macOS yet; no time saving measured. First run must populate it.
+Diagnostic-only/docs edits no longer trigger kernel builds. Publish these
+workflow changes on dre-next-test with candidate; keep current dre-storage
+76f1ddd1 immutable to avoid an unnecessary full build. Future needed kernel
+builds should include this workflow. Independent exact-image and private
+GPT checks ran alongside QEMU in session66716; ALL PASS, exited0. All3 QEMU
+objectives retain same exact kernel/image and8CPU/2047MiB. No process or
+phone watcher remains. This was local validation only; Lineage still safe.
+
+FINAL BSD FIX CI41966851551 from remote
+76f1ddd1a5fa12e76d110da88a331eb9399c5b29, treebac6449048886cf250e03e4d6057d5dfac4241f1.
+Includes copyout fix, sector-size callback fix,15-stage native diagnostic
+and27 actual-object checks. Phone remains verified restored LineageOS;
+no flash operation/watchers and no new test consent. Full3-case QEMU plus
+exact-image models must pass before packaging or requesting consent.
+Kernel CI SUCCESS, SHA687e9ec94c40cda816dcc005b3c93c240ab46c85dee94899ac683bb3b99190ae.
+work/build-native-bsd-2g image SHA1104ecabd07c9302fae263a871b05cf097a7723a6446193a4eef4612710d4699.
+VALIDATED: all3 QEMU paths PASS with unmodified kernel: in-memory BSD
+backend passes raw+block userdata prefix agreement, GPT CRC and rejected
+write-open; mapping-only and empty-owner refusal pass status/stage checks.
+All retain8CPU,2047MiB,PID1 and display-service heartbeat.6 exact-image
+guard/restore cases and private real GPT baseline PASS;47 C engine and27
+init syscall cases PASS. Kernel compile/link/all66 patches PASS. All test
+processes exited; no phone watcher. QEMU BSD provider is simulated and
+does not prove physical native UFS. Last handset native stage still unknown.
+Next: package/publish this exact candidate, then fresh approval for one
+temporary boot_b write and verified original restoration. No userdata write.
+
+FINAL BSD FIX CI41966851551 from remote
+76f1ddd1a5fa12e76d110da88a331eb9399c5b29, treebac6449048886cf250e03e4d6057d5dfac4241f1.
+Includes copyout fix, sector-size callback fix,15-stage native diagnostic
+and27 actual-object checks. Phone remains verified restored LineageOS;
+no flash operation/watchers and no new test consent. Full3-case QEMU plus
+exact-image models must pass before packaging or requesting consent.
+Kernel CI SUCCESS, SHA687e9ec94c40cda816dcc005b3c93c240ab46c85dee94899ac683bb3b99190ae.
+work/build-native-bsd-2g image SHA1104ecabd07c9302fae263a871b05cf097a7723a6446193a4eef4612710d4699.
+Current phase: built; validation is incomplete.
+
+FINAL BSD FIX CI41966851551 from remote
+76f1ddd1a5fa12e76d110da88a331eb9399c5b29, treebac6449048886cf250e03e4d6057d5dfac4241f1.
+Includes copyout fix, sector-size callback fix,15-stage native diagnostic
+and27 actual-object checks. Phone remains verified restored LineageOS;
+no flash operation/watchers and no new test consent. Full3-case QEMU plus
+exact-image models must pass before packaging or requesting consent.
+Current phase: pending; validation is incomplete.
+
 QEMU BLOCK CHECK FOUND SECOND INTERFACE BUG: fixed-copyout CI41965737189
 SUCCESS, kernel e2de3759/imageff6e6f9a reached PID1 with no panic. Simulated
 raw partition read, GPT read/CRC and write-open rejection all succeeded;

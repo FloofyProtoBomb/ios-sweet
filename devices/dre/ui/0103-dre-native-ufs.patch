@@ -53,11 +53,12 @@
  		do {
 --- a/bsd/conf/files
 +++ b/bsd/conf/files
-@@ -104,6 +104,18 @@
+@@ -104,6 +104,19 @@
  bsd/dev/random/randomdev.c		standard
  
  bsd/dev/memdev.c			standard
 +bsd/dev/dre/native_ufs.c			standard
++bsd/dev/dre/qemu_disk.c			standard
 +bsd/dev/dre/storage_abi.c			standard
 +bsd/dev/dre/ufs_read.c			standard
 +bsd/dev/dre/ufs_handoff_dma.c			standard

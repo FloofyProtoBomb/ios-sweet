@@ -21,7 +21,7 @@ def native_storage_assets():
     common = ('native_ufs.c', 'storage_abi.c', 'storage_abi.h', 'storage_live.h', 'ufs_read.c', 'ufs_read.h',
               'ufs_handoff_dma.c', 'ufs_handoff_dma.h', 'ufs_clock.c', 'ufs_clock.h',
               'dma_route.c', 'dma_route.h', 'dma_context.c', 'dma_context.h',
-              'dma_memory.c', 'dma_memory.h')
+              'dma_memory.c', 'dma_memory.h', 'qemu_disk.c', 'qemu_disk.h')
     libfdt = ('fdt.c', 'fdt_ro.c', 'fdt_check.c', 'fdt_addresses.c',
               'libfdt.h', 'fdt.h', 'libfdt_env.h', 'libfdt_internal.h')
     result = []

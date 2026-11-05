@@ -122,6 +122,11 @@ const char *dre_handoff(const void *dt)
     extra = dre_board_report(dt);
     const char *board_error = dre_board_error();
     if (board_error) return board_error;
+#ifdef DRE_INSTALL_ROOT
+    /* Retain all early guards/probes; the full diagnostic report would
+     * crowd out the real userspace/root arguments in iBoot's608-byte field. */
+    extra = NULL;
+#endif
 #endif
 #ifdef DRE_NATIVE_UFS
     const char *storage_error = dre_storage_prepare(dt);

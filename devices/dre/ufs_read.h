@@ -11,6 +11,10 @@ struct dre_ufs_read_state {
     dre_ufs_dma_guard guard;
     void *guard_cookie;
     int guard_lost;
+    /* Snapshot before abort/restoration destroys the timed-out descriptor. */
+    uint32_t last_opcode, command_lba, fault_doorbell, fault_interrupts, fault_hcs;
+    uint32_t fault_ocs, fault_uec[5];
+    uint64_t command_ticks;
 };
 
 /* Polled, LUN-0-only read test with a private, below-4G-capable DMA arena.
@@ -32,3 +36,11 @@ const char *dre_ufs_read_block_guarded(const struct dre_dma_route *route,
                                      struct dre_ufs_read_state *state,
                                      dre_ufs_dma_guard guard, void *cookie,
                                      uint32_t lba, uint8_t out[4096]);
+/* Installer/runtime opt-in only. Relative block is confined to validated
+ * userdata; primary and backup GPT are excluded. WRITE(10) is followed by
+ * SYNCHRONIZE CACHE before success. Caller must serialize and authorize RW. */
+const char *dre_ufs_write_userdata_guarded(const struct dre_dma_route *route,
+    struct dre_ufs_read_state *state, dre_ufs_dma_guard guard, void *cookie,
+    uint64_t relative_block, const uint8_t data[4096]);
+const char *dre_ufs_flush_guarded(const struct dre_dma_route *route,
+    struct dre_ufs_read_state *state, dre_ufs_dma_guard guard, void *cookie);

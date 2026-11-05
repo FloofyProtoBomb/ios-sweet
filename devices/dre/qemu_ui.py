@@ -169,6 +169,7 @@ if __name__ == '__main__':
                 assert 'NATIVE_DRIVER=' + state in screen
                 if args.native_map_test:
                     assert 'DRE UFS: transient FDT mapping lifetime PASS' in log
+                    assert 'DRE UFS: owned Normal-NC DMA mapping PASS' in log
             result = {'status': 'PASS', 'kernel_sha256': info['kernel_sha256'],
                       'physical_image_sha256': info['image_sha256'], 'cpus_active': info['cpus'],
                       'pid1_identity_checks': 'PASS', 'surface_and_framebuffer_start': 'PASS',

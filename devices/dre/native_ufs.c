@@ -24,10 +24,14 @@
 #include "ufs_read.h"
 #include "ufs_handoff_dma.h"
 #include "ufs_clock.h"
+#include "qemu_disk.h"
 
 extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
+extern vm_offset_t ml_io_map_wcomb(vm_offset_t, vm_size_t);
 extern vm_offset_t ml_io_map_unmappable(vm_offset_t, vm_size_t, unsigned int);
 extern void ml_io_unmap(vm_offset_t, vm_size_t);
+/* arm/pmap/pmap.h's private pmap_paddr_t is uint64_t on this ARM64 build. */
+extern uint64_t kvtophys(vm_offset_t);
 extern int dre_ufs_get_handoff(uint64_t words[8]);
 int dre_ufs_prepare_device(dev_t *device);
 int dre_read32(uintptr_t address, uint32_t *out);
@@ -42,9 +46,11 @@ static struct dre_ufs_handoff_dma dma;
 static struct dre_ufs_read_state media;
 static uint8_t bounce[4096];
 static int attempted, ready, dead, bmajor = -1, cmajor = -1;
+static int writable;
 /* Explicit QEMU-only BSD interface fixture, never a physical storage backend. */
 static int virtual_disk;
 static uint8_t virtual_gpt[8192];
+static uint8_t *virtual_userdata;
 static LCK_GRP_DECLARE(dre_ufs_group, "dre_ufs");
 static LCK_MTX_DECLARE(dre_ufs_lock, &dre_ufs_group);
 static char driver_state[96] = "NOT_ATTEMPTED";
@@ -108,7 +114,14 @@ static int check_result(const char *result, const char *expected)
     if (!media.safe_to_handoff)
         panic("DRE UFS: unsafe DMA/host state (%s; %s), reset required", result, driver_state);
     if (strcmp(result, expected)) {
-        if (strncmp(result, "DMA_GUARD_", 10)) set_state("IO", result);
+        if (!strcmp(result, "COMMAND_TIMEOUT")) {
+            snprintf(driver_state, sizeof(driver_state),
+                "IO:%s/N=%u/OP=%x/DB=%x/IS=%x/OCS=%x", result, media.commands,
+                media.last_opcode, media.fault_doorbell, media.fault_interrupts, media.fault_ocs);
+            printf("DRE UFS timeout: HCS=%x UEC=%x/%x/%x/%x/%x ticks=%llu LBA=%x\n",
+                media.fault_hcs, media.fault_uec[0], media.fault_uec[1], media.fault_uec[2],
+                media.fault_uec[3], media.fault_uec[4], media.command_ticks, media.command_lba);
+        } else if (strncmp(result, "DMA_GUARD_", 10)) set_state("IO", result);
         printf("DRE UFS: read disabled: %s\n", result);
         dead = 1;
         return EIO;
@@ -121,27 +134,36 @@ static uint64_t count_blocks(dev_t dev)
 }
 static void fixture_le(uint8_t *p, uint64_t v, unsigned n)
 { for (unsigned i = 0; i < n; i++) p[i] = (uint8_t)(v >> (8 * i)); }
-static void virtual_disk_init(void)
+static int virtual_disk_init(uint64_t file_bytes)
 {
+    uint64_t blocks = file_bytes ? file_bytes / 4096 : 100;
+    uint64_t last = file_bytes ? 100 + blocks + 128 : 999;
+    if (!blocks || last > UINT32_MAX) return ENXIO;
     uint8_t *h = virtual_gpt, *e = virtual_gpt + 4096;
     memset(virtual_gpt, 0, sizeof(virtual_gpt));
     e[0] = 1;
-    fixture_le(e + 32, 100, 8); fixture_le(e + 40, 199, 8);
+    fixture_le(e + 32, 100, 8); fixture_le(e + 40, 100 + blocks - 1, 8);
     const char name[] = "userdata";
     for (unsigned i = 0; i < sizeof(name); i++) e[56 + i * 2] = name[i];
     memcpy(h, "EFI PART", 8);
     fixture_le(h + 8, 0x10000, 4); fixture_le(h + 12, 92, 4);
-    fixture_le(h + 24, 1, 8); fixture_le(h + 32, 999, 8);
-    fixture_le(h + 40, 3, 8); fixture_le(h + 48, 998, 8);
+    fixture_le(h + 24, 1, 8); fixture_le(h + 32, last, 8);
+    fixture_le(h + 40, 3, 8); fixture_le(h + 48, last - 1, 8);
     fixture_le(h + 72, 2, 8); fixture_le(h + 80, 32, 4); fixture_le(h + 84, 128, 4);
     fixture_le(h + 88, dre_storage_crc(e, 4096), 4);
     fixture_le(h + 16, dre_storage_crc(h, 92), 4);
-    media = (struct dre_ufs_read_state){.block_size=4096, .last_lba=999,
-        .userdata_first=100, .userdata_blocks=100, .safe_to_handoff=1};
+    media = (struct dre_ufs_read_state){.block_size=4096, .last_lba=last,
+        .userdata_first=100, .userdata_blocks=blocks, .safe_to_handoff=1};
+    if (!file_bytes) {
+        virtual_userdata = kalloc_data(100 * 4096, Z_WAITOK | Z_ZERO);
+        if (!virtual_userdata) return ENOMEM;
+        for (unsigned i = 0; i < 100; i++) memset(virtual_userdata + i * 4096, i + 100, 4096);
+    }
+    return 0;
 }
 static int disk_open(dev_t dev, int flags, __unused int type, __unused struct proc *p)
 {
-    if (flags & FWRITE) return EROFS;
+    if ((flags & FWRITE) && (!writable || minor(dev) != 0)) return EROFS;
     return ready && !dead && minor(dev) <= 1 ? 0 : ENXIO;
 }
 static int disk_close(__unused dev_t dev, __unused int flags, __unused int type,
@@ -152,8 +174,9 @@ static void disk_strategy_common(buf_t bp, int user_buffer)
     uint32_t count = buf_count(bp), done = 0;
     dev_t dev = buf_device(bp);
     caddr_t mapped = NULL;
+    int reading = !!(buf_flags(bp) & B_READ);
     buf_setresid(bp, count);
-    if (!(buf_flags(bp) & B_READ)) { error = EROFS; goto finish; }
+    if (!reading && (!writable || minor(dev) != 0)) { error = EROFS; goto finish; }
     if (!ready || dead || minor(dev) > 1) { error = ENXIO; goto finish; }
     if (buf_blkno(bp) < 0 || (uint64_t)buf_blkno(bp) > UINT64_MAX / DEV_BSIZE) {
         error = EINVAL; goto finish;
@@ -180,19 +203,40 @@ static void disk_strategy_common(buf_t bp, int user_buffer)
         set_state("READ", "BEGIN");
         if (virtual_disk) {
             if (block == 1 || block == 2) memcpy(bounce, virtual_gpt + (block - 1) * 4096, 4096);
+            else if (virtual_disk == 2 && block >= 100 && block - 100 < media.userdata_blocks) {
+                if (!dre_qemu_disk_read(block - 100, bounce)) error = EIO;
+            } else if (virtual_disk == 1 && block >= 100 && block < 200)
+                memcpy(bounce, virtual_userdata + (block - 100) * 4096, 4096);
             else memset(bounce, (uint8_t)block, sizeof(bounce));
         } else {
             error = check_result(dre_ufs_read_block_guarded(&dma.route, &media,
                 native_guard, &dma, (uint32_t)block, bounce), "READ_PASS");
         }
         if (error) break;
-        if (user_buffer) error = copyout(bounce + skip, (user_addr_t)(uintptr_t)mapped + done, take);
-        else memcpy(mapped + done, bounce + skip, take);
-        if (error) { set_state("READ", "COPYOUT_FAILED"); break; }
-        set_state(virtual_disk ? "VIRTUAL_TEST" : "READ", virtual_disk ? "READ_PASS" : "PASS");
+        if (reading) {
+            if (user_buffer) error = copyout(bounce + skip, (user_addr_t)(uintptr_t)mapped + done, take);
+            else memcpy(mapped + done, bounce + skip, take);
+            if (error) { set_state("READ", "COPYOUT_FAILED"); break; }
+        } else {
+            /* Read-modify-write preserves the other512-byte sectors within
+             * one native4K block. physio wires user input before our lock. */
+            if (user_buffer) error = copyin((user_addr_t)(uintptr_t)mapped + done, bounce + skip, take);
+            else memcpy(bounce + skip, mapped + done, take);
+            if (error) { set_state("WRITE", "COPYIN_FAILED"); break; }
+            if (virtual_disk == 2) {
+                if (!dre_qemu_disk_write(block - 100, bounce)) error = EIO;
+            } else if (virtual_disk) memcpy(virtual_userdata + (block - 100) * 4096, bounce, 4096);
+            else error = check_result(dre_ufs_write_userdata_guarded(&dma.route, &media,
+                native_guard, &dma, block - media.userdata_first, bounce), "WRITE_PASS");
+            if (error) break;
+        }
+        set_state(virtual_disk == 2 ? "QEMU_FILE" : virtual_disk ? "VIRTUAL_TEST" : reading ? "READ" : "WRITE",
+            virtual_disk ? reading ? "READ_PASS" : "WRITE_PASS" : "PASS");
         done += take;
         buf_setresid(bp, buf_count(bp) - done);
     }
+    if (!reading && virtual_disk == 2 && !error && !dre_qemu_disk_flush()) error = EIO;
+    if (error && virtual_disk == 2) { set_state("QEMU_FILE", dre_qemu_disk_status()); dead = 1; }
     lck_mtx_unlock(&dre_ufs_lock);
     if (!user_buffer) buf_unmap(bp);
 finish:
@@ -210,9 +254,29 @@ static int disk_ioctl(dev_t dev, u_long cmd, caddr_t data, __unused int flag,
     case DKIOCGETPHYSICALBLOCKSIZE: *(uint32_t *)data = 4096; return 0;
     case DKIOCSETBLOCKSIZE: return *(uint32_t *)data == DEV_BSIZE ? 0 : EINVAL;
     case DKIOCGETBLOCKCOUNT: *(uint64_t *)data = count_blocks(dev) * 8; return 0;
-    case DKIOCISWRITABLE: *(uint32_t *)data = 0; return 0;
+    case DKIOCISWRITABLE: *(uint32_t *)data = writable && minor(dev) == 0; return 0;
     case DKIOCGETMAXBLOCKCOUNTREAD: *(uint64_t *)data = 8; return 0;
-    case DKIOCGETMAXBLOCKCOUNTWRITE: *(uint64_t *)data = 0; return 0;
+    case DKIOCGETMAXBLOCKCOUNTWRITE: *(uint64_t *)data = writable && minor(dev) == 0 ? 8 : 0; return 0;
+    case DKIOCGETFEATURES: *(uint32_t *)data = 0; return 0; /* no FUA/UNMAP promises */
+    case DKIOCSYNCHRONIZE: {
+        const dk_synchronize_t *sync = (const dk_synchronize_t *)data;
+        uint64_t bytes = count_blocks(dev) * 4096;
+        if ((sync->options & ~DK_SYNCHRONIZE_OPTION_BARRIER) || sync->offset > bytes ||
+            sync->length > bytes - sync->offset) return EINVAL;
+        for (unsigned i = 0; i < sizeof(sync->reserved0160); i++)
+            if (sync->reserved0160[i]) return EINVAL;
+        /* Full synchronous flush is stronger than the accepted range hint. */
+        __attribute__((fallthrough));
+    }
+    case DKIOCSYNCHRONIZECACHE:
+        if (!writable || minor(dev) != 0) return EROFS;
+        lck_mtx_lock(&dre_ufs_lock);
+        int error = dead ? EIO : virtual_disk == 2 ? (dre_qemu_disk_flush() ? 0 : EIO) :
+            virtual_disk ? 0 : check_result(dre_ufs_flush_guarded(&dma.route, &media,
+            native_guard, &dma), "FLUSH_PASS");
+        if (error && virtual_disk == 2) { set_state("QEMU_FILE", dre_qemu_disk_status()); dead = 1; }
+        lck_mtx_unlock(&dre_ufs_lock);
+        return error;
     default: return ENOTTY;
     }
 }
@@ -224,13 +288,19 @@ static int disk_psize(dev_t dev)
 }
 static int disk_read(dev_t dev, struct uio *uio, __unused int flags)
 {
+    if (uio_offset(uio) < 0 || uio_offset(uio) % DEV_BSIZE || uio_resid(uio) % DEV_BSIZE) return EINVAL;
     /* Select before physio hides the uio's address-space type in a buf.
      * Its synchronous call wires user pages before entering our lock. */
     return physio(uio_isuserspace(uio) ? disk_user_strategy : disk_strategy,
                   NULL, dev, B_READ, minphys, uio, DEV_BSIZE);
 }
-static int disk_write(__unused dev_t dev, __unused struct uio *uio, __unused int flags)
-{ return EROFS; }
+static int disk_write(dev_t dev, struct uio *uio, __unused int flags)
+{
+    if (!writable || minor(dev) != 0) return EROFS;
+    if (uio_offset(uio) < 0 || uio_offset(uio) % DEV_BSIZE || uio_resid(uio) % DEV_BSIZE) return EINVAL;
+    return physio(uio_isuserspace(uio) ? disk_user_strategy : disk_strategy,
+                  NULL, dev, B_WRITE, minphys, uio, DEV_BSIZE);
+}
 static const struct bdevsw disk_bdevsw = {
     .d_open = disk_open, .d_close = disk_close, .d_strategy = disk_strategy,
     .d_ioctl = disk_ioctl, .d_dump = eno_dump, .d_psize = disk_psize, .d_type = D_DISK,
@@ -256,12 +326,29 @@ static int board_ok(const void *dt)
     return found && reg && len >= 8 && fdt32_to_cpu(reg[0]) == 0x04804000 &&
         fdt32_to_cpu(reg[1]) == 0x3000;
 }
+
+static int map_dma_arena(uint64_t pa, uint64_t size)
+{
+    /* This is validated, exclusively owned RAM, not a peripheral aperture.
+     * Map it Normal Non-cacheable, as required for CPU/DMA shared buffers.
+     * Registers remain Device mappings. The engine orders both with dsb sy. */
+    dre_kernel_ufs_arena_pa = pa;
+    dre_kernel_ufs_arena = (volatile uint8_t *)ml_io_map_wcomb(pa, size);
+    if (!dre_kernel_ufs_arena) { set_state("ARENA", "MAP_FAILED"); return ENOMEM; }
+    if (kvtophys((vm_offset_t)dre_kernel_ufs_arena) != pa ||
+        kvtophys((vm_offset_t)dre_kernel_ufs_arena + size - 1) != pa + size - 1) {
+        set_state("ARENA", "PA_MISMATCH"); return ENXIO;
+    }
+    return 0;
+}
 static int initialize(void)
 {
     uint64_t w[8], frequency;
     int enabled = 0;
     PE_parse_boot_argn("dre_ufs", &enabled, sizeof(enabled));
     if (enabled != 1) { set_state("BOOTARG", "DISABLED"); return ENXIO; }
+    PE_parse_boot_argn("dre_ufs_rw", &writable, sizeof(writable));
+    writable = writable == 1;
     if (!dre_ufs_get_handoff(w)) { set_state("HANDOFF", "MISSING"); return ENXIO; }
     if (!dre_storage_abi_valid(w)) { set_state("HANDOFF", "INVALID"); return ENXIO; }
     int map_test = 0, qemu = 0;
@@ -295,13 +382,33 @@ static int initialize(void)
         set_state("MAP_TEST", "PASS");
         kfree_data(dt, w[4]);
         printf("DRE UFS: transient FDT mapping lifetime PASS\n");
-        int bsd_test = 0;
+        int error = map_dma_arena(w[1], w[2]);
+        if (error) return error;
+        for (unsigned i = 0; i < 16; i++) dre_kernel_ufs_arena[i] = (uint8_t)(i ^ 0x5a);
+        __asm__ volatile("dsb sy" ::: "memory");
+        for (unsigned i = 0; i < 16; i++)
+            if (dre_kernel_ufs_arena[i] != (uint8_t)(i ^ 0x5a)) {
+                set_state("ARENA", "SELFTEST_FAILED"); return EIO;
+            }
+        printf("DRE UFS: owned Normal-NC DMA mapping PASS\n");
+        int bsd_test = 0, file_test = 0;
         PE_parse_boot_argn("dre_ufs_bsd_test", &bsd_test, sizeof(bsd_test));
+        PE_parse_boot_argn("dre_ufs_qemu_file", &file_test, sizeof(file_test));
+        if (file_test == 1) {
+            uint64_t bytes = 0;
+            if (!dre_qemu_disk_open(1, writable, &bytes)) {
+                set_state("QEMU_FILE", dre_qemu_disk_status()); return EIO;
+            }
+            virtual_disk = 2;
+            if ((error = virtual_disk_init(bytes))) return error;
+            printf("DRE UFS: QEMU file-backed userdata ready, no Qualcomm MMIO\n");
+            goto register_devices;
+        }
         if (bsd_test != 1) return ENXIO;
         /* Both QEMU flags and valid synthetic ownership were required above.
          * Register normal BSD callbacks with an in-memory provider; no MMIO. */
         virtual_disk = 1;
-        virtual_disk_init();
+        if ((error = virtual_disk_init(0))) return error;
         goto register_devices;
     }
     /* Kept for the driver's lifetime: route queries use this private snapshot. */
@@ -310,9 +417,8 @@ static int initialize(void)
         regions[i].va = ml_io_map(regions[i].pa, regions[i].size);
         if (!regions[i].va) { set_state("MMIO", "MAP_FAILED"); return ENOMEM; }
     }
-    dre_kernel_ufs_arena_pa = w[1];
-    dre_kernel_ufs_arena = (volatile uint8_t *)ml_io_map(w[1], w[2]);
-    if (!dre_kernel_ufs_arena) { set_state("ARENA", "MAP_FAILED"); return ENOMEM; }
+    int arena_error = map_dma_arena(w[1], w[2]);
+    if (arena_error) return arena_error;
     struct dre_dma_route route;
     const char *result = dre_dma_route(dt, "/soc/ufshc@4804000", 0x60, &route);
     set_state("ROUTE", result);
@@ -344,8 +450,11 @@ register_devices:
         return ENXIO;
     }
     ready = 1;
-    set_state(virtual_disk ? "VIRTUAL_TEST" : "READY", "READ_ONLY");
-    if (virtual_disk) printf("DRE UFS: simulated BSD test device ready, no Qualcomm MMIO\n");
+    set_state(virtual_disk == 2 ? "QEMU_FILE" : virtual_disk ? "VIRTUAL_TEST" : "READY",
+              writable ? "USERDATA_RW" : "READ_ONLY");
+    if (writable) printf("DRE UFS: userdata read-write enabled\n");
+    if (virtual_disk == 1) printf("DRE UFS: simulated BSD test device ready, no Qualcomm MMIO\n");
+    else if (virtual_disk == 2) printf("DRE UFS: QEMU file provider registered; not physical UFS proof\n");
     else printf("DRE UFS: native read-only disk ready, userdata blocks=%llu\n",
                 (unsigned long long)media.userdata_blocks);
     return 0;

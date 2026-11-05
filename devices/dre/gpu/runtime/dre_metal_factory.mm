@@ -7,7 +7,7 @@
  */
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
-#include <IOKit/IOKitLib.h>
+#include "dre_iokit_loader.h"
 #include <objc/message.h>
 #include <objc/runtime.h>
 #include <mach/mach.h>
@@ -22,26 +22,26 @@ extern "C" id native_bridge_metal_open(const char *, const char *, uint64_t,
 static std::mutex factory_lock;
 static thread_local bool constructing;
 
-static bool native_contract(io_service_t accelerator, uint64_t *registry_id)
+static bool native_contract(mach_port_t accelerator, uint64_t *registry_id)
 {
-    if (!accelerator || !IOObjectConformsTo(accelerator, DRE_GPU_SERVICE)) return false;
-    io_service_t direct = IOServiceGetMatchingService(kIOMasterPortDefault, IOServiceMatching(DRE_GPU_SERVICE));
+    if (!accelerator || !dre_iokit_conforms(accelerator, DRE_GPU_SERVICE)) return false;
+    mach_port_t direct = dre_iokit_matching_service(dre_iokit_matching(DRE_GPU_SERVICE));
     if (!direct) return false;
     uint64_t expected = 0, supplied = 0;
-    bool same = IORegistryEntryGetRegistryEntryID(direct, &expected) == KERN_SUCCESS &&
-        IORegistryEntryGetRegistryEntryID(accelerator, &supplied) == KERN_SUCCESS && expected && expected == supplied;
-    IOObjectRelease(direct);
+    bool same = dre_iokit_registry_id(direct, &expected) == KERN_SUCCESS &&
+        dre_iokit_registry_id(accelerator, &supplied) == KERN_SUCCESS && expected && expected == supplied;
+    dre_iokit_release(direct);
     if (!same) return false;
-    io_connect_t connection = IO_OBJECT_NULL;
-    if (IOServiceOpen(accelerator, mach_task_self(), 0, &connection) != KERN_SUCCESS) return false;
+    mach_port_t connection = MACH_PORT_NULL;
+    if (dre_iokit_open(accelerator, mach_task_self(), 0, &connection) != KERN_SUCCESS) return false;
     struct dre_gpu_info_request request = {};
     request.header.abi_version = DRE_GPU_ABI_VERSION;
     request.header.struct_bytes = sizeof(request);
     struct dre_gpu_info_reply reply = {};
     size_t bytes = sizeof(reply);
-    kern_return_t kr = IOConnectCallStructMethod(connection, DRE_GPU_GET_INFO,
+    kern_return_t kr = dre_iokit_call(connection, DRE_GPU_GET_INFO,
         &request, sizeof(request), &reply, &bytes);
-    kern_return_t closed = IOServiceClose(connection);
+    kern_return_t closed = dre_iokit_close(connection);
     if (kr != KERN_SUCCESS || closed != KERN_SUCCESS || bytes != sizeof(reply) ||
         reply.header.abi_version != DRE_GPU_ABI_VERSION || reply.header.struct_bytes != sizeof(reply) ||
         reply.header.flags || reply.header.status != DRE_GPU_OK || !reply.header.session_generation ||
@@ -52,7 +52,7 @@ static bool native_contract(io_service_t accelerator, uint64_t *registry_id)
     *registry_id = expected;
     return true;
 }
-static id init_with_accelerator(id self, SEL, io_service_t accelerator)
+static id init_with_accelerator(id self, SEL, mach_port_t accelerator)
 {
     /* The factory owns this initial allocation. Its returned object is the
      * actual adapted frontend's _MTLDevice subclass, with the original queried

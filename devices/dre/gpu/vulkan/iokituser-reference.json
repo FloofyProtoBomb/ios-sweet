@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/apple-oss-distributions/IOKitUser",
+  "commit": "323ead896d04424f87184d8f6ff0cce811aab106",
+  "path": "IOKitLib.h",
+  "sha256": "d97b87a7d557a4281436c1a92e26abf6651242786887f03d6baa6eaff4b20e86",
+  "header_url": "https://github.com/apple-oss-distributions/IOKitUser/blob/323ead896d04424f87184d8f6ff0cce811aab106/IOKitLib.h",
+  "use": "handwritten narrow function-pointer signatures; no Apple implementation/header copied",
+  "types": "actual official iPhoneOS SDK Mach and CoreFoundation types",
+  "symbols": ["IOServiceMatching", "IOServiceGetMatchingService", "IOObjectRelease", "IOObjectConformsTo", "IORegistryEntryGetRegistryEntryID", "IOServiceOpen", "IOServiceClose", "IOConnectCallStructMethod"],
+  "runtime_library": "/System/Library/Frameworks/IOKit.framework/IOKit",
+  "unresolved_link_waiver": false,
+  "gpu_provider_implemented_by_loader": false
+}

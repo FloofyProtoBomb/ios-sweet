@@ -11,7 +11,7 @@
 #include <string.h>
 #include <time.h>
 #if defined(__APPLE__)
-#include <IOKit/IOKitLib.h>
+#include "dre_iokit_loader.h"
 #include <mach/mach.h>
 #endif
 
@@ -90,7 +90,7 @@ static enum dre_darwin_result call(struct dre_darwin *c, uint32_t method,
     memset(out, 0, out_bytes);
 #if defined(__APPLE__)
     size_t returned = out_bytes;
-    kern_return_t kr = IOConnectCallStructMethod((io_connect_t)c->connection,
+    kern_return_t kr = dre_iokit_call((mach_port_t)c->connection,
         method, in, in_bytes, out, &returned);
     if (kr != KERN_SUCCESS) {
         /* The versioned native method carries errors in the typed reply. A
@@ -245,11 +245,11 @@ enum dre_darwin_result dre_darwin_open(uint64_t required, struct dre_darwin **ou
     struct dre_darwin *c = calloc(1, sizeof(*c));
     if (!c) return DRE_DARWIN_NO_MEMORY;
     if (pthread_mutex_init(&c->mutex, NULL)) { free(c); return DRE_DARWIN_NO_MEMORY; }
-    io_service_t service = IOServiceGetMatchingService(kIOMasterPortDefault, IOServiceMatching(DRE_GPU_SERVICE));
+    mach_port_t service = dre_iokit_matching_service(dre_iokit_matching(DRE_GPU_SERVICE));
     if (!service) { pthread_mutex_destroy(&c->mutex); free(c); return DRE_DARWIN_NO_PROVIDER; }
-    io_connect_t connection = IO_OBJECT_NULL;
-    kern_return_t kr = IOServiceOpen(service, mach_task_self(), 0, &connection);
-    IOObjectRelease(service);
+    mach_port_t connection = MACH_PORT_NULL;
+    kern_return_t kr = dre_iokit_open(service, mach_task_self(), 0, &connection);
+    dre_iokit_release(service);
     if (kr != KERN_SUCCESS || !connection) {
         pthread_mutex_destroy(&c->mutex); free(c); return DRE_DARWIN_NO_PROVIDER;
     }
@@ -688,7 +688,7 @@ enum dre_darwin_result dre_darwin_close(struct dre_darwin *c)
     for (struct dre_darwin_surface *s = c->surfaces; s; s = s->next)
         if (handle_call(c, DRE_GPU_SURFACE_CLOSE, s->token, 1) != DRE_DARWIN_OK) result = DRE_DARWIN_LOST;
 #if defined(__APPLE__)
-    if (c->connection && IOServiceClose((io_connect_t)c->connection) != KERN_SUCCESS)
+    if (c->connection && dre_iokit_close((mach_port_t)c->connection) != KERN_SUCCESS)
         result = DRE_DARWIN_LOST;
 #endif
     c->connection = 0;

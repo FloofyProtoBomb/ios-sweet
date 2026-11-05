@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""UNVALIDATED draft recipe. Do not run until deferred validation is authorized.
+"""Prepare matching DRE/Mesa source; native compilation/runtime remain separate.
 
 Prepare a fresh pinned Mesa85fda source tree, apply the matching 17 Darwin
 reference patches, then replace their A740 transport with the DRE ABI1 source.
 No compiler, test, GPU, publication, filesystem image or phone is invoked.
-This recipe itself has not been run or qualified.
+Preserves exact original patch pins and records explicit Git creation metadata.
 """
 from __future__ import annotations
 import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -39,6 +40,16 @@ def replace_once(path: Path, old: str, new: str) -> None:
     path.write_text(data.replace(old, new), encoding="utf-8", newline="\n")
 
 
+def application_patch(raw: bytes) -> tuple[bytes, int]:
+    # The pinned frame-diagnostics patch declares a new file with /dev/null
+    # but omits Git's new-file-mode header. Git2.43 otherwise looks for dev/null.
+    # Add ONLY that explicit0644 metadata; no payload, context or shader change.
+    text = raw.decode("utf-8")
+    pattern = re.compile(r"(^diff --git a/([^\n ]+) b/\2\n)(?=--- /dev/null\n)", re.M)
+    canonical, count = pattern.subn(r"\1new file mode 100644\n", text)
+    return canonical.encode("utf-8"), count
+
+
 def prepare(args, out: Path) -> dict:
     pins = json.loads((RUNTIME / "build_inputs.json").read_text(encoding="utf-8"))
     bridge = args.bridge_source.resolve()
@@ -57,19 +68,23 @@ def prepare(args, out: Path) -> dict:
     if run(["git", "-C", source, "rev-parse", "HEAD^{tree}"], out, "mesa-tree") != pin["tree"]:
         raise ValueError("Mesa tree differs from the exact recipe pin")
     applied = []
+    application = out / "application-patches"; application.mkdir()
     for index, entry in enumerate(pins["mesa_patches"], 1):
         patch = bridge / "mesa-reference-patches" / Path(entry["path"]).name
         if not patch.is_file() or patch.stat().st_size != entry["bytes"] or sha(patch) != entry["sha256"]:
             raise ValueError("reference patch input differs: " + entry["path"])
-        run(["git", "-C", source, "apply", "--check", patch], out, f"reference-{index:02d}-check")
-        run(["git", "-C", source, "apply", patch], out, f"reference-{index:02d}-apply")
-        applied.append(entry)
+        raw, modes = application_patch(patch.read_bytes())
+        actual_patch = application / Path(entry["path"]).name; actual_patch.write_bytes(raw)
+        run(["git", "-C", source, "apply", "--check", actual_patch], out, f"reference-{index:02d}-check")
+        run(["git", "-C", source, "apply", actual_patch], out, f"reference-{index:02d}-apply")
+        applied.append(dict(entry, application_sha256=sha(actual_patch), explicit_new_file_modes=modes))
     vulkan = source / "src/freedreno/vulkan"
     overlays = {}
     for original, destination in (
         (HERE / "tu_knl_dre.cc", vulkan / "tu_knl_darwin.cc"),
         (HERE / "dre_darwin.c", vulkan / "dre_darwin.c"),
         (HERE / "dre_darwin.h", vulkan / "dre_darwin.h"),
+        (HERE / "dre_iokit_loader.h", vulkan / "dre_iokit_loader.h"),
         (HERE / "dre_mesa_policy.h", vulkan / "dre_mesa_policy.h"),
         (HERE.parent / "kernel/dre_gpu_uapi.h", vulkan / "dre_gpu_uapi.h"),
     ):
@@ -79,6 +94,9 @@ def prepare(args, out: Path) -> dict:
     replace_once(meson, "files('tu_knl_darwin.cc', 'tu_builtin_cache.cc')",
         "files('tu_knl_darwin.cc', 'tu_builtin_cache.cc', 'dre_darwin.c')")
     replace_once(meson, "  tu_link_args += ['-Wl,-undefined,dynamic_lookup']\n", "")
+    replace_once(meson,
+        "  tu_deps += dependency('appleframeworks', modules : ['IOKit', 'CoreGraphics', 'Foundation', 'QuartzCore'])",
+        "  tu_deps += dependency('appleframeworks', modules : ['CoreFoundation', 'CoreGraphics', 'Foundation', 'QuartzCore'])")
     header = vulkan / "tu_device.h"
     replace_once(header, "struct tu_physical_device\n{\n",
         "struct tu_physical_device\n{\n   uint64_t dre_reset_generation; /* DRE native epoch, never a fabricated ID */\n")
@@ -114,7 +132,7 @@ def prepare(args, out: Path) -> dict:
     run(["git", "-C", source, "add", "-A"], out, "source-index")
     tree = run(["git", "-C", source, "write-tree"], out, "prepared-tree")
     return {"schema": 1, "status": "UNVALIDATED_SOURCE_PREPARED",
-        "validation": "DEFERRED_UNTIL_TOMORROW", "mesa": pin,
+        "validation": "SOURCE_PREPARED_NOT_COMPILED_OR_EXECUTED", "mesa": pin,
         "matching_reference_patches": applied, "dre_overlay_sha256": overlays,
         "prepared_index_tree": tree, "required_build_platforms": [],
         "reference_a740_transport_replaced": True, "weak_undefined_link_waiver_removed": True,

@@ -97,12 +97,13 @@ def package(args, out: Path) -> dict:
     compiler = run(["xcrun", "--sdk", "iphoneos", "--find", "clang++"], out, "compiler-path")
     flags = ["-target", "arm64-apple-ios16.0", "-isysroot", sdk, "-O2", "-g", "-std=c++17", "-fblocks"]
     bootstrap = out / "dre_metal_factory.o"
-    run([compiler, *flags, "-fno-objc-arc", "-I", uapi.parent, "-c", HERE / "dre_metal_factory.mm", "-o", bootstrap],
+    run([compiler, *flags, "-fno-objc-arc", "-I", uapi.parent, "-I", HERE.parent / "vulkan",
+        "-c", HERE / "dre_metal_factory.mm", "-o", bootstrap],
         out, "factory-compile")
     bundle = out / "DREMetal.bundle"; bundle.mkdir()
     executable = bundle / "DREMetal"
     frameworks = []
-    for name in ("Foundation", "Metal", "IOKit", "IOSurface", "QuartzCore", "CoreGraphics", "CoreFoundation", "Security"):
+    for name in ("Foundation", "Metal", "IOSurface", "QuartzCore", "CoreGraphics", "CoreFoundation", "Security"):
         frameworks += ["-framework", name]
     # No -undefined dynamic_lookup or synthetic import library. Genuine missing
     # runtime symbols must stop the link and remain visible in its artifact log.

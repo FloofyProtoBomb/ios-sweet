@@ -6,6 +6,8 @@ on:
     branches: [dre-native-validation]
     paths:
       - 'devices/dre/gpu/runtime/**'
+      - 'devices/dre/gpu/vulkan/**'
+      - 'devices/dre/gpu/kernel/dre_gpu_uapi.h'
       - '.github/workflows/dre-ios-rust.yml'
 
 permissions:
@@ -16,6 +18,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  native-sdk-and-metadata:
+    # Independent SDK cross-compile job; no dependency on the ARM64 Rust queue.
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select available Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          XC=$(ls -d /Applications/Xcode_*.app | sort -V | head -1)
+          echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
+          sudo xcode-select -s "$XC"
+      - name: Compile and strictly link actual native transport and metadata observer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 devices/dre/gpu/runtime/build_native_sdk.py --out out/native-sdk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dre-native-sdk
+          path: |
+            out/native-sdk/*.json
+            out/native-sdk/*.log
+            out/native-sdk/SHA256SUMS
+            out/native-sdk/objects/
+          if-no-files-found: error
   matching-ios-objects:
     # Standard macos-15 is ARM64; the acquisition helper also verifies the
     # actual architecture/OS before accepting the pinned Sequoia LLVM bottle.

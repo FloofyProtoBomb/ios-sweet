@@ -115,7 +115,7 @@ def disk(case):
     return {1: bytes(header), **{2 + i: bytes(entries[i * 4096:(i + 1) * 4096]) for i in range(4)}}
 
 
-def run(image, dtb, syms, case, context_probe=False, driver_prep=False, handoff_read=False):
+def run(image, dtb, syms, case, context_probe=False, driver_prep=False, handoff_read=False, native_ufs=False):
     if case == 'dt_mismatch':
         dtb = dtb.replace(b'qcom,holi-gcc\0', b'qcom,xoli-gcc\0')
     elif case == 'touch_dt_mismatch':
@@ -594,6 +594,16 @@ def run(image, dtb, syms, case, context_probe=False, driver_prep=False, handoff_
         chosen = next(n for n in root.children if n.name == 'chosen')
         assert consumed == adt_size and root.prop('serial-number').split(b'\0')[0] == expected_serial
         assert chosen.prop('dre,host-uuid') == uuid.uuid5(uuid.NAMESPACE_URL, 'urn:oneplus:dre:' + expected_serial.decode()).bytes
+        if native_ufs:
+            node = next(n for n in root.children if n.name == 'dre-ufs')
+            raw_handoff = node.prop('dre,handoff')
+            w = struct.unpack('<8Q', raw_handoff)
+            assert node.prop('compatible') == b'oneplus,dre-ufs\0'
+            assert w[0] == 0x0031534655455244 and w[7] == zlib.crc32(raw_handoff[:56])
+            assert w[1:3] == (syms['arena'], 16384) and not w[1] % 16384
+            assert w[5:7] == (syms['_head'], syms['_end'] - syms['_head'])
+            assert w[4] == len(dtb) and bytes(cpu.mem_read(w[3], w[4])) == dtb
+            assert 'dre_ufs=1' in args
     else:
         args = ' '.join(fields)
     if case == 'dt_mismatch': assert not reads and not writes
@@ -613,6 +623,7 @@ if __name__ == '__main__':
     ap.add_argument('--dma-context', action='store_true')
     ap.add_argument('--driver-prep', action='store_true')
     ap.add_argument('--ufs-handoff-read', action='store_true')
+    ap.add_argument('--native-ufs', action='store_true')
     args = ap.parse_args()
     cases = args.case or ('ready', 'translated', 'route_fault', 'route_reserved', 'unmatched_fault',
         'unmatched_bypass', 'ambiguous', 'masked', 'extended', 'bad_smmu_id', 'client_disabled',
@@ -643,6 +654,6 @@ if __name__ == '__main__':
     image, dtb = args.image.read_bytes(), args.device_dtb.read_bytes()
     kernel = image[4096:4096 + struct.unpack_from('<I', image, 8)[0]]
     syms = symbols(args.elf, kernel)
-    reports = {case: run(image, dtb, syms, case, args.dma_context, args.driver_prep, args.ufs_handoff_read) for case in cases}
+    reports = {case: run(image, dtb, syms, case, args.dma_context, args.driver_prep, args.ufs_handoff_read, args.native_ufs) for case in cases}
     if args.report_json:
         args.report_json.write_text(json.dumps(reports, indent=2) + '\n')

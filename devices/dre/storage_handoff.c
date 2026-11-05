@@ -2,6 +2,7 @@
 #include <libfdt.h>
 #include "storage_handoff.h"
 #include "storage_abi.h"
+#include "storage_live.h"
 #include "dma_memory.h"
 #include "ufs_read.h"
 extern const char _head[], _end[];
@@ -14,9 +15,7 @@ const char *dre_storage_prepare(const void *dt)
     handoff[3] = (uintptr_t)dt; handoff[4] = fdt_totalsize(dt);
     handoff[5] = (uintptr_t)_head; handoff[6] = (uintptr_t)_end - (uintptr_t)_head;
     handoff[7] = dre_storage_crc(handoff, 56);
-    if (!dre_storage_abi_valid(handoff) ||
-        !dre_dma_ram_allowed(dt, handoff[1], handoff[2]) ||
-        !dre_dma_ram_allowed(dt, handoff[3], handoff[4])) return "storage ownership unavailable";
+    if (!dre_storage_live_valid(dt, handoff)) return "storage ownership unavailable";
     return 0;
 }
 

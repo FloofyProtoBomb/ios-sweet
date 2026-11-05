@@ -73,11 +73,15 @@ def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3, native
                 assert reg(1) in values
                 cpu.mem_write(reg(2), values[reg(1)]); finish(0)
         elif native is not None and call == 199:
-            assert [reg(i) for i in range(3)] == [20, 4096, 0]; finish(4096)
+            assert [reg(i) for i in range(3)] in ([20, 4096, 0], [10, 512, 0]); finish(reg(1))
         elif native is not None and call == 3:
-            assert reg(0) == 20 and reg(2) == 4096
-            native_reads += 1
-            cpu.mem_write(reg(1), bytes(gpt)); finish(512 if native == 'short_read' else 4096)
+            if reg(0) == 10:
+                assert reg(2) == 512
+                cpu.mem_write(reg(1), bytes(512)); finish(512)
+            else:
+                assert reg(0) == 20 and reg(2) == 4096
+                native_reads += 1
+                cpu.mem_write(reg(1), bytes(gpt)); finish(512 if native == 'short_read' else 4096)
         elif call == 336:
             opens += 1
             assert [reg(i) for i in range(4)] == [4, 0, 0, 0] and reg(5) == 65536
@@ -113,7 +117,7 @@ def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3, native
     assert expected in text, text
     assert 'FAKE-PRIVATE-IDENTIFIER' not in text, 'raw kernel log leaked to console'
     if native is not None:
-        result = 'BSD_GPT_READ_PASS + WRITE_OPEN_REJECTED' if native == 'pass' else 'UNAVAILABLE_OR_FAILED'
+        result = 'BSD_PARTITION+GPT_READ_PASS + WRITE_OPEN_REJECTED' if native == 'pass' else 'UNAVAILABLE_OR_FAILED'
         assert text.count('NATIVE_UFS=' + result) == cycles, text
         assert native_reads == int(native in ('pass', 'short_read', 'bad_crc')), 'native result was not cached'
     if expected.endswith('SURFACE+FRAMEBUFFER') and len(chunks) == 0:

@@ -18,7 +18,7 @@ UI_PATCHES = {29, 31, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
 def native_storage_assets():
     """Generate additions from reviewed shared sources, avoiding forked engines."""
     here = Path(__file__).parent
-    common = ('native_ufs.c', 'storage_abi.c', 'storage_abi.h', 'ufs_read.c', 'ufs_read.h',
+    common = ('native_ufs.c', 'storage_abi.c', 'storage_abi.h', 'storage_live.h', 'ufs_read.c', 'ufs_read.h',
               'ufs_handoff_dma.c', 'ufs_handoff_dma.h', 'ufs_clock.c', 'ufs_clock.h',
               'dma_route.c', 'dma_route.h', 'dma_context.c', 'dma_context.h',
               'dma_memory.c', 'dma_memory.h')
@@ -32,6 +32,7 @@ def native_storage_assets():
             content = content.replace('<libfdt_env.h>', '"libfdt_env.h"')
             if name.endswith('libfdt_env.h'):
                 content = content.replace('#include <stdlib.h>\n#include <string.h>', '#include <libkern/libkern.h>')
+                content = content.replace('#include <limits.h>', '#include <machine/limits.h>')
             if name.endswith('fdt_addresses.c'):
                 # Kernel reads only; exclude the writer and its dependencies.
                 content = content.split('/* This function assumes')[0].rstrip() + '\n'

@@ -7,7 +7,7 @@ uncached low-DDR DMA arena and checks reads through `/dev` from diagnostic
 PID 1. It requires the new native kernel, retains the RAM root and does not
 install iOS. The existing tested images remain unchanged.
 
-This target boots XNU 8796 with one CPU and a diagnostic Mach-O as PID 1
+The validated diagnostic boots XNU 8796 with all eight CPUs and a small Mach-O as PID 1
 on a mockfs RAM disk. The eventual userland target is iPhone X
 (`iPhone10,3`, `D22AP`) iOS 16.7.16, build 20H392. The diagnostic image
 contains the kernel and the project's small init program. SpringBoard,

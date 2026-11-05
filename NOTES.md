@@ -15,11 +15,25 @@ write is allowed by the native adapter. Unsafe restoration panics for reset.
 read-only. PID1 checks geometry, EROFS on write-open and a real BSD GPT read
 with header CRC. It does not issue a write or mount/install an iOS system.
 
-Host validation so far: 31 production-C ownership/VA-PA/read/restore cases,
+Host validation so far: 38 production-C ownership/VA-PA/read/restore cases,
 six executed PID1 syscall cases (success, missing, CRC, short read, ioctl,
 writable failure) and six exact-image early engine regressions PASS. Patch
-0103 applies to the staged 65-patch UI tree. Full macOS compilation is the
-next gate; no new image/test is approved and no phone write occurred.
+0103 applies to the staged 65-patch UI tree. All 66 patches also apply in
+order to pristine XNU plus the two immutable HFS file fixtures. New shim
+and kernel-mode engine compile strictly for ARM64 with -Wall -Wextra -Werror.
+Full macOS compilation is the next gate; initial run 41947941743 is building
+source 5026bae1bcca73dcf19251b0000a6a6cfb4a40ac on dre-storage (local
+e9a1590, tree24477be377060b4e9d05a6ed9972aab7c1a2dd53). Follow-up working
+changes add shared live-initrd exclusion, exact-image metadata assertions,
+and a 512-byte unaligned-within-4K userdata read in PID1 before the GPT read.
+Initial CI FAILED only on libfdt's unavailable user-space limits.h include.
+The staged kernel environment now uses machine/limits.h. All 12 native C
+translation units compile to ARM64 Mach-O objects locally with CI generated
+headers/flags (Zig substitutes generic ARM64 CPU syntax and XNU builtin stubs,
+so this is not the final Apple-clang/link gate). Logs/objects are
+work/native-local-*.log and work/native-local-objects; failed CI buildtree is
+work/native-buildtree, a junction to D:/CodexWork/dre-native-build. No new
+image/test is approved and no phone write occurred. Retry CI is the next gate.
 Phone remains VERIFIED RESTORED LINEAGEOS from the 16dd2e95 test below.
 Build branch will be dre-storage (UI profile); keep dre-ui/tested images.
 

@@ -46,6 +46,22 @@ Ldre_check_native:
     ldr w9, [sp]
     cbnz w9, Lnative_cleanup
     mov x0, x20
+    mov x1, #512                  /* Exercise a 512-byte slice of userdata. */
+    mov x2, #0
+    mov x16, #199
+    svc #0x80
+    b.cs Lnative_cleanup
+    cmp x0, #512
+    b.ne Lnative_cleanup
+    mov x0, x20
+    add x1, sp, #64
+    mov x2, #512
+    mov x16, #3
+    svc #0x80
+    b.cs Lnative_cleanup
+    cmp x0, #512
+    b.ne Lnative_cleanup
+    mov x0, x20
     mov x16, #6
     svc #0x80
     mov x20, #-1
@@ -164,7 +180,7 @@ Lnative_part: .asciz "/dev/rufsroot0"
 Lnative_disk: .asciz "/dev/rdremedia0"
 .p2align 3
 Lnative_signature: .ascii "EFI PART"
-Lnative_pass: .ascii "NATIVE_UFS=BSD_GPT_READ_PASS + WRITE_OPEN_REJECTED\n"
+Lnative_pass: .ascii "NATIVE_UFS=BSD_PARTITION+GPT_READ_PASS + WRITE_OPEN_REJECTED\n"
 Lnative_pass_end:
 Lnative_fail: .ascii "NATIVE_UFS=UNAVAILABLE_OR_FAILED\n"
 Lnative_fail_end:

@@ -11,6 +11,7 @@ import struct
 import subprocess
 import sys
 import zlib
+from test_driver_prep import fixture
 
 HERE = Path(__file__).resolve().parent
 READ = C.CFUNCTYPE(C.c_int, C.c_size_t, C.POINTER(C.c_uint32))
@@ -29,6 +30,10 @@ def main():
     args = ap.parse_args(); args.out.mkdir(parents=True, exist_ok=True)
     stub = args.out / 'platform.c'
     stub.write_text('''#include <stdint.h>
+#include "storage_live.h"
+int dre_storage_test_live(const void *dt, const uint64_t w[8], unsigned size) {
+    return !fdt_check_full(dt, size) && dre_storage_live_valid(dt, w);
+}
 volatile uint8_t *dre_kernel_ufs_arena;
 uint64_t dre_kernel_ufs_arena_pa;
 int (*read_cb)(uintptr_t, uint32_t *);
@@ -38,9 +43,14 @@ int dre_write32(uintptr_t a, uint32_t v) { return write_cb(a,v); }
 uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return t += 1000000; }
 ''')
     dll = args.out / ('engine.dll' if sys.platform == 'win32' else 'engine.so')
+    cells = args.out / 'cells.c'
+    cells.write_text((HERE / 'libfdt/fdt_addresses.c').read_text().split('/* This function assumes')[0])
     subprocess.run([args.zig, 'cc', '-O2', '-shared', '-DDRE_UFS_KERNEL', '-DDRE_UFS_HOST_TEST',
                     *(['-Wl,--export-all-symbols'] if sys.platform == 'win32' else ['-fPIC']),
-                    str(HERE / 'ufs_read.c'), str(HERE / 'storage_abi.c'), str(stub), '-o', str(dll)], check=True)
+                    '-I' + str(HERE), '-I' + str(HERE / 'libfdt'), str(HERE / 'ufs_read.c'),
+                    str(HERE / 'storage_abi.c'), str(HERE / 'dma_memory.c'),
+                    *(str(HERE / 'libfdt' / f) for f in ('fdt.c', 'fdt_ro.c', 'fdt_check.c')),
+                    str(cells), str(stub), '-o', str(dll)], check=True)
     api = C.CDLL(str(dll.resolve()))
     probe = api.dre_ufs_read_guarded
     probe.argtypes = [C.POINTER(Route), C.POINTER(State), GUARD, C.c_void_p]; probe.restype = C.c_char_p
@@ -62,6 +72,18 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return t += 1000000; }
                          (6, 0), (6, 0x6000001)):
         w = list(base); w[index] = value; abi(w, False)
     bad = (C.c_uint64 * 8)(*base); assert not valid(bad); checks += 1
+    live = api.dre_storage_test_live
+    live.argtypes = [C.c_void_p, C.POINTER(C.c_uint64), C.c_uint]; live.restype = C.c_int
+    safe_initrd = (0xa4500000, 0xa5c00000)
+    for data, expected in ((fixture(initrd=safe_initrd), True), (fixture(), False),
+                           (fixture(initrd=(0xa8040000, 0xa8044000)), False),
+                           (fixture(initrd=(0xb0000000, 0xa0000000)), False),
+                           (fixture(initrd=safe_initrd, reserve=[(base[1], 16384)]), False),
+                           (fixture(initrd=safe_initrd, dynamic=[(base[3], base[4])]), False),
+                           (fixture(initrd=safe_initrd, memreserve=[(base[1], 16384)]), False)):
+        w = list(base); w[7] = zlib.crc32(struct.pack('<7Q', *w[:7]))
+        assert bool(live(C.create_string_buffer(data), (C.c_uint64 * 8)(*w), len(data))) == expected
+        checks += 1
     memory = C.create_string_buffer(0x8000)
     va = (C.addressof(memory) + 0x3fff) & ~0x3fff
     pa = 0xa8040000

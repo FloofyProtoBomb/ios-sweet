@@ -9,7 +9,7 @@ import subprocess
 
 HERE = Path(__file__).resolve().parent
 
-def fixture(*, reserve=(), dynamic=(), memreserve=(), memory=((0x80000000, 0x100000000),), broken=False):
+def fixture(*, reserve=(), dynamic=(), memreserve=(), memory=((0x80000000, 0x100000000),), broken=False, initrd=None):
     strings = bytearray()
     def prop(k, v):
         index = len(strings); strings.extend(k.encode() + b'\0')
@@ -19,6 +19,9 @@ def fixture(*, reserve=(), dynamic=(), memreserve=(), memory=((0x80000000, 0x100
         return struct.pack('>I', 1) + name + bytes(-len(name) % 4) + props + children + struct.pack('>I', 2)
     def ranges(values): return b''.join(struct.pack('>QQ', a, n) for a, n in values)
     children = node('memory', prop('device_type', b'memory\0') + prop('reg', ranges(memory)))
+    if initrd is not None:
+        children += node('chosen', prop('linux,initrd-start', struct.pack('>Q', initrd[0])) +
+                         prop('linux,initrd-end', struct.pack('>Q', initrd[1])))
     reservations = b''.join(node(f'fixed{i}', prop('reg', ranges([v]))) for i, v in enumerate(reserve))
     reservations += b''.join(node(f'dynamic{i}', prop('alloc-ranges', ranges([v]))) for i, v in enumerate(dynamic))
     if broken: reservations += node('unknown', prop('size', struct.pack('>Q', 4096)))

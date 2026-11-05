@@ -17,6 +17,7 @@
 #include <libkern/libkern.h>
 #include "libfdt/libfdt.h"
 #include "storage_abi.h"
+#include "storage_live.h"
 #include "dma_memory.h"
 #include "ufs_read.h"
 #include "ufs_handoff_dma.h"
@@ -96,7 +97,7 @@ static int disk_close(__unused dev_t dev, __unused int flags, __unused int type,
 static void disk_strategy(buf_t bp)
 {
     int error = 0;
-    size_t count = buf_count(bp), done = 0;
+    uint32_t count = buf_count(bp), done = 0;
     dev_t dev = buf_device(bp);
     caddr_t mapped = NULL;
     buf_setresid(bp, count);
@@ -108,7 +109,7 @@ static void disk_strategy(buf_t bp)
     uint64_t offset = (uint64_t)buf_blkno(bp) * DEV_BSIZE;
     uint64_t bytes = count_blocks(dev) * 4096;
     if (offset > bytes || (count % DEV_BSIZE)) { error = EINVAL; goto finish; }
-    if (count > bytes - offset) count = bytes - offset;
+    if (count > bytes - offset) count = (uint32_t)(bytes - offset);
     if (!count) goto finish;
     if ((error = buf_map(bp, &mapped))) goto finish;
     lck_mtx_lock(&dre_ufs_lock);
@@ -117,7 +118,7 @@ static void disk_strategy(buf_t bp)
         uint64_t position = offset + done;
         uint64_t block = position / 4096 + (minor(dev) ? 0 : media.userdata_first);
         unsigned skip = position % 4096;
-        size_t take = MIN(count - done, 4096 - skip);
+        uint32_t take = MIN(count - done, 4096u - skip);
         if (block > UINT32_MAX) { error = EINVAL; break; }
         error = check_result(dre_ufs_read_block_guarded(&dma.route, &media,
             native_guard, &dma, (uint32_t)block, bounce), "READ_PASS");
@@ -198,7 +199,7 @@ static int initialize(void)
     for (unsigned i = 0; i < w[4]; i++) ((uint8_t *)dt)[i] = ((volatile uint8_t *)dt_map)[i];
     ml_io_unmap(trunc_page(dt_map), round_page(w[4] + (dt_map & PAGE_MASK)));
     if (fdt_check_full(dt, w[4]) || fdt_totalsize(dt) != w[4] || !board_ok(dt) ||
-        !dre_dma_ram_allowed(dt, w[1], w[2]) || !dre_dma_ram_allowed(dt, w[3], w[4])) {
+        !dre_storage_live_valid(dt, w)) {
         kfree_data(dt, w[4]); return ENXIO;
     }
     /* Kept for the driver's lifetime: route queries use this private snapshot. */

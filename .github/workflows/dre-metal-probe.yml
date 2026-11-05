@@ -35,15 +35,22 @@ concurrency:
 
 jobs:
   probe:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Select matching Xcode
         run: |
-          XC=$(ls -d /Applications/Xcode_*.app | sort -V | head -1)
+          # Same real SDK as the coordinated runtime build. Sonoma runners
+          # retired on Nov 2,2026; do not silently select a different Xcode.
+          XC=/Applications/Xcode_16.4.app
+          test -d "$XC/Contents/Developer"
           echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
           sudo xcode-select -s "$XC"
+          xcodebuild -version | tee xcode-version.log
+          grep -Fx 'Xcode 16.4' xcode-version.log
+          grep -Fx 'Build version 16F6' xcode-version.log
+          test "$(xcrun --sdk iphoneos --show-sdk-version)" = 18.5
       - name: Compile actual iOS Metal workload and Adreno primitives
         run: |
           bash devices/dre/gpu/build_metal_probe.sh out/dre-metal-probe

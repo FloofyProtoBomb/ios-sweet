@@ -13,6 +13,11 @@ on:
 permissions:
   contents: read
 
+# The previous macOS 15 run compiled the four frontend objects with this SDK.
+# Use its exact toolchain for all three independent runtime build gates.
+env:
+  DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+
 concurrency:
   group: dre-ios-rust-${{ github.ref }}
   cancel-in-progress: true
@@ -20,17 +25,28 @@ concurrency:
 jobs:
   native-sdk-and-metadata:
     # Independent SDK cross-compile job; no dependency on the ARM64 Rust queue.
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Select available Xcode
+      - &verify_runtime_sdk
+        name: Verify macOS runner, Xcode and iPhoneOS SDK
         shell: bash
         run: |
           set -euo pipefail
-          XC=$(ls -d /Applications/Xcode_*.app | sort -V | head -1)
-          echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
-          sudo xcode-select -s "$XC"
+          host_arch=$(uname -m)
+          host_version=$(sw_vers -productVersion)
+          printf '%s\n' "$host_arch" "$host_version" "$DEVELOPER_DIR"
+          test "$host_arch" = arm64
+          [[ "$host_version" == 15 || "$host_version" == 15.* ]]
+          test -d "$DEVELOPER_DIR"
+          selected_xcode=$(xcodebuild -version)
+          sdk_path=$(xcrun --sdk iphoneos --show-sdk-path)
+          sdk_build=$(xcrun --sdk iphoneos --show-sdk-build-version)
+          printf '%s\n' "$selected_xcode" "$sdk_path" "$sdk_build"
+          test "$selected_xcode" = $'Xcode 16.4\nBuild version 16F6'
+          test -d "$sdk_path"
+          test "$sdk_build" = 22F76
       - name: Compile and strictly link actual native transport and metadata observer
         shell: bash
         run: |
@@ -50,13 +66,14 @@ jobs:
     # Distinct full Mesa C/C++ gate, after the independent native C boundary.
     # Never treat a successful helper compile as a successful Turnip link.
     needs: native-sdk-and-metadata
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 70
     env:
       HOMEBREW_NO_AUTO_UPDATE: '1'
       HOMEBREW_NO_INSTALL_CLEANUP: '1'
     steps:
       - uses: actions/checkout@v4
+      - *verify_runtime_sdk
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -123,13 +140,11 @@ jobs:
       HOMEBREW_NO_INSTALL_CLEANUP: '1'
     steps:
       - uses: actions/checkout@v4
-      - name: Verify actual host and run runtime guards
+      - *verify_runtime_sdk
+      - name: Run runtime guards
         shell: bash
         run: |
           set -euo pipefail
-          uname -m
-          sw_vers -productVersion
-          test "$(uname -m)" = arm64
           python3 -m unittest discover -s devices/dre/gpu/runtime -p 'test_*.py'
           mkdir -p out/runtime-checks
           clang -std=c11 -O2 -Wall -Wextra -Werror \

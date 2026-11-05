@@ -2,6 +2,30 @@
 
 ## DE2118 handoff, 2026-11-05
 
+NEXT TEST PREPARED (Nov5 afternoon): source132b3e5/tree0b1b577f was published
+tree-identically as9c440040f334cea31f7338f39ff8715f527cd684. Runs42095581183 XNU,
+42095581126 driver checks,42095581302 runtime were created. Three macOS14 jobs
+cancelled BEFORE ANY STEP; actual check annotations say configuration
+'macos-14-arm64-us-default' unsupported. Official runner-images announcement
+13518 confirms ALL GitHub macOS14 images retired Nov2; macOS14 Intel is now
+Azure DevOps only. This is an infrastructure cancellation, not a compiler pass
+or failure. Runtime Rust job127484718406 was queued at last observation.
+37cf871/283d790 move driver/runtime checks to documented macOS15 and pin the
+same Xcode16.4/16F6, iPhoneOS18.5/22F76 toolchain. XNU migration remains held
+for authentic old iig compatibility; do NOT blindly add IORPC.kernelContent.
+GPU agent is assessing pinned original generator-output reuse and input proofs.
+Independent image review reproduced frozen67 payload and actual Android/ELF
+contents; f390f982 candidate is ready for the narrow diagnostic. All eleven
+linked/parser models pass, with no actual secure call or hardware execution.
+Fresh read-only phone preflight: known private target connected in Android,
+boot completed, slot_b, orange AVB. Lineage's DE2117 label is historical; no
+identity was fabricated/changed. No fastboot target yet; no reboot/root/pairing.
+Image/backup full hashes rechecked; outputs/next-test-20261105/manifest.json
+records exact candidate, kernel, restore backup, private-ID match and scope.
+Fresh image-specific temporary boot_b+restore approval was requested through
+the UI. Do NOT execute until an explicit response arrives. Never start stale
+operator/watcher scripts. No partition write/full iOS install authorized here.
+
 SCM SHIM MILESTONE389ee68: explicit `--scm-info-probe` requires
 `--board-tests --xnu`; default and install-root profiles do not enable it.
 Actual freestanding link against frozen67 kernel2d388d12 passes in fresh

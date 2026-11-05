@@ -62,6 +62,8 @@ def main():
     ap.add_argument("--ram-mib", type=int, choices=(512, 1024, 2048), default=512,
                     help="upper-RAM window; checked against live RAM and every reservation before XNU")
     ap.add_argument("--product-adt", type=Path, help="optional private D22AP Apple ADT for /product metadata")
+    ap.add_argument("--gpu-firmware-provisioning", type=Path,
+                    help="UNVALIDATED opt-in private SQE/ZAP provisioning directory; matching kernel anchor and fresh external --out required")
     args = ap.parse_args()
     if args.install_root:
         if not args.xnu or not args.product_adt:
@@ -96,6 +98,14 @@ def main():
     if args.ram_mib != 512 and not args.ui_services:
         ap.error("expanded RAM requires --ui-services")
     out = args.out.resolve()
+    gpu_firmware = None
+    if args.gpu_firmware_provisioning:
+        if not args.xnu or not args.native_ufs or not args.ui_services:
+            ap.error("--gpu-firmware-provisioning requires --xnu --native-ufs --ui-services")
+        if out.exists():
+            ap.error("GPU firmware provisioning requires a fresh private --out, preserving prepared images")
+        from gpu.firmware.provision import load_for_build
+        gpu_firmware = load_for_build(args.gpu_firmware_provisioning.resolve(), args.xnu, out)
     out.mkdir(parents=True, exist_ok=True)
     zig = os.path.abspath(args.zig) if Path(args.zig).is_file() else args.zig
     cc = [zig, "cc", "-target", "aarch64-linux-musl", "-mcpu=generic",
@@ -170,7 +180,22 @@ def main():
                         "-o", str(init_obj)], check=True)
         embed(kernel, out, init_obj, donor=args.upstream_0027 is not None, identity_path=args.identity,
               ui=args.ui_services, cpus=args.cpus, product_path=args.product_adt,
-              native_ufs=args.native_ufs, ram_mib=args.ram_mib, install_root=args.install_root)
+              native_ufs=args.native_ufs, ram_mib=args.ram_mib, install_root=args.install_root,
+              gpu_firmware=gpu_firmware is not None)
+        if gpu_firmware is not None:
+            # Private output only. The kernel anchor was matched before any
+            # compilation. No default image, source digest or boot argument
+            # automatically enables GPU/PAS13 hardware access.
+            (out / "gpu-firmware.package.bin").write_bytes(gpu_firmware)
+            fw_source = out / "gpu-firmware.S"
+            fw_source.write_text(
+                f"/* PRIVATE {hashlib.sha256(gpu_firmware).hexdigest()} */\n"
+                '.section .dre_gpu_firmware,"a"\n.balign 16384\n'
+                '.global _dre_gpu_firmware_start\n_dre_gpu_firmware_start:\n'
+                '.incbin "gpu-firmware.package.bin"\n'
+                '.global _dre_gpu_firmware_end\n_dre_gpu_firmware_end:\n', encoding="ascii")
+            sources += [fw_source, HERE / "gpu/firmware/package.c", HERE / "gpu/firmware/shim_handoff.c"]
+            cc += ["-DDRE_GPU_FIRMWARE"]
         source = out / "embedded.S"
         payload = (out / "payload.bin").read_bytes()
         # Zig's assembly cache does not track the file named by .incbin.
@@ -211,6 +236,9 @@ def main():
             'product_metadata_imported': args.product_adt is not None,
             'image_sha256': hashlib.sha256(output.read_bytes()).hexdigest(),
             'kernel_sha256': hashlib.sha256(kernel.read_bytes()).hexdigest() if kernel else None}
+    if gpu_firmware is not None:
+        info.update(private_gpu_firmware_provisioned=True, gpu_firmware_source="UNVALIDATED_OPT_IN",
+                    native_gpu_validated=False, metal_ready=False)
     (out / 'build-info.json').write_text(json.dumps(info, indent=2) + '\n')
     print(output)
 

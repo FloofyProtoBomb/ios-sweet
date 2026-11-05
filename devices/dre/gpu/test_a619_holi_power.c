@@ -6,10 +6,10 @@
 #include <string.h>
 static const uint64_t addresses[]={DRE_A619_GCC_CFG,DRE_A619_CX_GDSCR,DRE_A619_GX_GDSCR,
     DRE_A619_AHB_CLK,DRE_A619_GFX_CLK,DRE_A619_GMU_CLK,DRE_A619_CXO_CLK,
-    DRE_A619_SPTPRAC_STATUS,DRE_A619_SPTPRAC_CONTROL};
+    DRE_A619_SPTPRAC_STATUS,DRE_A619_SPTPRAC_CONTROL,DRE_A619_CX_STATUS};
 struct fixture {
     struct dre_a619_holi_power state;
-    uint32_t values[9];
+    uint32_t values[10];
     unsigned writes, reads, guards, barriers;
     uint64_t ticks, read_failure;
     unsigned write_failure;
@@ -21,7 +21,7 @@ static int read32(void *cookie,uint64_t address,uint32_t *value)
 {
     struct fixture *f=cookie; f->reads++;
     if (address==f->read_failure) { f->read_failure=0; return 0; }
-    for (unsigned i=0;i<9;i++) if (address==addresses[i]) { *value=f->values[i]; return 1; }
+    for (unsigned i=0;i<10;i++) if (address==addresses[i]) { *value=f->values[i]; return 1; }
     assert(!"unexpected MMIO read"); return 0;
 }
 static int write32(void *cookie,uint64_t address,uint32_t value)
@@ -50,7 +50,7 @@ static void init(struct fixture *f)
     memset(f,0,sizeof(*f));
     f->state=(struct dre_a619_holi_power){.chip_id=DRE_A619_CHIP_ID,
         .prerequisites=DRE_A619_POWER_PREREQUISITES,.tick_hz=19200000};
-    const uint32_t values[]={1,0x80000001,0x80000201,1,1,1,1,0x14,0x00778001};
+    const uint32_t values[]={1,0x80000001,0x80000201,1,1,1,1,0x14,0x00778001,0x80000000};
     memcpy(f->values,values,sizeof(values));
 }
 static struct dre_a619_ops ops(struct fixture *f)
@@ -78,13 +78,15 @@ int main(void)
     init(&f); f.state.tick_hz=62500000; CHECK("UNSUPPORTED_TIMER"); assert(!f.reads);
     init(&f); f.ownership_lost=1; CHECK("OWNERSHIP_REJECTED"); assert(!f.writes && !f.reads);
     init(&f); f.values[0]=0; CHECK("CONFIG_CLOCK_OFF"); assert(!f.writes);
-    init(&f); f.values[1]=0; CHECK("CX_OFF"); assert(!f.writes);
+    /* Hardware-status proof wins in both directions over the GDSCR mirror. */
+    init(&f); f.values[1]=0; CHECK("SPTPRAC_ENABLED"); assert(f.writes==1);
+    init(&f); f.values[9]=0; CHECK("CX_OFF"); assert(!f.writes && (f.values[1]&(1u<<31)));
     init(&f); f.values[2]=0; CHECK("GX_OFF"); assert(!f.writes);
     for (unsigned i=3;i<7;i++) {
         init(&f); f.values[i]=0; CHECK("BRANCH_CLOCK_OFF"); assert(!f.writes);
     }
     init(&f); f.read_failure=addresses[0]; CHECK("CONFIG_READ_FAILED"); assert(!f.writes);
-    init(&f); f.read_failure=addresses[1]; CHECK("DOMAIN_READ_FAILED"); assert(!f.writes);
+    init(&f); f.read_failure=addresses[9]; CHECK("DOMAIN_READ_FAILED"); assert(!f.writes);
     init(&f); f.read_failure=addresses[3]; CHECK("BRANCH_READ_FAILED"); assert(!f.writes);
     init(&f); f.read_failure=addresses[7]; CHECK("SPTPRAC_READ_FAILED"); assert(!f.writes);
     init(&f); f.values[7]=0; CHECK("SPTPRAC_TRANSITIONING"); assert(!f.writes);

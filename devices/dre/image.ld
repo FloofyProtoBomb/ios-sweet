@@ -3,7 +3,7 @@ SECTIONS
 {
     . = 0;
     .text : { KEEP(*(.text.head)) *(.text .text.*) }
-    .rodata : { *(.rodata .rodata.*) }
+    .rodata : { *(.rodata .rodata.*) KEEP(*(.dre_gpu_firmware)) }
     .data : { *(.data .data.*) }
     .bss : { *(.bss .bss.* COMMON) }
     . = ALIGN(16);

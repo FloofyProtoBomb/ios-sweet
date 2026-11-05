@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "formula": "llvm@21",
+  "version": "21.1.8",
+  "revision": 1,
+  "bottle_rebuild": 0,
+  "bottle_tag": "arm64_sequoia",
+  "host_arch": "arm64",
+  "macos_major": 15,
+  "url": "https://ghcr.io/v2/homebrew/core/llvm/21/blobs/sha256:63d776e3c1865f647b9c3df8dba8ef2ab024f6f045a07b7f1cdf5af6e0d0e9c3",
+  "sha256": "63d776e3c1865f647b9c3df8dba8ef2ab024f6f045a07b7f1cdf5af6e0d0e9c3",
+  "metadata_source": "https://formulae.brew.sh/api/formula/llvm@21.json",
+  "command_documentation": "https://docs.brew.sh/Manpage",
+  "macos_installation_qualified": false
+}

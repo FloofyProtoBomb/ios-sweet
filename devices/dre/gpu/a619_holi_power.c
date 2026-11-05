@@ -64,7 +64,9 @@ const char *dre_a619_holi_sptprac_enable(struct dre_a619_holi_power *s,
     uint32_t value;
     if (!read_reg(o,DRE_A619_GCC_CFG,&value)) return "CONFIG_READ_FAILED";
     if (!branch(value,1)) return "CONFIG_CLOCK_OFF";
-    if (!read_reg(o,DRE_A619_CX_GDSCR,&value)) return "DOMAIN_READ_FAILED";
+    /* Full Holi CX polls hw-ctrl-addr, not the GDSCR status mirror; see the
+     * actual gdsc-regulator.c poll_gdsc_status selection and live DT. */
+    if (!read_reg(o,DRE_A619_CX_STATUS,&value)) return "DOMAIN_READ_FAILED";
     if (!(value&POWER_ON)) return "CX_OFF";
     if (!read_reg(o,DRE_A619_GX_GDSCR,&s->retention_before)) return "DOMAIN_READ_FAILED";
     if (!(s->retention_before&POWER_ON)) return "GX_OFF";
@@ -101,4 +103,36 @@ const char *dre_a619_holi_sptprac_release(struct dre_a619_holi_power *s,
     }
     if (!power_off(s,o)) { s->unsafe=1; return "POWER_STATE_UNSAFE"; }
     return "SPTPRAC_POWERED_OFF";
+}
+
+/* UNVALIDATED source-only addition. This is an observation path, never an
+ * implicit re-enable of a running GPU. In particular, do not call enable()
+ * here: its failure recovery is a real power transition. */
+const char *dre_a619_holi_sptprac_check_live(const struct dre_a619_holi_power *s,
+    const struct dre_a619_ops *o)
+{
+    uint32_t value;
+    if (!valid(s,o) || !s->active || s->unsafe ||
+        s->chip_id!=DRE_A619_CHIP_ID || s->tick_hz!=19200000 ||
+        s->prerequisites!=DRE_A619_POWER_PREREQUISITES)
+        return "SPTPRAC_NOT_HELD";
+    if (!o->guard(o->cookie))return "OWNERSHIP_LOST";
+    if (!read_reg(o,DRE_A619_GCC_CFG,&value) || !branch(value,1))
+        return "CONFIG_CLOCK_UNAVAILABLE";
+    if (!o->guard(o->cookie) || !read_reg(o,DRE_A619_CX_STATUS,&value) || !(value&POWER_ON))
+        return "CX_UNAVAILABLE";
+    if (!o->guard(o->cookie) || !read_reg(o,DRE_A619_GX_GDSCR,&value) || !(value&POWER_ON))
+        return "GX_UNAVAILABLE";
+    const uint64_t clocks[]={DRE_A619_AHB_CLK,DRE_A619_GFX_CLK,DRE_A619_GMU_CLK,DRE_A619_CXO_CLK};
+    for (unsigned i=0;i<4;i++)
+        if (!o->guard(o->cookie) || !read_reg(o,clocks[i],&value) || !branch(value,0))
+            return "BRANCH_CLOCK_UNAVAILABLE";
+    if (!o->guard(o->cookie) || !read_reg(o,DRE_A619_SPTPRAC_STATUS,&value))
+        return "SPTPRAC_READ_FAILED";
+    /* Conservative existing enable-state mask. Interaction with the static
+     * HWCG profile is a required next-day hardware/host validation item. */
+    if ((value&(STATUS_ON|STATUS_OFF|SP_CLOCK_OFF))!=STATUS_ON)
+        return "SPTPRAC_NOT_OBSERVED_ON";
+    o->barrier(o->cookie);
+    return o->guard(o->cookie)?"SPTPRAC_HELD":"OWNERSHIP_LOST";
 }

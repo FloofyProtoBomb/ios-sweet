@@ -110,6 +110,10 @@ The dedicated `dre-metal-probe` CI also runs these existing portable C
 fixtures with the host compiler via `tools/check-dre-gpu-host.py`, compiles
 native helpers against the official iPhoneOS SDK and builds the frontend
 translation units. Reports keep native execution and acceleration false.
+The [official SDK run](https://github.com/FloofyProtoBomb/ios-sweet/actions/runs/41987783607)
+passed those checks and linked the read-only factory observer. The frontend
+is an object build; its complete Rust/Turnip link and native runtime are
+still unfinished.
 
 ## IOSurface runtime fixes
 

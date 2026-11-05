@@ -3,7 +3,7 @@ name: dre-metal-probe
 on:
   workflow_dispatch:
   push:
-    branches: [dre-metal-build]
+    branches: [dre-metal-build, dre-native-validation]
     paths:
       - 'devices/dre/gpu/**'
       - 'tools/check-dre-gpu-host.py'
@@ -32,6 +32,7 @@ jobs:
             case $(basename "$SOURCE") in test_*) continue ;; esac
             NAME=$(basename "$SOURCE" .c)
             xcrun --sdk iphoneos clang -target arm64-apple-ios16.0 -isysroot "$SDK" \
+              -Idevices/dre/libfdt \
               -ffreestanding -fno-builtin -mgeneral-regs-only -mstrict-align \
               -O2 -Wall -Wextra -Werror -c "$SOURCE" \
               -o "out/dre-metal-probe/$NAME.o"
@@ -41,12 +42,19 @@ jobs:
             -o out/dre-metal-probe/compiler_request.o
       - name: Run production host fixtures
         run: python3 tools/check-dre-gpu-host.py --cc clang --out out/gpu-host-tests
+      - name: Run native touch protocol and lifetime fixtures
+        if: ${{ !cancelled() }}
+        run: |
+          brew list openssl@3 >/dev/null 2>&1 || brew install openssl@3
+          python3 devices/dre/touch_native/test_native.py --cc clang --sanitize \
+            --crypto-library "$(brew --prefix openssl@3)/lib/libcrypto.dylib" \
+            --out out/touch-host-tests
       - name: Link read-only factory observer against official iPhoneOS SDK
         if: ${{ !cancelled() }}
         run: bash devices/dre/gpu/runtime/build_factory_probe.sh out/dre-metal-factory
       - name: Compile adapted Metal306 frontend translation units
         if: ${{ !cancelled() }}
-        run: python3 devices/dre/gpu/runtime/build_frontend.py --out out/metal306-frontend
+        run: python3 devices/dre/gpu/runtime/build_frontend.py --out out/metal306-frontend --dre-compiler-service --dre-device-policy
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -55,6 +63,7 @@ jobs:
             out/dre-metal-probe/
             out/dre-metal-factory/
             out/gpu-host-tests/
+            out/touch-host-tests/
             out/metal306-frontend/*.json
             out/metal306-frontend/*.log
             out/metal306-frontend/objects/

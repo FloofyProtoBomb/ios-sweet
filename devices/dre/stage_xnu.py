@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import re
 import difflib
+import importlib.util
 
 SRC = Path(__file__).resolve().parents[2] / "xnu/patches"
 
@@ -63,17 +64,34 @@ def select_files(patch, paths):
     return ''.join(kept)
 
 
-def stage(out, profile="bringup"):
+def stage(out, profile="bringup", native_drafts=(), native_gpu_nc_proof=False,
+          native_gpu_firmware_draft=False, native_gpu_fw_nc_proof=False):
+    # UNVALIDATED overnight feature integration. Existing profiles do not
+    # import, prepare or include these sources without an explicit selection.
+    native_drafts = tuple(dict.fromkeys(native_drafts))
+    if native_drafts and (profile != "ui" or
+                          any(feature not in ("gpu", "touch") for feature in native_drafts)):
+        raise ValueError("native drafts require the UI profile and explicit gpu/touch selections")
+    if native_gpu_nc_proof and 'gpu' not in native_drafts:
+        raise ValueError("native GPU NC proof requires the explicit GPU draft")
+    if native_gpu_firmware_draft and 'gpu' not in native_drafts:
+        raise ValueError("native firmware sources require the explicit GPU draft")
+    if native_gpu_fw_nc_proof and not native_gpu_firmware_draft:
+        raise ValueError("boot-owned NC proof requires the explicit firmware draft")
     # Stop immediately before the Redmi UFS driver. Keep the single-CPU
     # platform, RAM-root support and framebuffer diagnostics.
     if any(out.glob("[0-9][0-9][0-9][0-9]-*")):
         raise ValueError("DRE requires a fresh build-script patch directory")
     out.mkdir(exist_ok=True, parents=True)
+    # Native batching uses the real edge-contact state introduced by0071.
+    # Keep this additional prerequisite opt-in; ordinary UI/bringup selection
+    # does not acquire a new native input producer or alter its patch list.
+    selected_ui = UI_PATCHES | ({71} if 'touch' in native_drafts else set())
     for source in sorted(SRC.iterdir()):
         if not source.name[:4].isdigit():
             continue
         number = int(source.name[:4])
-        if number > 27 and (profile != "ui" or number not in UI_PATCHES):
+        if number > 27 and (profile != "ui" or number not in selected_ui):
             continue
         # The imported IOHIDFamily patch retains legacy bytes in comments.
         # Preserve them while changing only ASCII machine/profile strings.
@@ -124,9 +142,21 @@ def stage(out, profile="bringup"):
             if local.name.startswith('0103-'):
                 content += native_storage_assets().encode()
             (out / local.name).write_bytes(content)
+    draft_manifest = None
+    if native_drafts:
+        helper = Path(__file__).with_name('native_drafts.py')
+        spec = importlib.util.spec_from_file_location('dre_native_draft_source_recipe', helper)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        draft_manifest = module.stage_native_drafts(Path(__file__).parent, out, native_drafts,
+                                                    native_gpu_nc_proof,
+                                                    native_gpu_firmware_draft,
+                                                    native_gpu_fw_nc_proof)
     manifest = {"profile": profile, "patches": {
         p.name: hashlib.sha256(p.read_bytes()).hexdigest()
         for p in sorted(out.glob("[0-9][0-9][0-9][0-9]-*.patch"))}}
+    if draft_manifest is not None:
+        manifest['native_drafts'] = draft_manifest
     (out / "dre-patches.json").write_text(json.dumps(manifest, indent=2) + '\n')
 
 
@@ -134,5 +164,14 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("patch_directory", type=Path)
     ap.add_argument("--profile", choices=("bringup", "ui"), default="bringup")
+    ap.add_argument("--native-draft", choices=("gpu", "touch"), action="append", default=[],
+                    help="UNVALIDATED opt-in source integration; repeat for both (UI only)")
+    ap.add_argument("--native-gpu-nc-proof", action="store_true",
+                    help="UNVALIDATED XNU8796 private pmap observation source (GPU draft only)")
+    ap.add_argument("--native-gpu-firmware-draft", action="store_true",
+                    help="UNVALIDATED firmware source only; supplies no private anchor or firmware")
+    ap.add_argument("--native-gpu-fw-nc-proof", action="store_true",
+                    help="UNVALIDATED boot-owned low-DDR pmap observation (firmware draft only)")
     args = ap.parse_args()
-    stage(args.patch_directory, args.profile)
+    stage(args.patch_directory, args.profile, args.native_draft, args.native_gpu_nc_proof,
+          args.native_gpu_firmware_draft, args.native_gpu_fw_nc_proof)

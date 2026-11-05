@@ -85,8 +85,9 @@ Its report refuses publication for concrete remaining reasons:
 - The Rust bridge requires its matching translator and Turnip patch set.
 - IOSurface import, ownership, cache synchronization and cross-process events
   must work for system clients. In-process event support does not prove those.
-- No adapted frontend SDK build, real factory run or native Metal workload has
-  passed. The existing end-to-end `metal_probe.m` remains the acceptance test.
+- The adapted frontend translation units now compile with the official SDK;
+  no real factory run or native Metal workload has passed. The existing
+  end-to-end `metal_probe.m` remains the acceptance test.
 
 The upstream unknown-selector fallback fabricates an object-return signature
 and returns zero/no-op. The adapted reference returns no method signature and
@@ -179,3 +180,70 @@ reads Mesa `85fda3b3` plus 17 patches, while an older general catalog says
 The first compile stages matching bridge patch inputs, but does not fetch or
 build Mesa, qualify a Rust Cargo lock or claim that every upstream workaround
 is appropriate. Those remain separate, explicit link/runtime prerequisites.
+
+## Matching Rust bridge build
+
+The official SDK frontend compile passed in CI41987783607 with Xcode15.0.1,
+iPhoneOS17.0 SDK21A326 and target `arm64-apple-ios16.0`. Its actual object imports
+158 bridge functions. A real Linux Rust1.98.0 release build using the matching
+`624bab39` plus 30 patches also passed: 310 native ELF archive members,
+292,165,796 bytes, SHA256
+`235f6212c8b906b0280d3015ed40062129192e84f6e66888b0082e8ec3c48c8c`.
+All 158 imports exist as defined text exports among its 169 `nmb_` functions.
+This checks symbol names, not a cross-platform binary ABI or a frontend link.
+The host archive cannot be linked into an iPhoneOS plugin.
+
+`bridge-Cargo.lock` is the actual resolved dependency lock from that build;
+`bridge_lock.json` pins its SHA and distinguishes host proof from pending iOS
+qualification. LLVM21.1.8 assembled all three original fixture IR sources into
+real bitcode. Fixtures, tools and resulting archive hashes are recorded; no
+dummy fixture bytes or syntax downgrades are used. Absolute debug/source paths
+and platform-specific assembler binaries mean separate build archives are not
+claimed byte-identical. The prepared public Rust runtime is dual licensed
+GPL-2.0-or-later OR LGPL-3.0-or-later; bridge/frontend sources retain their MIT
+license. No private Apple headers are staged or redistributed.
+
+To repeat source preparation and a true iPhoneOS static library build on an
+ARM64 macOS15 runner with Xcode and the official Rust1.98.0 toolchain:
+
+```sh
+python3 devices/dre/gpu/runtime/build_frontend.py --out out/metal306-frontend
+python3 devices/dre/gpu/runtime/prepare_bridge_source.py \
+  --frontend-build out/metal306-frontend --out out/bridge-source
+python3 devices/dre/gpu/runtime/acquire_llvm_macos.py --out out/llvm21
+rustup toolchain install 1.98.0 --profile minimal
+rustup target add --toolchain 1.98.0 aarch64-apple-ios
+LLVM_AS=$(python3 -c 'import json; print(json.load(open("out/llvm21/llvm-acquisition.json"))["llvm_as"])')
+python3 devices/dre/gpu/runtime/build_bridge.py \
+  --source out/bridge-source --out out/bridge-ios \
+  --cargo "$HOME/.cargo/bin/cargo" --llvm-as "$LLVM_AS" --target ios \
+  --frontend-contract out/metal306-frontend/bridge-symbol-contract.json
+```
+
+The [Homebrew formula metadata](https://formulae.brew.sh/api/formula/llvm@21.json)
+selects LLVM21.1.8_1 `arm64_sequoia`, exact bottle SHA256
+`63d776e3c1865f647b9c3df8dba8ef2ab024f6f045a07b7f1cdf5af6e0d0e9c3`.
+`llvm21-macos.json` holds its content-addressed URL. The acquisition helper
+requires actual ARM64 macOS15, checks the formula pin, downloads the exact
+tag with Homebrew, hashes the cached bottle before installation, and verifies
+the installed bottle receipt and running assembler version afterward. A
+different formula, bottle, OS, architecture or source-built receipt is refused;
+there is no source-build fallback. Homebrew handles its ordinary dependencies,
+whose installation logs are retained. The Mac bottle has not yet been qualified
+by a successful project CI execution; the committed metadata says so. Commands
+follow the [official Homebrew manual](https://docs.brew.sh/Manpage).
+
+`build_bridge.py --target host` is available for real host-only compile checks.
+Both target modes use two Cargo jobs, the pinned lock, bounded commands and new
+output directories. Optional `--frontend-contract` runs the actual binary
+export-name comparison using LLVM nm; without it the result explicitly leaves
+that check false. `verify_bridge_exports.py` can inspect an existing archive
+independently. `test_build_bridge.py` checks undefined/data/duplicate exports,
+malformed contracts, wrong host OS/architecture, metadata drift, source-built
+receipts and the actual committed lock digest.
+
+Neither build opens Vulkan/IOKit, executes a Metal operation, publishes a GPU
+device or links the frontend. A real DRE Darwin Vulkan BO/address-space,
+queue/fence backend, all runtime patch behavior and actual native workloads
+remain unqualified. The A740 transport and Mesa reference patch files are
+audit inputs, not a working N200 backend.

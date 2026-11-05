@@ -5,6 +5,25 @@
 #include "identity.h"
 #ifdef DRE_NATIVE_UFS
 #include "storage_handoff.h"
+#endif
+#ifdef DRE_GPU_FIRMWARE
+#include "gpu/firmware/shim_handoff.h"
+#endif
+#if defined(DRE_GPU_FIRMWARE)
+static const char *fixup(void *adt, uint32_t size)
+{
+    const char *error = dre_identity_fixup(adt, size);
+    if (error) return error;
+#ifdef DRE_NATIVE_UFS
+    error = dre_storage_fixup(adt, size);
+    if (error) return error;
+#endif
+#ifdef DRE_GPU_FIRMWARE
+    error = dre_gpu_fw_fixup(adt, size);
+#endif
+    return error;
+}
+#elif defined(DRE_NATIVE_UFS)
 static const char *fixup(void *adt, uint32_t size)
 {
     const char *error = dre_identity_fixup(adt, size);
@@ -131,6 +150,10 @@ const char *dre_handoff(const void *dt)
 #ifdef DRE_NATIVE_UFS
     const char *storage_error = dre_storage_prepare(dt);
     if (storage_error) return storage_error;
+#endif
+#ifdef DRE_GPU_FIRMWARE
+    const char *firmware_error = dre_gpu_fw_prepare(dt);
+    if (firmware_error) return firmware_error;
 #endif
     return loader_boot_range_with_adt((uintptr_t)p, (uintptr_t)_payload_end,
                                       extra, fixup);

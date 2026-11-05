@@ -2,8 +2,404 @@
 
 ## DE2118 handoff, 2026-11-05
 
+FIRST DAYTIME VALIDATION SNAPSHOT: v3 source staging54TUs/hooks/default-UI
+isolation/repeat refusal passed. Three validation workflows/25bash blocks parse.
+40nativeGPU/IRQ source objects, four actual source hooks and the enabled pmap
+proof code compile locally with selected headers;14touch/common/SweetHID units
+also compile. All are local Zig/host checks, not official Apple kernel linking.
+f508ea4/bcd63be fix native object bounds/includes/IRQ access and reject negative
+startup proofs;26sanitized coordinator boundary cases pass. 3a56892 fixes touch
+delivery scheduling and exact FDT bounds; all native host suites pass under
+ASan/UBSan, with real captured-profile inspection only in private local tests.
+2efcc4a/fe0d447 fix the real base-helper/Rust bool/source-copy issues and add
+same-source four-object+true-iOS-Rust+readonly metadata observer CI. Runtime
+host build is in progress. Root is publishing a privacy-checked tree-identical
+snapshot to a separate dre-native-validation branch for official compiler/link
+gates. CI builds only: no phone operation, destructive write or native-ready
+claim. New source changes after that snapshot need their own qualification.
+Firmware investigation found actual MDT relocation support (signed segment
+flag plus pinned loader semantics), so a separately owned aligned load arena
+can be developed without mapping/touching the original GPU/IPA carveout. Actual
+PAS13/security/power ownership remains mandatory; relocation is not hardware
+acceptance. This new implementation is separate from the first CI snapshot.
+
+DAYTIME RESUMED at user's "ok lets finish it up" (Nov5,12:49 New York).
+Validation/builds and coordinated CI resumed; full iOS phone flash remains
+held and no phone operation has run. Current local branch is still
+dre-overnight-20261105. Root owns staging/workflows/shared headers/handoff;
+gpu_metal owns native GPU/platform/kernel/IRQ, install_readiness owns runtime/
+Vulkan/Metal and new iOS Rust workflow, ios_install_image owns native touch.
+Fresh isolated source at D:/CodexWork/dre-ios-install/native-validation-v3-20261105
+uses actual selected XNU8796 headers/generated config. Original build trees,
+kernel67/storage candidate, images/recovery backups/proof reports stay intact.
+Source staging caught the first genuine integration error: MasterVersion is
+Darwin22.6.0, not an XNU8796 tag. Corrected both pmap and IRQ guards; actual
+0105 assets/0106 selected PE/SLEH/IOService/platform/HID/surface/pmap edits apply.
+Touch also needed actual0071 edge-contact state. It is now selected ONLY for
+explicit native touch; default UI selection stays unchanged. Shared storage
+header gets only a C++-compatible explicit const FDT pointer cast, no UFS fix.
+Default UI/native isolation and duplicate-hook refusal passed on the first
+selected tree; display/identity/1..8 CPU tree regression passed. Compiler-cache
+fixtures passed10/10 under POSIX WSL (two Windows fixture/tool assumptions had
+failed; cache production code unchanged). New v3 includes the edge dependency.
+f508ea4 repairs actual GPU compile blockers: explicit memory-types headers,
+bounded class GIC-vector access and separately allocated bounded connection
+BO/job arrays to respect XNU's16KiB OSObject limit while retaining orphans.
+Native local objects40/40 plus four actual hook host TUs compile against the
+selected headers using the local Zig adapter. This is NOT an Apple-toolchain
+kernel link, native GPU execution or a readiness proof. Portable queue/power/
+ZAP/PAS13/SMMU/CP/RBBM/VM/RPM fixtures pass; new startup boundary tests cover
+exact1 proofs, real phase qualification and failure retention.
+Runtime18 Python guards pass; true iOS Rust/four SDK objects are next CI gates.
+Runtime agent found real inherited initializer-helper refusal and Rust integer
+boolean errors; touch agent found delivery timer causing a stale report read.
+Their fixes and targeted tests are in progress. No native Metal, physical touch,
+native UFS correction or iOS install acceptance is claimed. Genuine policy,
+GPU/IPA shared-granule, protected execution/retirement and presentation blockers
+remain substantive; compiling drafts cannot satisfy them.
+
+OVERNIGHT STOPPED AT09:00 NEW YORK/14:00UTC, November5. The recurring
+automation was deleted at14:00:10UTC. All source slices are committed locally
+on dre-overnight-20261105; no agents remain working and no source job continues.
+Final source: d4358be allocator catalog, ce35922 constructor roles/maps,
+73f180f truthful data-only inspector,944bac3/6c40af4 touch lifecycle and
+2c79642 actual XNU source-fault cancellation connection. c10affd records that
+handoff before cutoff. Every addition remains UNVALIDATED. No overnight tests,
+lint, benchmarks, compilation/builds/CI, recipes, QEMU, ADB/fastboot, phone
+operations, image/partition writes or pushes were performed. Frozen artifacts,
+recovery backups and prior proof reports are preserved. No full iOS install or
+working native Metal claim. Remaining implementation/policy blockers and future
+validation checklist: ../../outputs/overnight-morning-handoff.txt. Validation
+does not resume automatically at the cutoff; wait for the user's next direction.
+
+LATEST OVERNIGHT CONTINUATION (08:00 local heartbeat): source implementation
+only until09:00 New York/14:00UTC. No tests/lint/benchmarks/compiles/builds/CI,
+source recipes, QEMU, ADB/fastboot, phone operations, image writes or pushes.
+New source is UNVALIDATED; old proof reports do not qualify these contracts.
+The first full iOS phone flash remains held. The frozen storage candidate and
+known-good recovery backups remain preserved; the native correction is still
+unproven on the phone.
+8b1a441 includes the new catalog/inspection sources in the explicit unrun native
+allowlist. Source73f180f now supplies real synchronous descriptor-data catalog
+inspection only: full data/padding/alias and actual task/mapping history facts,
+unknown/foreign purposes preserved, genuine no-GPU CATALOG_SCRATCH outputs.
+It has NO planner call or proposal-success path. Exact completed observation
+TASKVM_REGISTRY_DATA_OBSERVED_PLANNER_REFUSED is factual inspection plus explicit
+refusal of the stronger missing heap/reserved/firmware physical inventory.
+Source944bac3 and6c40af4 correct touch held-frame generation-loss handling and
+retain failed cancellation of accepted contacts for bounded delivery retries.
+The new private sleepable input_source_lost API changes no public HID frame.
+Root connected actual DRENativeTouch atomic IRQ-fault branches to the retained
+coalesced worker and that serialized cancellation API. Observed-fault normal
+frames/sample/rearm refuse, explicit cancellation remains deliverable, and a
+fault before dispatch-enabled is posted after successful input initialization.
+An already in-flight transfer may finish under its genuine GPI lease: no DMA
+abort/retirement, controller-fault fiction, IRQ recovery or new hardware policy.
+ce35922 tags verified complete constructor allocations with immutable kernel
+purposes and records only actual successful staged VM mapping handles. Partial
+allocations and the initial-state journal remain retained on every failure.
+Private allocator version1/exact size is separate from provider2/public ABI1.
+d4358be commits the actual kernel allocation registry/catalog and provider
+extension (agent's original8d5b5d5 was amended locally only to mark its title
+UNVALIDATED). All three final agent slices are committed; no agent remains
+working. Root2c79642 commits the actual touch-adapter cancellation connection
+and aligns the non-installable inventory documentation. No pending source or
+hardware action is authorized by this completion. Hard stop14:00UTC, without
+validation or a new overnight build/phone action.
+The catalog records actual descriptor data plus full padding, real immutable
+allocation access, genuine client/task/connection generations and verified
+mapping handles under the actual service mutex. Heap metadata's surrounding
+CPU granules and separate firmware/private backing are NOT thereby a complete
+global physical inventory. Explicit DATA_ONLY scope must refuse any stronger
+task-VM planner proof; no complete-coverage flag or label-based bypass is allowed.
+This is an actual allocation-record connection, not protected task execution,
+RAW submission, GPU acceleration or an install-ready iOS image. Genuine GPU/
+IPA shared-granule policy, hardware ownership, protected retirement and Metal
+initializer/IOSurface/event semantics still require real implementation.
+
+LATEST OVERNIGHT CONTINUATION (06:55 local heartbeat): source implementation
+only; no tests/lint/compiles/builds/CI/source recipes/QEMU/phone operations or
+pushes. New source is UNVALIDATED. First full iOS phone flash remains held.
+Source be4256b connects real selected Vulkan properties to the Metal306 device
+policy, removes CPU-RAM/A740/inherited-feature guesses and explicitly refuses
+unqualified private/no-copy/IOSurface/shared-event answers. It adds a fourth
+future SDK object and matching Rust facts export; neither has been compiled.
+Source aa3324f composes the actual GPU broker with genuine SPI209 routes,
+controller/source-owner lifetimes and zero-token partial-route release guards.
+Source9603f88 routes real GPU/RPM I/O under one common resident context/lease,
+preserving both guards and leaving stronger VM/PAS/cache providers mandatory.
+Root authored their strict source inclusion; it remains unrun. GPUCC is already
+inside the existing wrapper0x0596a000+0x30000: no seventh aperture or overlapping
+Device map is needed. A source-only missing-aperture concern was corrected from
+that exact range arithmetic, without altering device access policy.
+Current disjoint assignments: gpu_metal owns NEW platform/native_provider.cpp/.h
+actual opt-in provider lifecycle/configure composition; ios_install_image owns
+NEW platform/boot_binding.c/.h actual allocator/VM/CP callback connection and
+coordinates its interface with that provider; install_readiness owns NEW
+gpu/cache/** bounded grounded A619 cache-event planning. Root owns existing
+integration/staging/kernel/platform files and this handoff. Genuine rail/clock/
+reset/SCM/domain/IRQ/security policy and the GPU8KiB/IPA shared-granule refusal
+remain mandatory blockers. No new success stub or acceleration claim is allowed.
+Root corrected a real source phase mismatch: boot-memory preparation had
+required full SMMU prerequisites63 before allocating/proving new tables and
+before startup power. It now accepts only actual CB/ASID reservation36, adds
+TABLES_NC only from actual fresh NC proof (44), and startup requires a genuine
+qualify_domain callback after actual power/SPTPRAC/RBBM before deriving the
+remaining live prerequisites and activating. No future-ready bits or second
+configure-time power sequence. Agent callback composition uses that explicit
+phase contract. This refactor is UNVALIDATED; older helper reports do not
+qualify the new startup interface and no validation ran.
+Root also authored gcc_hold.c/.h: actual named external GCC gate/vote OR+readback
+acquisition under genuine shared-source/interconnect policy and global register
+serialization. It verifies existing600MHz GPLL0, preserves other bits/HWCG,
+and implements the pinned10us GPLL0-div delay. No PLL/RCG/GDSC/reset/voltage
+programming or default policy. Partial references/stores stay held. Native
+provider agent wires this only after actual PAS-buffer acceptance and3realRPM
+ACK holds; known shared-granule refusal still occurs before those writes.
+Cache source37ad43b is a bounded private A619 event planner, not an executor or
+retirement/RAW/Metal provider. It refuses unknown/GMEM/LRZ/conditional state and
+requires genuine history/NC/mapping callbacks; no observed completion is claimed.
+cedea01 commits the actual boot callback binding, and b8a2f5f commits the genuine
+opt-in native provider lifecycle/function table, including typed GCC hold policy.
+Root repaired the trusted queue constructor's initial-allocation journal: a
+real caller-owned wired record receives the allocator handle/view before
+verification, so a partial first allocation remains reachable even if no safe
+opaque queue exists. Boot binding retains that record inside real control.
+All remain UNVALIDATED; no source recipe or hardware/validation action ran.
+Root source selection now explicitly includes gcc_hold and the private cache
+planner for GPU drafts, and boot_binding/native_provider only with the explicit
+firmware-source flag that supplies their genuine module dependencies. No
+source/patch recipe was executed. Linking the provider still cannot acquire
+missing real policies or bypass the known GPU/IPA granule refusal. Compiler
+and kernel API/lifetime qualification remain deferred.
+Pinned privilege source inspection establishes Holi lacks ADRENO_APRIV; KGSL
+ring is GPU-readonly/XN and ordinary command IBs are readonly/XN, with executable
+PTEs only for actual SQE UCODE. Root aligned boot ring/CP mapping and private IB
+allocation with that evidence. CPU NC command writes remain owned/writable.
+Privileged scratch/powerup/result semantics and protected task view remain
+unqualified; no RAW/Metal capability is enabled. Current GLINK codec already
+bounds cursor+8+payload belowTOC, so no guessed FIFO-bounds change was made.
+Source482f3a9 describes exact source-defined Linux MPM footprint0x44 bytes,
+its unknown declared tail and known/foreign GLINK TOC span semantics. Root's
+actual RPM adapter now performs guarded read-only TOC conflict preflight before
+any protocol store, refusing known pipe conflicts with the FULL declared MPM
+resource. The smaller footprint never grants new ownership or narrows exclusions;
+unknown IDs/gaps remain unowned and all existing per-word broker checks persist.
+No snapshot bytes are logged/exported; no preflight or hardware action ran.
+Private RPM failure diagnostics now retain only constant reason/conflict bits/
+attempted-write count under the actual owner mutex; native_provider propagates
+the specific reason. No raw TOC/public API or hardware observation is invented.
+Source5731470 adds private non-installable task/bootstrap permission proposals
+and separate AP encoding from public BO masks, requiring a genuine complete
+allocation-purpose/task-generation registry. It installs no PTE/context switch
+and grants no protected VM/RAW state. Root authored its source-only inclusion.
+Source7d1812b records bounded readonly Metal306 base-method/ivar metadata and an
+UNRUN private capture recipe: actual -init0x181a3634c body/private table semantics
+remain missing, distinct from abstract initWithAcceleratorPort0x181aab968.
+No initializer is invoked and no zeroed-ivar/IOGPU substitute is supplied.
+All agents' current slices are committed. Root continues integration/handoff;
+real policy, protected execution/retirement, Metal initializer, IOSurface/event
+and native hardware acceptance remain blocked/unproven. No validation ran.
+
+PRIOR OVERNIGHT CONTINUATION (05:53 local heartbeat): source only, all additions
+UNVALIDATED. No tests/lint/benchmarks/compiles/build/CI/QEMU/recipes, phone
+operations, image writes or pushes. Full iOS phone flash remains held.
+e33843e adds the actual GPU IOKit owner/IRQ/mapped-IO adapter, with no default
+broker or invented GIC route. Root's allowlist now includes its actual source.
+Root corrected that adapter to require an already-resolved retained actual
+nub/controller/source cache, avoiding the selected platform's unbounded
+lookUpInterruptController wait. Actual hardware masking precedes soft-disable/
+handler join; no foreign-source IRQ can request a mask through this handler.
+New root rpm_native.cpp/.h implements actual original-FDT RPM RAM/IPCC Device
+mapping/translation/PA/lifetime and guarded MMIO binding for the existing codec.
+Captured vMPM0x045f01b8+0x1000 overlaps advertised RPM RAM0x045f0000+0x7000:
+the adapter hard-refuses those MPM bytes and every neighboring rounded mapping
+byte. Actual per-word GLINK/IPCC/receive/remote-reset/alias ownership remains
+external, mandatory and absent. No RPM message, ACK, voltage policy or ready
+flag is fabricated. IPCC receive SPI334/INTID366 remains separately owned.
+Runtime4fe57dd adds actual selected20H392 Metal306 compiler-service source and
+frontend hook: exact loaded ARM64 image/UUID, type13/flags0, real request/reply
+lifetimes, explicit refusal of unqualified request14 stitching. Source recipes
+and SDK linkage remain unexecuted; no shader or native Metal success is claimed.
+Current parallel source work: gpu_metal owns NEW irq/** for an actual opt-in
+selected GIC dispatch/controller binding; ios_install_image owns touch_native/**
+for actual GPIO22 awake TLMM-summary IRQ routing, preserving MPM/wake state.
+They coordinate the genuine parent API. Selected TLMM summary is SPI227/
+INTID259 level-high; GPIO22 maps to MPMwakeirq21, not a GICvector. Missing
+global/per-vector/per-pin policy remains a blocker. Root owns platform RPM,
+native_owner fixes, staging and handoff; runtime agent's compiler slice is done.
+Root eab6ec7 commits actual RPM Device mapping and resolved GPU route changes.
+Root then connects the actual private DRE service IOLock to native providers:
+kernel-only provider ABIv2 appends mandatory bind_owner_lock; public selector
+ABI1 is unchanged. Driver timer/client/BO/fence paths and external native
+worker/SCM/RPM/VM operations must use this SAME real mutex. Task-owner record
+plus direct selected-XNU lck_mtx_assert checks actual ownership; absent binding
+refuses acquisition. Escaped/partial callback cookies remain boot-held. No
+native platform broker, source/rail/IRQ policy or Metal capability is supplied.
+Root a58d008 commits that genuine common-lock binding. Deferred staging now
+expects the common irq/** assets plus agent-owned source_hooks.py program text
+for actual selected PE/SLEH/IOService/namespace integration. The helper/script
+has NOT been imported, executed, staged or compiled tonight. All source inputs
+must exist and selected XNU8796 anchors must match on a future explicit run;
+there is no silent missing-route downgrade or default native policy.
+Common IRQ source8f464e0 is now locally committed, still UNVALIDATED. Root
+aligned native-owner teardown with its genuine SPI lock contract: primary
+ISR/GIC-ACTIVE disable/join runs under the actual board mutex, then deferred
+work joins outside that mutex. New platform/gic_route.cpp/.h connection to
+the actual SPI route API is owned by gpu_metal; no manual/fake route supplied.
+Touch02782e5 commits actual GPIO22 TLMM controller/pin engine/adapter connection
+to the genuine GIC259 route. New strict inputs tlmm.c/.h, DRETouchTLMM.cpp and
+xnu_tlmm.h are now authored into staging. Native adapter and controller share
+one actual IOSimpleLock-backed pin engine; no independent racing GPIO lock.
+Actual pin/summary producer exclusion and awake/clock/reset/CPU/security policy
+remain mandatory. MPM229/wakeirq21 and other GPIOs/wake state are untouched.
+The new runtime feature/limit overlay and GPU SPI broker adapter remain active
+agent work. Every completed slice remains UNVALIDATED; no build, test, source
+preparation or phone operation ran.
+Current source ownership after the IRQ/TLMM commits: gpu_metal owns NEW
+platform/gic_route.cpp/.h real GPU209 SPI/full-broker composition; runtime agent
+owns runtime/** actual Metal306 feature/limit overlay; ios_install_image owns
+NEW platform/io_router.c/.h to connect actual native GPU/RPM operations to one
+resident coordinator cookie/common lease. Root owns staging/NOTES/output and
+existing platform/kernel integration. No actual policy, cache or firmware
+callbacks may be filled with success stubs while composing these providers.
+
+PRIOR OVERNIGHT CONTINUATION (04:51 local heartbeat, source implementation
+only; all new code UNVALIDATED). No tests/lint/build/CI/QEMU/staging recipes,
+phone operations, image writes or pushes have run. First full iOS phone flash
+remains held; the frozen storage candidate is unchanged.
+New local source commits:6d9b0c4 persistent-map/access epochs (capability still
+masked);d6addd8 real touch SID0x16 apps-SMMU tables; a92f1d8 private anchored
+GPU firmware/boot handoff/PAS13 preparation;72300d1+5378bae fixed kernel-owned
+IB/cache-event/fence queue;ce732b5 actual static/DFS QUP/Fabia clock decoding
+and idle resource reservation;790ba4d real SweetSurface backing retention and
+task Mach-right resolution (GPU import remains unsupported).
+Firmware's captured GPU8KiB reservation shares a16KiB CPU granule with IPA.
+Actual adjacent-owner/cache/alias policy is missing: loader intentionally
+refuses before mapping/SCM/cold CP. Do not widen/reset IPA or infer ownership.
+Root added actual boot_memory.c/.h allocator-to-VM/SMMU/CP preparation: genuine
+contiguous NC table prefix, page/lease/reverse metadata and ring/SQE/scratch/
+powerup/result mappings, exact PA/lease/PTE proofs and retained failures.
+No policy/IRQ/reset/SCM provider is fabricated. Root's strict native source
+selection now includes these helpers, access epochs, narrow PM4 intake,
+trusted queue, retained surface backing, touch SMMU/QUP and optional firmware
+and actual pmap includes. Source edits to selected SweetSurface/SweetHID are
+authored only, never run. Touch private provider ABI is v3.
+Current disjoint source assignments: gpu_metal owns new platform/native_owner.*
+actual GPU IRQ/resource binding; install_readiness owns vulkan/** +runtime/**
+real Mesa transport/error-fence semantics; ios_install_image owns touch_native/**
+actual IRQ/provider lifetime integration. Root owns boot_memory, shared staging,
+NOTES and outputs handoff. Kernel surface changes are committed; coordinate any
+new shared UAPI edits first. Missing hardware policy remains a refusal, never
+readiness. Validation resumes only after the user changes overnight steering.
+Root commit55e3a07 records actual boot-memory preparation and optional native
+source hooks. Additional source6064440 fixes direct Darwin/Mesa typed published
+error-fence/reference retention; no capability is enabled. Root then authored
+read-only platform/profile.c/.h from the pinned/captured original FDT supply
+graph: real unique supply/resource/GDSC/syscon identities and exact supported
+variant. Output allowed-level masks/aggregate floors stay zero; DT init/proxy
+values never qualify inherited APSS policy. This helper also remains UNVALIDATED.
+Touch source049d582 captures actual registered controller/nub/specifier/cache
+objects and retains ambiguous IRQ registration; strict source selection now
+includes xnu_irq_route.cpp/.h. Its ABI remainsv3. Selected SweetPlatformExpert
+excludes GIC nubs and no native TLMM/GIC IOKit delivery/CPU-summary provider
+exists. DT IRQ numbers cannot substitute for one. No source capture claims
+actual delivery, IRQ ownership or physical input.
+Root's boot-memory allocator requests now round logical4KiB table/SQE/metadata
+sizes to the actual XNU16KiB allocation contract while keeping exact logical
+prefix/map sizes. Native lease and alias callbacks accept only exact boolean1,
+never a negative status as proof. These source corrections are UNVALIDATED.
+
 ACTIVE INSTALL PREPARATION, UPDATED2026-11-05 (USER AUTHORIZED SUBAGENTS).
-LATEST USER STEERING: finalize Metal before the first full iOS PHONE boot.
+OVERNIGHT STEERING, 2026-11-05: user explicitly requests source implementation
+overnight WITHOUT validation tonight; corrections/validation resume tomorrow.
+Do not run tests/lint/benchmarks, validation builds, CI, QEMU, ADB/fastboot or
+phone operations. No flash/install. Draft code is UNVALIDATED, not ready.
+Current local branch dre-overnight-20261105 starts from59862d8; preserve all
+previous tested images/reports and commits. Do not push CI branches tonight.
+Overnight heartbeat continue-n200-ios-implementation-overnight is ACTIVE,
+hourly through2026-11-05 09:00 America/New_York (14:00UTC), in this chat.
+The PC/app must stay available. Continue concrete implementation between runs;
+update this handoff and commit local drafts with their unvalidated status.
+Overnight source ownership: gpu_metal owns gpu/kernel/** and its opt-in patch;
+install_readiness owns gpu/vulkan/** and matching runtime integration;
+ios_install_image owns touch_native/** and its opt-in patch. Root owns the
+portable a619_startup coordinator, shared staging integration and this handoff.
+Agents coordinate the versioned kernel/user UAPI directly. No validation runs.
+Root drafted a619_startup.c/.h: real held power/clock ->SPTPRAC ->RBBM
+->VM/SMMU ->CP/SQE/PAS13/marker sequencing, shared lease/policy guards,
+failure retention and state-only live checks. New SPTPRAC observation helper
+does not repeat cold power transitions. All additions UNVALIDATED; compile,
+fault/order tests and HWCG/live-state interaction deferred until tomorrow.
+No native attachment/staging or Metal publication is enabled by this draft.
+OVERNIGHT FIRST CONTINUATION (03:51 local trigger): source drafts895a3e5
+(touch GPI/SPI/controller/input/SweetHID bridge),7486217 (actual XNU GPU
+task transport/BO and fence lifetime binding),42bfd1b (Darwin Turnip KMD,
+Metal factory/package recipes) are locally committed, all UNVALIDATED.
+No compile, test, CI, recipe, phone or image operation ran for them.
+Native provider gaps are intentionally not replaced with success callbacks:
+RAW PM4/task isolation, persistent mapping/coherency, inherited aggregate
+rail/source/bus policy, IRQ/reset ownership and IOSurface events still block
+native Vulkan/Metal. Existing control service is DREAdrenoGPU, not IOAcceleratorES.
+Root added UNVALIDATED native_drafts.py and explicit stage_xnu.py
+--native-draft gpu/touch selections (UI only). They prepare strict source
+allowlists plus late IOKit/SweetHID source edits; neither recipe was executed.
+Default profile behavior is intended to stay unchanged but has NOT been
+revalidated. Draft files stage under iokit/Kernel/arm/dre; shared storage
+libfdt functions are reused rather than duplicated. No auto provider or
+hardware boot flag/publication is added. NATIVE_DRAFT_STAGING.md records scope.
+Root also authored native_board.c/.h: private boot-lifetime original Holi FDT
+snapshot using existing checked shim ownership, corrected transient Device
+byte-copy mapping and immutable retained copy. It never initializes UFS or
+accesses GPU/touch registers; returns no data to userspace. Unexecuted draft.
+Next source tasks now active: gpu_metal adds bounded exclusive-task bridge to
+actual a619_vm_map/unmap and optional genuine XNU NC alias proofs;
+install_readiness adds bounded PM4 command admission source without declaring
+RAW complete; ios_install_image adds actual retained XNU touch adapter and
+native GPIO/workloop wiring. Root integrates opt-in source recipes after the
+owned files land. All validation stays deferred until user resumes it.
+First full iOS phone boot remains held. User's readiness questions were NOT
+test consent. Storage diagnostic766a0a8f and restored backupd12c5d92 were freshly
+hash-checked before this no-validation instruction; no phone flash/watch started.
+Storage diagnostic is read-only and cannot establish native write/flush,
+Metal/touch/Setup readiness. Do not interpret its existence as install readiness.
+
+Latest completed pre-overnight milestone59862d8: real matching Rust1.98 host
+archive compiled in6m47s,310 ELF members,292165796B,SHA235f6212c8b906b0280d3015ed40062129192e84f6e66888b0082e8ec3c48c8c.
+All158 actual SDKfrontend imports found as defined text among169 nmb exports,
+names only, not binaryABI/link/runtime. RealCargo.lockdf0b4b3b2edac979ae6834e34230a772dd93d58d3eb9097f06a128ededc0c16d.
+TrueMac/iOS Rust build helper +pinned LLVM21.1.8_1 acquisition are committed,
+NOT RUN on Mac. Defer proposed new MacCI until validation resumes.
+Canonical CX SPTPRAC status fixed10307dc;39 targeted power cases +sanitizers/
+ARM64 builds passed before the overnight instruction. Both independent reviews
+found no additional evidenced bug. First RPM ACK/local monotonic history does
+not prove a vote is no lower than inherited APSS policy: native binder must
+qualify that inherited state explicitly. Native power remains unproven.
+
+Additional source-only commits from this continuation:9da4a3e adds bounded
+PM4 snapshot/reference intake (diagnostic subset only; RAW never authorized);
+be7a0ce adds real exclusive-task VM map/unmap, protected bootstrap2MiB blocks,
+owned allocation registry/contiguous tables and optional actual pmap NC proof;
+675c095 adds retained XNU touch IOBuffer/IRQ/workloop/TLMM/HID binding.
+All are UNVALIDATED. No new image, SDK compile, source preparation, CI, QEMU
+or phone operation occurred. New opt-in staging can request the pmap include
+with --native-gpu-nc-proof, which stays off by default and requires GPU draft.
+Root recipe now expects touch_native/smmu.c/.h in the upcoming strict source
+selection; absent source files must fail preparation, never silently omit it.
+
+Current next implementation assignments: gpu_metal owns gpu/firmware/** and
+narrow shim/build-source provisioning changes, not kernel/**; runtime agent
+owns kernel/** +vulkan/** persistent mapping/access-epoch/cache contract;
+touch agent owns touch_native/** actual SID0x16 shared QSMMU-v500 component.
+The touch SMMU is apps_smmu0x0c600000, not the private GPU SMMU. Its hardware
+CB span must derive ID1 geometry (DT1MiB may enclose smaller hardware); ACTLR1
+and qcom,skip-init do not authorize global initialization. No GPU profile may
+be copied there. Source-only implementation continues with real ownership/
+global/TBU/IRQ policies as mandatory refusal boundaries.
+Root outputs/overnight-morning-handoff.txt and overnight-implementation-status.json
+separate these draft milestones from all earlier validated evidence.
+
+Standing full-iOS goal: finalize Metal before the first full iOS PHONE boot.
 Hold full iOS phone installation/boot proposals. Root explained that Metal is
 still substantial unfinished work and real validation requires GPU diagnostic
 boots before calling it complete; existing QEMU CPU rendering is not Metal.
@@ -190,6 +586,45 @@ ZIPee1ccce884aadd04037ac172ac46a303651a6e596c3bbd69901ad43371274cd6
 CRC/SHA verified; exactcompilerlog retained. Root renamed only fixture helper
 and adds bounded log-tail reporting. Factory/frontend checks now run after an
 unrelated failure so the next run collects independent compilation results.
+
+RETRYCI41987783607 SUCCESS job127112537584, remoteed45353578482b2bf70ff0e67a537e8730707cb2
+on dre-metal-build+dre-next-test. Exacttreee9b1d9f6ac9e954119b7630dbbf093f52a91e2a8
+equals local0ded217. RealXcode15/iPhoneOS17SDK/plainARM64iOS16target compiled
+allnativehelpers and actual adapted Metal306 frontend translation units;
+read-only factory observer SDKlink and allhostfixtures PASS. FrontendObjSHA
+3b2a55476dcbd155be77a45d7a3f25138f4488bf0773920f09a038a94060bd77.
+Artifact13396163299 ZIP5a74b2630ba48ce715bb9756e7b3aa4b5ac2846c205e61da6feef6cd0a45f2fe
+independentSHA/CRC/objecthash/ARM64magic verified. Curated reports
+outputs/metal-runtime/sdk-ci2/verification.json. Bridge symbol NAMES match
+its pinned source, not a binary ABI/link proof. Complete frontend link,
+runtime availability, nativeGPU/Metal execution and publication remain false.
+Matching Rust source624bab+30orderedpatches prepared to tree012f1ac53d182b739eaf43e2d9d3980a39d22da9;
+real host build/lock/fixture qualification in progress. iOS Rust target must
+use a real officialSDK on Mac, never a Linux archive relabeled as iOS.
+
+PLATFORM23f1db260a18d890adfec48917d86f7b5b067d04 adds full live-Holi
+GDSC/reset and GPUCC branch acquisition, requiring actual distinct RPM ACK
+holds under the same lease plus an independently qualified aggregate floor.
+It captures37 source/bus/domain registers before mutation and refuses unknown
+PLL/RCG/parent state. Accepted inherited506/253MHz GPU and200MHz GMU only;
+no PLL/RCG/GCC vote or bandwidth-policy writes. Full17-store domain/reset/
+clamp/branch sequence, borrowed control preservation and poison/hold behavior
+pass1558power +6806RPM cases=8364, ASan/UBSan and ARM64 ELF/Mach-O builds.
+Not staged or physically run; native binder/IRQ/reset/parent/bandwidth/source
+and platform policy remain necessary. Curated gpu-power-clocks/progress.json.
+Independent bounded cross-reviews of these new privileged components are
+in progress. CI41987783607 predates23f1db2, so it does not yet qualify these
+new clock objects with the officialSDK.
+
+ANDROID SOURCE7ee75b1 is committed; source C matches the physically tested
+binary and eight synthetic harness guards pass. Sanitized full provenance
+outputs/ios-root-preparation/android-vulkan-project-shaders.json SHA
+ea1817bf5908a80e38908e91d682dfb00557331a1a715aab33b3bb317ca84d0d.
+No further phone runs are needed for this unchanged Android fixture. Root's
+combined host entrypoint now includes those guards and new platform tests;
+all current GCC fixtures pass. Native Metal remains false; current summary
+outputs/metal-support-status.json records the held phone boot and install
+blockers. None of these new GPU helpers is in the current67-patch kernel.
 IOSurface7a139c0 fixes actual retained result refs, raced cached lookup,
 closed-client race, category counters/state+0x18 and honest unsupported
 accel/events. Actual affected methods13scenarios+8000 concurrent ASan/UBSan

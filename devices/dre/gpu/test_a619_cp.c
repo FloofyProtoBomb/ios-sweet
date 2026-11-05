@@ -93,7 +93,9 @@ static int mapping(void *cookie,const struct dre_a619_cp_buffer *b,uint32_t perm
     struct fixture *f=cookie;unsigned n=++f->mappings;
     const volatile uint32_t *cpus[]={f->ring,f->sqe,f->scratch,f->powerup,f->result};
     assert(n<=5 && b->cpu==cpus[n-1]);
-    assert(permissions==(n==2?5u:3u));
+    /* Ring packets are GPU-readable data, not writable shader storage and
+     * not SQE executable instructions. Only the anchored microcode is RX. */
+    assert(permissions==(n==1?1u:n==2?5u:3u));
     return f->mapping_failure!=(int)n;
 }
 static int firmware_verified(void *cookie,const void *file,size_t bytes)

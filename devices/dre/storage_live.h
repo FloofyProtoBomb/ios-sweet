@@ -6,7 +6,7 @@
 static inline int dre_storage_dt_address(const void *dt, const char *key, uint64_t *out)
 {
     int length;
-    const fdt32_t *p = fdt_getprop(dt, fdt_path_offset(dt, "/chosen"), key, &length);
+    const fdt32_t *p = (const fdt32_t *)fdt_getprop(dt, fdt_path_offset(dt, "/chosen"), key, &length);
     if (!p || (length != 4 && length != 8)) return 0;
     *out = fdt32_to_cpu(p[0]);
     if (length == 8) *out = (*out << 32) | fdt32_to_cpu(p[1]);

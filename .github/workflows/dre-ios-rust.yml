@@ -1,0 +1,123 @@
+name: dre-ios-rust
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [dre-native-validation]
+    paths:
+      - 'devices/dre/gpu/runtime/**'
+      - '.github/workflows/dre-ios-rust.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dre-ios-rust-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  matching-ios-objects:
+    # Standard macos-15 is ARM64; the acquisition helper also verifies the
+    # actual architecture/OS before accepting the pinned Sequoia LLVM bottle.
+    # https://docs.github.com/en/actions/reference/runners/github-hosted-runners
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify actual host and run runtime guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          uname -m
+          sw_vers -productVersion
+          test "$(uname -m)" = arm64
+          python3 -m unittest discover -s devices/dre/gpu/runtime -p 'test_*.py'
+          mkdir -p out/runtime-checks
+          clang -std=c11 -O2 -Wall -Wextra -Werror \
+            devices/dre/gpu/runtime/base_init/test_base_environment.c \
+            -o out/runtime-checks/test-base-environment
+          out/runtime-checks/test-base-environment | tee out/runtime-checks/base-environment.log
+      - name: Compile all four matching frontend objects using official iPhoneOS SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 devices/dre/gpu/runtime/build_frontend.py \
+            --out out/metal306-frontend --dre-compiler-service --dre-device-policy
+      - name: Prepare the matching Rust source, patches and fixture IR
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 devices/dre/gpu/runtime/prepare_bridge_source.py \
+            --frontend-build out/metal306-frontend --out out/metal306-bridge-source
+      - name: Link bounded read-only selected-image metadata observer
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out/base-metadata-probe
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          xcrun --sdk iphoneos clang++ -target arm64-apple-ios16.0 -isysroot "$SDK" \
+            -std=c++17 -O2 -Wall -Wextra -Werror -fobjc-arc -fblocks \
+            devices/dre/gpu/runtime/base_init/base_metadata.mm \
+            devices/dre/gpu/runtime/base_init/metadata_probe.mm \
+            -framework Foundation -framework Metal -lobjc \
+            -o out/base-metadata-probe/dre-metal306-metadata-probe
+          codesign --force --sign - --timestamp=none out/base-metadata-probe/dre-metal306-metadata-probe
+          shasum -a 256 out/base-metadata-probe/dre-metal306-metadata-probe > out/base-metadata-probe/SHA256SUMS
+      - name: Acquire and verify exact ARM64 macOS LLVM21.1.8 bottle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 devices/dre/gpu/runtime/acquire_llvm_macos.py --out out/llvm21
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          report = json.loads(Path('out/llvm21/llvm-acquisition.json').read_text())
+          if report.get('status') != 'PINNED_MACOS_LLVM_INSTALLED' or not report.get('macos_installation_qualified'):
+              raise SystemExit('actual pinned LLVM installation was not qualified')
+          assembler = report['llvm_as']
+          if '\n' in assembler or not Path(assembler).is_file():
+              raise SystemExit('invalid actual assembler path')
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('DRE_LLVM_AS=' + assembler + '\n')
+          PY
+      - name: Install official pinned Rust toolchain and real iOS target
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v rustup >/dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o out/rustup-init.sh
+            sh out/rustup-init.sh -y --profile minimal --default-toolchain none --no-modify-path
+          fi
+          export PATH="$HOME/.cargo/bin:$PATH"
+          rustup toolchain install 1.98.0 --profile minimal
+          rustup target add --toolchain 1.98.0 aarch64-apple-ios
+      - name: Compile matching true iOS Rust archive and check actual frontend import names
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$PATH"
+          python3 devices/dre/gpu/runtime/build_bridge.py \
+            --source out/metal306-bridge-source --out out/metal306-bridge-ios \
+            --cargo "$HOME/.cargo/bin/cargo" --llvm-as "$DRE_LLVM_AS" --target ios \
+            --frontend-contract out/metal306-frontend/bridge-symbol-contract.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dre-ios-rust
+          path: |
+            out/runtime-checks/*.log
+            out/base-metadata-probe/
+            out/metal306-frontend/*.json
+            out/metal306-frontend/*.log
+            out/metal306-frontend/objects/
+            out/metal306-bridge-source/*.json
+            out/metal306-bridge-source/*.log
+            out/llvm21/*.json
+            out/llvm21/*.log
+            out/metal306-bridge-ios/*.json
+            out/metal306-bridge-ios/*.log
+            out/metal306-bridge-ios/objects/
+          if-no-files-found: error

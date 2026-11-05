@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "status": "UNVALIDATED_SOURCE_DERIVED_POLICY",
+  "repository": "https://gitlab.freedesktop.org/mesa/mesa",
+  "mirror": "https://chromium.googlesource.com/external/gitlab.freedesktop.org/mesa/mesa",
+  "commit": "85fda3b36405bcaea8bffc64aa4f2651dc90770d",
+  "files": {
+    "src/freedreno/registers/adreno/adreno_pm4.xml": "f8137e5d31a3cfce27cba0a8bc269e460067dca9ccb95e620404b7fc752913fb",
+    "src/freedreno/registers/adreno/a6xx.xml": "142f225bc4ae56a910c910f1d233cc7890587c74fbdec8c390466ffbdf5e0faa",
+    "src/freedreno/common/freedreno_pm4.h": "70b5e5f6f1ee45c3bed27d08ad1a798cb2f8662a76b32e47c0907e08aea26258",
+    "src/freedreno/vulkan/tu_cs.cc": "4422b9b5043b07184be6baddc7b60b05c39b130f98b2dcecfda7630f04cbd339"
+  },
+  "variant": "A6XX chip06010900/A619v1",
+  "admitted_opcode_names": [
+    "CP_NOP",
+    "CP_WAIT_MEM_WRITES",
+    "CP_WAIT_FOR_IDLE",
+    "CP_MEM_WRITE",
+    "CP_MEM_TO_MEM one-source32-bit control0 only",
+    "CP_INDIRECT_BUFFER three-word form only"
+  ],
+  "all_type4_register_writes_denied": true,
+  "shader_draw_dispatch_state_descriptors_admitted": false,
+  "raw_submission_authorized": false,
+  "source_or_binary_tests_run": false,
+  "compiled": false,
+  "native_gpu_executed": false
+}

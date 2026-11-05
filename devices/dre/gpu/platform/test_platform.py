@@ -15,7 +15,7 @@ import subprocess
 import sys
 
 HERE = Path(__file__).resolve().parent
-SOURCES = ['rpm_smd.c', 'rpm_glink.c', 'rpm_mmio.c']
+SOURCES = ['rpm_smd.c', 'rpm_glink.c', 'rpm_mmio.c', 'holi_power.c']
 
 
 def main():
@@ -31,12 +31,13 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, ZIG_GLOBAL_CACHE_DIR=str(out/'zig-global-cache'),
                ZIG_LOCAL_CACHE_DIR=str(out/'zig-local-cache'))
-    report = {'schema': 1, 'production_host_tests_pass': False,
+    report = {'schema': 1, 'production_host_tests_pass': False, 'power_host_tests_pass': False,
               'freestanding_arm64': {}, 'sanitizers': ['address', 'undefined'] if a.sanitize else [],
               'physical_rpm_ack_observed': False,
               'voltage_policy_qualified': False, 'gpu_power_ready': False,
               'source_sha256': {name: hashlib.sha256((HERE/name).read_bytes()).hexdigest()
-                                for name in [*SOURCES, 'rpm_smd.h', 'rpm_mmio.h', 'test_rpm_smd.c']}}
+                                for name in [*SOURCES, 'rpm_smd.h', 'rpm_mmio.h', 'holi_power.h',
+                                             'test_rpm_smd.c', 'test_holi_power.c']}}
     cc = [str(a.zig.resolve()), 'cc'] if a.zig else [a.cc]
     common = ['-std=c11', '-O1' if a.sanitize else '-O2', '-Wall', '-Wextra', '-Werror']
     if a.sanitize:
@@ -50,7 +51,17 @@ def main():
         match = re.search(r'PASS (\d+) synthetic production RPM', result.stdout)
         if not match:
             raise ValueError('production fixture did not report its successful case count')
-        report.update(production_host_tests_pass=True, synthetic_cases_passed=int(match[1]))
+        report['synthetic_cases_passed'] = int(match[1])  # preserved RPM report field
+        power = out/('test-holi-power.exe' if sys.platform == 'win32' else 'test-holi-power')
+        subprocess.run([*cc, *common, *(str(HERE/s) for s in SOURCES),
+                        str(HERE/'test_holi_power.c'), '-o', str(power)], check=True, env=env)
+        result = subprocess.run([str(power)], text=True, capture_output=True, timeout=20, check=True, env=env)
+        (out/'power-tests.log').write_text(result.stdout+result.stderr)
+        match = re.search(r'PASS (\d+) synthetic Holi power/clock', result.stdout)
+        if not match:
+            raise ValueError('power fixture did not report its successful case count')
+        report.update(production_host_tests_pass=True, power_host_tests_pass=True, power_cases_passed=int(match[1]))
+        report['total_synthetic_cases_passed'] = report['synthetic_cases_passed'] + report['power_cases_passed']
         if a.zig:
             for target, suffix in [('aarch64-linux-musl', 'o'), ('aarch64-macos-none', 'macho.o')]:
                 for name in SOURCES:

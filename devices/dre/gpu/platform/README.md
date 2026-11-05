@@ -5,6 +5,9 @@ code. A successful vote requires a matching firmware ACK. It has passed host
 tests; it has **not run on the N200**, observed a physical RPM ACK, qualified a
 voltage policy, or established GPU power readiness.
 
+[CLOCKS.md](CLOCKS.md) describes the subsequent existing-source GDSC/branch
+component, its additional1,558 host cases, and the native hooks still needed.
+
 `rpm_smd.c` uses the vendor `drivers/rpmsg/rpm-smd.c` protocol, rather than the
 different generic `drivers/soc/qcom/smd-rpm.c` implementation. Source revisions,
 hashes and selected live-FDT facts are pinned in [sources.json](sources.json).

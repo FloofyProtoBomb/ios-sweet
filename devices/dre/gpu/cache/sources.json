@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "status": "UNVALIDATED_SOURCE_DERIVED_PRIVATE_CACHE_PLAN",
+  "mesa": {
+    "repository": "https://gitlab.freedesktop.org/mesa/mesa",
+    "mirror": "https://chromium.googlesource.com/external/gitlab.freedesktop.org/mesa/mesa",
+    "commit": "85fda3b36405bcaea8bffc64aa4f2651dc90770d",
+    "paths": [
+      "src/freedreno/common/freedreno_gpu_event.h",
+      "src/freedreno/common/freedreno_pm4.h",
+      "src/freedreno/registers/adreno/adreno_pm4.xml",
+      "src/freedreno/registers/adreno/a6xx.xml",
+      "src/freedreno/vulkan/tu_cmd_buffer.cc",
+      "src/freedreno/vulkan/tu_cmd_buffer.h",
+      "src/freedreno/vulkan/tu_lrz.cc"
+    ],
+    "relevant_functions": ["tu6_emit_flushes", "tu_emit_raw_event_write", "tu_emit_cache_flush_ccu", "tu_flush_for_stage", "tu_lrz_tiling_end"],
+    "a6xx_events": {
+      "CACHE_FLUSH_TS": {"value": 4, "sequence_payload": true, "scope": "UCHE clean, not every shader/render cache"},
+      "CACHE_INVALIDATE": {"value": 49, "sequence_payload": false, "scope": "UCHE invalidate"},
+      "PC_CCU_FLUSH_COLOR_TS": {"value": 29, "sequence_payload": true},
+      "PC_CCU_FLUSH_DEPTH_TS": {"value": 28, "sequence_payload": true},
+      "PC_CCU_INVALIDATE_COLOR": {"value": 25, "sequence_payload": false},
+      "PC_CCU_INVALIDATE_DEPTH": {"value": 24, "sequence_payload": false},
+      "LRZ_FLUSH_INVALIDATE": {"value": 38, "planned": false, "reason": "actual LRZ enable/fast-clear/direction state not implemented"}
+    },
+    "descriptor_register": {"name": "A6XX_SP_UPDATE_CNTL", "dword": 47880, "cs_bindless_bits": [9, 13], "gfx_bindless_bits": [14, 18], "scope": "pending bindless loads only, PRE_READ with actual re-emission ownership"}
+  },
+  "lineage": {
+    "repository": "https://github.com/LineageOS/android_kernel_oneplus_sm4350",
+    "commit": "98a38783f42f5588bf00cd933e299aedc589bc10",
+    "paths": ["drivers/gpu/msm/adreno_ringbuffer.c", "drivers/gpu/msm/adreno_a6xx.c", "drivers/gpu/msm/adreno_pm4types.h"],
+    "facts": ["CACHE_FLUSH_TS carries the supplied end-of-pipeline value and GPU address", "A6xx CCU invalidation uses events24/25", "HLSQ_FLUSH0x07 in this ring source is A3xx only, not an A619 retirement recipe"]
+  },
+  "variant": "A619v1/chip06010900/A6XX only",
+  "raw_commands_accepted": false,
+  "shader_instruction_cache_retirement_implemented": false,
+  "lrz_or_gmem_resolve_implemented": false,
+  "native_execution_or_observation_implemented": false,
+  "capabilities_enabled": false,
+  "compiled": false,
+  "tests_executed": false,
+  "native_gpu_executed": false
+}

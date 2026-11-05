@@ -157,7 +157,12 @@ const char *dre_a619_cp_start(struct dre_a619_cp *s,
             !b[i].cpu || ((uintptr_t)b[i].cpu&4095))return "INVALID_MAPPING";
         for (unsigned j=0;j<i;j++)
             if (intersects(b[i].region,b[j].region) || cpu_intersects(&b[i],&b[j]))return "BUFFER_ALIAS";
-        uint32_t permissions=DRE_A619_CP_READ|(i==1?DRE_A619_CP_EXECUTE:DRE_A619_CP_WRITE);
+        /* Holi has no ADRENO_APRIV. Its ring is ordinary GPU-readonly/XN;
+         * normal command fetch does not require SMMU instruction execute.
+         * Only actual SQE microcode carries execute permission. */
+        uint32_t permissions=DRE_A619_CP_READ;
+        if(i==1)permissions|=DRE_A619_CP_EXECUTE;
+        else if(i!=0)permissions|=DRE_A619_CP_WRITE;
         if (!o->mapping(o->io.cookie,&b[i],permissions))return "MAPPING_REJECTED";
     }
     struct dre_a619_cp_buffer input={{0,s->firmware_bytes},(volatile uint32_t *)s->firmware};

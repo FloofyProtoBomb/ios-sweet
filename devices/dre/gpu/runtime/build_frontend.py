@@ -63,7 +63,7 @@ def fetch_frontend(out: Path, pin: dict) -> Path:
     return source
 
 
-def stage_inputs(source: Path, out: Path, inputs: dict) -> dict:
+def stage_inputs(source: Path, out: Path, inputs: dict, *, compiler_service=False, device_policy=False) -> dict:
     staged = out / "prepared"
     readiness = prepare(source, None, staged, profile_only=True)
     assets = {}
@@ -84,6 +84,18 @@ def stage_inputs(source: Path, out: Path, inputs: dict) -> dict:
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(path, destination)
         patches.append(entry)
+    connection = None
+    if compiler_service:
+        # Opt-in source profile. Earlier tested default source and SDK reports
+        # remain separate; preparation alone does not qualify runtime behavior.
+        from connect_compiler import connect
+        connection = connect(staged)
+    policy = None
+    if device_policy:
+        if not compiler_service:
+            raise ValueError("DRE device-policy profile requires the selected compiler-service profile")
+        from connect_device_policy import connect as connect_policy
+        policy = connect_policy(staged)
     frontend = (staged / "NativeBridgeMetalFrontend.mm").read_text(encoding="utf-8")
     bridge = (staged / "bridge/NativeMetalObjects.rs").read_text(encoding="utf-8")
     if "gpuCoreCount {return 8;}" in frontend or "familyForCaller" in frontend or "TARGET_FAMILIES.iter().any" in bridge:
@@ -96,6 +108,8 @@ def stage_inputs(source: Path, out: Path, inputs: dict) -> dict:
         "prepared_source_sha256": {str(p.relative_to(staged)).replace(os.sep, "/"): sha(p)
             for p in sorted(staged.rglob("*")) if p.is_file()},
         "matching_bridge_assets": assets, "matching_bridge_patches": patches,
+        "dre_compiler_connection": connection,
+        "dre_device_policy": policy,
         "matching_dependency_inputs": inputs,
         "third_party_license_text": (source / "LICENSE").read_text(encoding="utf-8"),
         "turnip_sources_fetched": False, "rust_bridge_compiled": False,
@@ -129,14 +143,31 @@ def official_sdk_compile(out: Path, provenance: dict) -> dict:
     codec = objects / "compiler_request.o"
     command(["xcrun", "--sdk", "iphoneos", "clang", *common, "-std=c11", "-c",
              staged / "compiler_request.c", "-o", codec], out, "codec-compile")
-    for path in (frontend, codec):
+    compiled = [frontend, codec]
+    if provenance.get("dre_compiler_connection"):
+        connection = objects / "compiler_service.o"
+        command([clang, *common, "-std=c++17", "-fobjc-arc", "-fblocks", "-c",
+            staged / "compiler_service.mm", "-o", connection], out, "compiler-service-compile")
+        compiled.append(connection)
+    if provenance.get("dre_device_policy"):
+        policy = objects / "device_policy.o"
+        command([clang, *common, "-std=c++17", "-fobjc-arc", "-fblocks", "-Wno-deprecated-declarations", "-c",
+            staged / "device_policy.mm", "-o", policy], out, "device-policy-compile")
+        compiled.append(policy)
+    for path in compiled:
         check_ios_object(path)
-    imports = command(["xcrun", "nm", "-u", frontend], out, "frontend-imports")
-    (objects / "frontend-imports.txt").write_text(imports + "\n", encoding="utf-8")
+    imports = ""
+    for path in compiled:
+        lines = command(["xcrun", "nm", "-u", path], out, "imports-" + path.stem)
+        (objects / (path.stem + "-imports.txt")).write_text(lines + "\n", encoding="utf-8")
+        imports += lines + "\n"
+    (objects / "frontend-imports.txt").write_text(imports, encoding="utf-8")
     names = {line.split()[-1] for line in imports.splitlines() if line.split()}
     bridge_imports = sorted(name[1:] for name in names if name.startswith("_nmb_"))
-    rust = "\n".join((staged / name).read_text(encoding="utf-8") for name in (
-        "bridge/NativeMetalObjects.rs", "bridge/NativeMetalBridge.rs"))
+    rust_sources = ["bridge/NativeMetalObjects.rs", "bridge/NativeMetalBridge.rs"]
+    if provenance.get("dre_device_policy"):
+        rust_sources.append("bridge/dre_device_facts.rs.inc")
+    rust = "\n".join((staged / name).read_text(encoding="utf-8") for name in rust_sources)
     exports = set(re.findall(r'pub\s+(?:unsafe\s+)?extern\s+"C"\s+fn\s+(\w+)', rust))
     absent = sorted(set(bridge_imports) - exports)
     linkage = {"imported_bridge_symbol_names": bridge_imports,
@@ -146,7 +177,9 @@ def official_sdk_compile(out: Path, provenance: dict) -> dict:
     if absent:
         raise ValueError("frontend imports symbols absent from its matching Rust sources: " + ", ".join(absent))
     return {"status": "SDK_TRANSLATION_UNITS_COMPILED", "official_iphoneos_sdk_compile": True,
-        "objects": {p.name: {"bytes": p.stat().st_size, "sha256": sha(p)} for p in (frontend, codec)},
+        "objects": {p.name: {"bytes": p.stat().st_size, "sha256": sha(p)} for p in compiled},
+        "dre_compiler_connection": provenance.get("dre_compiler_connection"),
+        "dre_device_policy": provenance.get("dre_device_policy"),
         "matching_bridge_symbol_names_checked": True,
         "link_performed": False, "runtime_executed": False,
         "publication_ready": False, "metal_acceleration_pass": False,
@@ -160,6 +193,10 @@ def main() -> int:
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--source-cache", type=Path, help="read-only pinned AdrenoMetal checkout")
     parser.add_argument("--prepare-only", action="store_true", help="stage/check public inputs; no SDK compile")
+    parser.add_argument("--dre-compiler-service", action="store_true",
+        help="opt-in selected306 service connection; runtime behavior remains unqualified")
+    parser.add_argument("--dre-device-policy", action="store_true",
+        help="UNVALIDATED explicit queried-facts/refusal policy; requires --dre-compiler-service")
     args = parser.parse_args()
     out = args.out.resolve()
     if out.exists():
@@ -172,7 +209,8 @@ def main() -> int:
         inputs = json.loads((HERE / "build_inputs.json").read_text(encoding="utf-8"))
         print("Preparing exact public Metal frontend/bridge source inputs", flush=True)
         source = args.source_cache.resolve() if args.source_cache else fetch_frontend(out, pin)
-        provenance = stage_inputs(source, out, inputs)
+        provenance = stage_inputs(source, out, inputs, compiler_service=args.dre_compiler_service,
+            device_policy=args.dre_device_policy)
         write_json(out / "source-provenance.json", provenance)
         result["stage"] = "sdk_compilation"
         if args.prepare_only:

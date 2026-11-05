@@ -80,6 +80,83 @@
       "sha256": "f07a8fbc87fd49908d3e1228428ca80a6e5195351e7c0e9aa81c556833c56fb0",
       "bytes": 7736,
       "role": "GPU parent retention dependency; not a platform-wide rail floor"
+    },
+    {
+      "path": "arch/arm64/boot/dts/vendor/qcom/holi-gdsc.dtsi",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/arch/arm64/boot/dts/vendor/qcom/holi-gdsc.dtsi",
+      "sha256": "8b394181546c179a002283bef411f8173f9678f318e47118b7c6e17cd1bd0775",
+      "bytes": 3181,
+      "role": "Full CX hardware-status and GX reset/domain phandle variant"
+    },
+    {
+      "path": "drivers/clk/qcom/gpucc-holi.c",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/clk/qcom/gpucc-holi.c",
+      "sha256": "a91cb44e7d78cffb6dbffd1e6abb569f0fd184e2e56bca1978e2a1f1a6515512",
+      "bytes": 14157,
+      "role": "GPUCC source/branch registers, rate tables and voltage classes"
+    },
+    {
+      "path": "drivers/clk/qcom/vdd-level-holi.h",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/clk/qcom/vdd-level-holi.h",
+      "sha256": "2bfc7c22f60010c2ffd50f1cfc2f3460c8708a573739c00b86c817ebb8fbb43d",
+      "bytes": 1597,
+      "role": "GPUCC voltage class to RPM level mapping"
+    },
+    {
+      "path": "drivers/clk/qcom/gdsc-regulator.c",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/clk/qcom/gdsc-regulator.c",
+      "sha256": "9cd9b42767d6310b74252a83f06ca6f42c43b1e649aa822ca14c25ef07c2b95d",
+      "bytes": 27178,
+      "role": "Actual qcom,gdsc sequencing, timing and DT variant behavior"
+    },
+    {
+      "path": "drivers/clk/qcom/clk-branch.c",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/clk/qcom/clk-branch.c",
+      "sha256": "431f9637068dc402d07b927469059ea17a0ec4e693f4c1f0ba4e51623c7bb561",
+      "bytes": 8251,
+      "role": "CBCR enable/status masks and branch delay semantics"
+    },
+    {
+      "path": "drivers/clk/qcom/clk-branch.h",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/clk/qcom/clk-branch.h",
+      "sha256": "a29a94bf9e922d3cef1d36633d347dc96379957e0e3f96eba2724f39777ad8ab",
+      "bytes": 1610,
+      "role": "Branch halt-check variants"
+    },
+    {
+      "path": "drivers/clk/qcom/clk-regmap.c",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/clk/qcom/clk-regmap.c",
+      "sha256": "8b4cc2f937949dfac9086b2ab3f3bc1a45b3d7fd02508776d9cd3b5ba38688a2",
+      "bytes": 8176,
+      "role": "Masked branch enable semantics"
+    },
+    {
+      "path": "drivers/clk/qcom/clk-rcg2.c",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/clk/qcom/clk-rcg2.c",
+      "sha256": "4051a103f373c02c01a5c8b208ce456f5f3696c22ac5ee3574a9418549812bcc",
+      "bytes": 45811,
+      "role": "RCG source/divider, dirty/update and root status facts"
+    },
+    {
+      "path": "drivers/clk/qcom/clk-alpha-pll.c",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/clk/qcom/clk-alpha-pll.c",
+      "sha256": "9391ca2c0670249dd53b51ba349b248f8988a1c45d0cea1f39e1bc280828b231",
+      "bytes": 126887,
+      "role": "Fabia readback registers, active/lock/output state and fractional-rate formula"
+    },
+    {
+      "path": "drivers/clk/qcom/clk-alpha-pll.h",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/clk/qcom/clk-alpha-pll.h",
+      "sha256": "f6cdd90ddf29f8e1a08705758810a793e0fe886415736e6aeac5218303f55b2e",
+      "bytes": 6539,
+      "role": "Fabia PLL register-family metadata"
+    },
+    {
+      "path": "drivers/clk/qcom/gcc-holi.c",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/clk/qcom/gcc-holi.c",
+      "sha256": "1eb4f1dad68ef199caea6b3cef319522f22c9e93516bf4f720d97294ab24d643",
+      "bytes": 117851,
+      "role": "External GPU config/AXI/MEMNOC branch and parent dependencies"
     }
   ],
   "live_fdt_selection": {
@@ -105,6 +182,11 @@
           16,
           512
         ],
+        "init_level": 384,
+        "proxy_consumer_level_range": [
+          384,
+          512
+        ],
         "use_voltage_level": true,
         "voltage_offset_present": false
       },
@@ -114,6 +196,11 @@
         "id": 0,
         "level_range": [
           16,
+          512
+        ],
+        "init_level": 384,
+        "proxy_consumer_level_range": [
+          384,
           512
         ],
         "use_voltage_level": true,
@@ -127,10 +214,25 @@
           0,
           512
         ],
+        "init_level": 64,
+        "proxy_consumer_level_range": null,
         "use_voltage_level": true,
         "voltage_offset_present": false
       }
     ],
+    "full_gpu_gdsc_variant": {
+      "cx_gdscr": 93917292,
+      "cx_hw_status": 93918528,
+      "cx_timeout_us": 500,
+      "cx_clock_disable_wait": 8,
+      "cx_no_disable_status": true,
+      "gx_gdscr": 93917196,
+      "gx_sw_reset": 93917192,
+      "gx_acd_reset": 93917536,
+      "gx_acd_misc_reset": 93945860,
+      "gx_domain_addr": 93918472,
+      "gx_reset_aon": true
+    },
     "raw_fdt_graph_retained_privately": true
   },
   "physical_rpm_ack_observed": false,

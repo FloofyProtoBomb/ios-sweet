@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "file": "bridge-Cargo.lock",
+  "sha256": "df0b4b3b2edac979ae6834e34230a772dd93d58d3eb9097f06a128ededc0c16d",
+  "cargo": "1.98.0",
+  "translator_commit": "624bab3918de5b978e1101517abca2b4fa426565",
+  "translator_patched_tree": "012f1ac53d182b739eaf43e2d9d3980a39d22da9",
+  "host_release_build_passed": true,
+  "host_archive_sha256": "235f6212c8b906b0280d3015ed40062129192e84f6e66888b0082e8ec3c48c8c",
+  "ios_build_qualified": false,
+  "frontend_link_qualified": false,
+  "runtime_qualified": false
+}

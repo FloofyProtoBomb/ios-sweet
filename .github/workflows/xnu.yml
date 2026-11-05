@@ -20,11 +20,16 @@ on:
       keep_going:
         description: make -k (collect all compile errors in one run)
         default: "true"
+      native_drafts:
+        description: Compile opt-in native GPU/touch drafts; supplies no hardware policy
+        type: boolean
+        default: false
   push:
-    branches: [main, dre-n200, dre-ui, dre-storage]
+    branches: [main, dre-n200, dre-ui, dre-storage, dre-native-validation]
     paths:
       - "xnu/patches/**"
       - "devices/dre/**/*.c"
+      - "devices/dre/**/*.cpp"
       - "devices/dre/**/*.h"
       - "devices/dre/**/*.S"
       - "devices/dre/**/*.patch"
@@ -33,6 +38,8 @@ on:
       - "!devices/dre/gpu/runtime/**"
       - "!devices/dre/gpu/android_probe/**"
       - "devices/dre/stage_xnu.py"
+      - "devices/dre/native_drafts.py"
+      - "devices/dre/irq/source_hooks.py"
       - "tools/enable-xnu-ccache.py"
       - "tools/test-enable-xnu-ccache.py"
       - ".github/workflows/xnu.yml"
@@ -47,7 +54,8 @@ env:
   MACOS_VERSION: ${{ inputs.macos_version || '13.5' }}
   KERNEL_CONFIG: ${{ inputs.kernel_config || 'DEVELOPMENT' }}
   MACHINE_CONFIG: ${{ inputs.machine_config || (startsWith(github.ref_name, 'dre-') && 'DRE') || 'SWEET' }}
-  DRE_PROFILE: ${{ inputs.dre_profile || ((github.ref_name == 'dre-ui' || github.ref_name == 'dre-storage') && 'ui') || 'bringup' }}
+  DRE_PROFILE: ${{ inputs.dre_profile || ((github.ref_name == 'dre-ui' || github.ref_name == 'dre-storage' || github.ref_name == 'dre-native-validation') && 'ui') || 'bringup' }}
+  DRE_NATIVE_DRAFTS: ${{ (inputs.native_drafts || github.ref_name == 'dre-native-validation') && 'true' || 'false' }}
 
 jobs:
   build:
@@ -65,7 +73,12 @@ jobs:
           git -C dxb checkout -q FETCH_HEAD
           # 12.5-14.3 use the top-level patches dir; ours go next to blacktop's
           if [ "$MACHINE_CONFIG" = DRE ]; then
-            python3 devices/dre/stage_xnu.py dxb/patches --profile "$DRE_PROFILE"
+            NATIVE_ARGS=()
+            if [ "$DRE_NATIVE_DRAFTS" = true ]; then
+              test "$DRE_PROFILE" = ui
+              NATIVE_ARGS=(--native-draft gpu --native-draft touch --native-gpu-nc-proof --native-gpu-firmware-draft --native-gpu-fw-nc-proof)
+            fi
+            python3 devices/dre/stage_xnu.py dxb/patches --profile "$DRE_PROFILE" "${NATIVE_ARGS[@]}"
             cp tools/enable-xnu-ccache.py dxb/enable-xnu-ccache.py
             # build.sh invokes patch scripts from dxb/xnu before compiling.
             printf 'python3 ../enable-xnu-ccache.py makedefs/MakeInc.cmd\n' > dxb/patches/9999-compiler-cache.sh

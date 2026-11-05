@@ -23,6 +23,7 @@ FIXTURES = {
     'cp': ['a619_backend.c', 'a619_cp.c', 'test_a619_cp.c'],
     'rbbm': ['a619_rbbm.c', 'test_a619_rbbm.c'],
     'vm': ['a619_smmu.c', 'a619_vm.c', 'test_a619_vm.c'],
+    'startup': ['a619_startup.c', 'test_a619_startup.c'],
     'factory': ['runtime/factory_probe.c', 'runtime/test_factory_probe.c'],
     'compiler-envelope': ['runtime/compiler_request.c', 'runtime/test_compiler_request.c'],
 }
@@ -71,6 +72,7 @@ def main():
         for name, directory, pattern in [
             ('compiler-guards', 'compiler', 'test_*.py'),
             ('runtime-abi', 'runtime', 'test_inspect_abi.py'),
+            ('android-harness-guards', 'android_probe', 'test_guards.py'),
         ]:
             run([sys.executable, '-m', 'unittest', 'discover', '-s', str(GPU / directory),
                  '-p', pattern, '-v'], name + '.log')

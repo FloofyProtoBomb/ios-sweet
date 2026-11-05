@@ -7,6 +7,7 @@ extern "C" {
 
 #define DRE_A619_GCC_CFG UINT64_C(0x01436004)
 #define DRE_A619_CX_GDSCR UINT64_C(0x0599106c)
+#define DRE_A619_CX_STATUS UINT64_C(0x05991540) /* live hw-ctrl-addr */
 #define DRE_A619_GX_GDSCR UINT64_C(0x0599100c)
 #define DRE_A619_AHB_CLK UINT64_C(0x05991078)
 #define DRE_A619_GFX_CLK UINT64_C(0x05991054)
@@ -37,6 +38,11 @@ struct dre_a619_holi_power {
 const char *dre_a619_holi_sptprac_enable(struct dre_a619_holi_power *state,
     const struct dre_a619_ops *ops);
 const char *dre_a619_holi_sptprac_release(struct dre_a619_holi_power *state,
+    const struct dre_a619_ops *ops);
+/* UNVALIDATED overnight addition: read-only live-state guard, with no cold
+ * CP-idle requirement and no recovery/off writes. Caller retains resources
+ * after a failure. Existing enable/release behavior is unchanged. */
+const char *dre_a619_holi_sptprac_check_live(const struct dre_a619_holi_power *state,
     const struct dre_a619_ops *ops);
 #ifdef __cplusplus
 }

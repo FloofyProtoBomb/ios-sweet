@@ -80,6 +80,13 @@ Setup.app and the iOS system volume are separate.
 
 ## Rebuild
 
+The DRE Actions workflow prepares a content-checked compiler cache, separated
+by Xcode/SDK, build-script revision and profile. It caches compiler results,
+keeps full patch verification and linking, and prints hit/miss statistics.
+The first run fills the cache; the time saved on later runs must be measured.
+Documentation and standalone diagnostic-test changes do not trigger a new
+kernel build. A missing cache still performs the normal compilation.
+
 Use Python 3.10 or later and Zig 0.14.1 on the host. The probe has no Apple
 firmware dependency. From the repository root run
 

@@ -2,6 +2,58 @@
 
 ## DE2118 handoff, 2026-11-04
 
+USER REQUESTED FASTER ITERATION. Added DRE compiler caching in workflow
+with standard compiler-content checking (no sloppiness), isolated Xcode/SDK
+and profile keys, full patch verification/linking and hit/miss statistics.
+New tools/enable-xnu-ccache.py prefixes only target CC/CXX; actual staged
+MakeInc.cmd fixture, no other byte changes, idempotence, unsupported layout
+rejection, YAML parse and all shell syntax PASS. Cache is PREPARED and has
+NOT RUN on macOS yet; no time saving measured. First run must populate it.
+Diagnostic-only/docs edits no longer trigger kernel builds. Publish these
+workflow changes on dre-next-test with candidate; keep current dre-storage
+76f1ddd1 immutable to avoid an unnecessary full build. Future needed kernel
+builds should include this workflow. Independent exact-image and private
+GPT checks ran alongside QEMU in session66716; ALL PASS, exited0. All3 QEMU
+objectives retain same exact kernel/image and8CPU/2047MiB. No process or
+phone watcher remains. This was local validation only; Lineage still safe.
+
+FINAL BSD FIX CI41966851551 from remote
+76f1ddd1a5fa12e76d110da88a331eb9399c5b29, treebac6449048886cf250e03e4d6057d5dfac4241f1.
+Includes copyout fix, sector-size callback fix,15-stage native diagnostic
+and27 actual-object checks. Phone remains verified restored LineageOS;
+no flash operation/watchers and no new test consent. Full3-case QEMU plus
+exact-image models must pass before packaging or requesting consent.
+Kernel CI SUCCESS, SHA687e9ec94c40cda816dcc005b3c93c240ab46c85dee94899ac683bb3b99190ae.
+work/build-native-bsd-2g image SHA1104ecabd07c9302fae263a871b05cf097a7723a6446193a4eef4612710d4699.
+VALIDATED: all3 QEMU paths PASS with unmodified kernel: in-memory BSD
+backend passes raw+block userdata prefix agreement, GPT CRC and rejected
+write-open; mapping-only and empty-owner refusal pass status/stage checks.
+All retain8CPU,2047MiB,PID1 and display-service heartbeat.6 exact-image
+guard/restore cases and private real GPT baseline PASS;47 C engine and27
+init syscall cases PASS. Kernel compile/link/all66 patches PASS. All test
+processes exited; no phone watcher. QEMU BSD provider is simulated and
+does not prove physical native UFS. Last handset native stage still unknown.
+Next: package/publish this exact candidate, then fresh approval for one
+temporary boot_b write and verified original restoration. No userdata write.
+
+FINAL BSD FIX CI41966851551 from remote
+76f1ddd1a5fa12e76d110da88a331eb9399c5b29, treebac6449048886cf250e03e4d6057d5dfac4241f1.
+Includes copyout fix, sector-size callback fix,15-stage native diagnostic
+and27 actual-object checks. Phone remains verified restored LineageOS;
+no flash operation/watchers and no new test consent. Full3-case QEMU plus
+exact-image models must pass before packaging or requesting consent.
+Kernel CI SUCCESS, SHA687e9ec94c40cda816dcc005b3c93c240ab46c85dee94899ac683bb3b99190ae.
+work/build-native-bsd-2g image SHA1104ecabd07c9302fae263a871b05cf097a7723a6446193a4eef4612710d4699.
+Current phase: built; validation is incomplete.
+
+FINAL BSD FIX CI41966851551 from remote
+76f1ddd1a5fa12e76d110da88a331eb9399c5b29, treebac6449048886cf250e03e4d6057d5dfac4241f1.
+Includes copyout fix, sector-size callback fix,15-stage native diagnostic
+and27 actual-object checks. Phone remains verified restored LineageOS;
+no flash operation/watchers and no new test consent. Full3-case QEMU plus
+exact-image models must pass before packaging or requesting consent.
+Current phase: pending; validation is incomplete.
+
 QEMU BLOCK CHECK FOUND SECOND INTERFACE BUG: fixed-copyout CI41965737189
 SUCCESS, kernel e2de3759/imageff6e6f9a reached PID1 with no panic. Simulated
 raw partition read, GPT read/CRC and write-open rejection all succeeded;

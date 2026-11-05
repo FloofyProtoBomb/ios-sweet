@@ -10,8 +10,10 @@ install iOS. The existing tested images remain unchanged.
 The next diagnostic also selects `--ram-mib 2048`: a 2 GiB upper-memory
 window validated against the live RAM and reservation map. QEMU boots with
 all eight cores and reports 2,047 MiB after the 1 MiB panic-log reservation.
-This larger window and the native disk still need a handset test. This does
-not expose all 4 GiB of installed RAM. The default remains 512 MiB.
+The corrected handset test reported eight active CPUs, 2,047 MiB and a
+running PID 1. This validates the reported window, not every RAM cell. Native
+BSD disk access still fails at an unknown stage. This does not expose all
+4 GiB of installed RAM. The default remains 512 MiB.
 
 The first combined handset test reached a kernel panic in temporary FDT
 mapping cleanup, before PID 1. LineageOS was restored and hash-verified.
@@ -19,6 +21,38 @@ The driver now uses XNU's removable mapping API for that temporary copy.
 `qemu_ui.py --native-map-test` exercises this positive ownership path across
 a 16 KiB page boundary, then returns before Qualcomm MMIO. Both this test
 and the empty-ownership refusal test must pass before another handset test.
+The corrected kernel passed both QEMU cases and then booted the handset
+without the mapping panic. Its early shim read the real GPT successfully;
+the native BSD check reported failure. These are separate storage paths.
+
+The next diagnostic exposes read-only `kern.dre_ufs_state` as
+`NATIVE_DRIVER=phase:reason` and caches the first failing PID 1 stage and
+syscall errno. Errno zero means a returned value or GPT check failed.
+
+| Stage | Operation |
+| --- | --- |
+| 001 | Open the raw userdata device read-only |
+| 002 | Query its logical block size |
+| 003 | Query its block count |
+| 004 | Verify the device reports read-only |
+| 005 | Seek to byte 512 of userdata |
+| 006 | Read 512 bytes of userdata |
+| 007 | Verify a write-only open rejects with EROFS; no write is issued |
+| 008 | Open the whole-LUN raw device read-only |
+| 009 | Query the whole-LUN block count |
+| 010 | Seek to the GPT header at byte 4096 |
+| 011 | Read the GPT header |
+| 012 | Validate GPT geometry and header CRC |
+
+`qemu_ui.py --native-bsd-test` adds a third, explicitly simulated backend.
+It requires both QEMU test arguments, the additional BSD-test argument and
+valid synthetic FDT ownership. It exercises the real devfs registration,
+open, ioctl, seek, physio/strategy read and rejected write-open paths with an
+in-memory disk, without accessing Qualcomm MMIO. Its driver status begins
+`VIRTUAL_TEST`; success does not establish physical UFS operation. Handset
+payloads must omit all three QEMU-only arguments. The empty-ownership,
+mapping-lifetime and simulated BSD cases must pass before another handset
+test.
 
 The validated diagnostic boots XNU 8796 with all eight CPUs and a small Mach-O as PID 1
 on a mockfs RAM disk. The eventual userland target is iPhone X
@@ -32,13 +66,13 @@ Setup.app and the iOS system volume are separate.
 | --- | --- |
 | DE2118 board | Read the live FDT, boot headers and panel ID on project 133180, running LineageOS 22.2, slot B. Its product configuration reports DE2117 in Android. |
 | Phone-specific boot image | Android v3, 4096-byte pages, Android 15.0.0 / July 2025 header, as on the installed boot image. The active vendor_boot and dtbo supply the bootloader device tree. The shim embeds its XNU payload inside the kernel Image to avoid vendor/generic ramdisk concatenation. |
-| CPU, memory and display | In ARM64 emulation, the exact phone image accepted the handset's FDT, passed the verified boot arguments to XNU and executed XNU's first 64 × 32 framebuffer marker. A separate probe rendered its complete result text at two load addresses and refused five incompatible or malformed device trees. |
+| CPU, memory and display | In ARM64 emulation, the exact phone image accepted the handset's FDT, passed the verified boot arguments to XNU and executed XNU's first 64 Ã— 32 framebuffer marker. A separate probe rendered its complete result text at two load addresses and refused five incompatible or malformed device trees. |
 | Full-system virtual boot | On QEMU virt, the same DRE kernel and RAM-disk init mounted md0, started PID 1 and printed a heartbeat. The virtual test substitutes virt's interrupt controller and architected timer in the ADT. |
 | Physical XNU boot | The DE2118 photos show XNU booting via dre-shim, VM bootstrap, CPU 0 registration and SGI1 verification, HFS registration, Skywalk self-tests and BSD network-interface threads being scheduled. In the subsequent combined handset test the user confirmed the repeating DE2118 TEST card, which is emitted by diagnostic PID 1 after md0 mounts. |
 | Identifiers | The shim detects the real serial from ABL's androidboot.serialno, with a root FDT serial-number fallback. It fills the copied XNU ADT and derives the same per-phone UUIDv5 at startup. The native generic handset image reports SERIAL=ABL_DETECTED and identity checks PASS. Exact UUID values were independently checked in emulation and QEMU. An optional checksum-validated IMEI can be staged as OSData at IODeviceTree:/oneplus-hardware/imei. Automatic IMEI discovery and a native CoreTelephony/Settings lookup require modem integration. Serial display in Settings is untested. |
 | Adreno | The N200 reports Adreno619v1. On the handset a KGSL userspace test submitted an A6xx CP_MEM_WRITE packet and read its result back after the GPU fence. The XNU ADT supplies the GPU register ranges and interrupt. XNU GPU power, firmware, SMMU, submission, buffer sharing and iOS graphics user-client support remain unimplemented. |
 | Input and display | The phone reported a Tianma NT36672C panel and Novatek no-flash touch on SPI. The console writes to continuous-splash memory. The native test found the expected touch clock votes absent. The portable [report decoder](touch/README.md) passes 447 synthetic checks but is not linked into XNU. SPI, firmware loading, touch events, display power and accelerated composition remain outstanding. |
-| Storage and radios | The kernel image has no UFS driver. A verified UFS read path and a root volume are required before it can run a full iOS filesystem. Cellular, Wi-Fi, Bluetooth, camera and audio drivers remain outstanding. |
+| Storage and radios | The early shim has read the real GPT. The native read-only BSD UFS adapter is implemented but has not passed the handset check. Native disk access and a root volume are required before it can run a full iOS filesystem. Cellular, Wi-Fi, Bluetooth, camera and audio drivers remain outstanding. |
 | Native hardware survey | The handset's native generic image reached PID 1 with identity checks PASS. UFS reports LINK_READY with its existing clocks; USB identifies DWC3 v3.30a in device mode. Touch lacks the expected APSS clock votes, and both GPU domains report powered off. These results do not establish sector reads, USB enumeration, touch input or rendering. The original LineageOS boot image and installed artwork were verified by device readback after the approved restore. |
 
 ## Rebuild

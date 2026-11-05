@@ -46,7 +46,10 @@ if __name__ == '__main__':
     ap.add_argument('--qemu', default='qemu-system-aarch64')
     ap.add_argument('--seconds', type=int, default=180)
     ap.add_argument('--native-map-test', action='store_true', help='exercise positive FDT map/copy/unmap ownership path; no Qualcomm MMIO')
+    ap.add_argument('--native-bsd-test', action='store_true', help='exercise real BSD disk callbacks with explicitly simulated read-only data; no Qualcomm MMIO')
     args = ap.parse_args()
+    if args.native_bsd_test:
+        args.native_map_test = True
     if args.seconds <= 0:
         ap.error('--seconds must be positive')
     build, kernel_path, out = args.build.resolve(), args.kernel.resolve(), args.out.resolve()
@@ -83,6 +86,8 @@ if __name__ == '__main__':
             '|GPU_HW=EMU_NO_HARDWARE|SERIAL=EMU_TEST')
     if args.native_map_test:
         cmd += ' dre_ufs_map_test=1'
+    if args.native_bsd_test:
+        cmd += ' dre_ufs_bsd_test=1'
     assert len(cmd.encode()) < 608
     payload, _ = mkpayload.build(str(kernel_path), str(build / 'dre-virt.adt'), cmd, str(build / 'dre-init.macho'))
     spec = importlib.util.spec_from_file_location('qemu_common', str(HERE.parents[1] / 'tools/qemu-sweet.py'))
@@ -151,8 +156,17 @@ if __name__ == '__main__':
             if info.get('native_ufs'):
                 # The virtual ADT has an empty ownership slot: the driver
                 # must refuse it before accessing any Qualcomm hardware.
-                assert 'NATIVE_UFS=UNAVAILABLE_OR_FAILED' in screen
-                assert 'DRE UFS: native disk unavailable (6)' in log
+                if args.native_bsd_test:
+                    assert 'NATIVE_UFS=BSD_PARTITION+GPT_READ_PASS + WRITE_OPEN_REJECTED' in screen
+                    assert 'DRE UFS: simulated BSD test device ready, no Qualcomm MMIO' in log
+                    assert 'NATIVE_STAGE=' not in screen
+                    state = 'VIRTUAL_TEST:READ_PASS'
+                else:
+                    assert 'NATIVE_UFS=UNAVAILABLE_OR_FAILED' in screen
+                    assert 'DRE UFS: native disk unavailable (6)' in log
+                    assert 'NATIVE_STAGE=001 ERRNO=002' in screen
+                    state = 'MAP_TEST:PASS' if args.native_map_test else 'HANDOFF:INVALID'
+                assert 'NATIVE_DRIVER=' + state in screen
                 if args.native_map_test:
                     assert 'DRE UFS: transient FDT mapping lifetime PASS' in log
             result = {'status': 'PASS', 'kernel_sha256': info['kernel_sha256'],
@@ -163,6 +177,8 @@ if __name__ == '__main__':
             if info.get('native_ufs'):
                 result['native_ufs_missing_ownership_refused'] = not args.native_map_test
                 result['native_fdt_mapping_lifetime_test'] = args.native_map_test
+                result['native_stage_errno_and_driver_status'] = True
+                result['native_bsd_interface_simulated'] = args.native_bsd_test
             result['ram_window_mib'] = info.get('ram_mib', 512)
             result['virtual_machine_ram_gib'] = virtual_ram_gib
             (out / 'result.json').write_text(json.dumps(result, indent=2) + '\n')

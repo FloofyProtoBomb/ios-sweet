@@ -2,6 +2,97 @@
 
 ## DE2118 handoff, 2026-11-04
 
+CURRENT WORK: native failure observability and an explicit simulated BSD
+interface regression. Phone remains VERIFIED RESTORED LINEAGEOS; no watcher
+or new flash approval. New kernel read-only kern.dre_ufs_state reports init
+phase/reason; PID1 reports 12 stages plus saved syscall errno. 22 actual
+ARM64 object/syscall tests PASS, including malformed status and each failure
+stage. All12 staged native C files cross-compile and symbol closure PASS.
+New QEMU-only in-memory disk uses normal BSD callbacks and no Qualcomm MMIO;
+requires affinity+map+bsd flags and valid synthetic ownership, and labels
+status VIRTUAL_TEST. Its full-kernel QEMU test has NOT RUN yet. Next: commit,
+publish dre-storage kernel CI, run all three QEMU paths, package a distinct
+image and obtain fresh specific approval before any handset write. No
+changes to physical DMA admission, clocks or media-write policy.
+
+LATEST PHYSICAL RESULT cc1c0764: user photo20261104_222640.jpg CONFIRMS
+PID1/identity/heartbeat, CPUS=8/8 PASS, RAM_MIB=2047 PASS and display-service
+logs. Mapping panic is resolved. This is a reported2GiB window, not a full
+RAM-cell stress test. NATIVE_UFS=UNAVAILABLE_OR_FAILED: native driver/init
+or userspace path stage is not yet known. Early shim still reads real GPT
+successfully: UFS_IO=GPT_PASS/N=5/UD=1b1228/cac5d3, link/clocks ready,
+M_OFF bypass retained. USB halted/TRB plan, GPI idle/unmatched fault, touch
+firmware layout/votes restored and GPU off. No native disk success claimed.
+Full transcription is outputs/native-mapfix-handset-results.json.
+
+RESTORE VERIFIED: helper70678 exited0 and wrote original boot_b/rebooted.
+verify-platform-restore.py session61496 exited0: boot_completed,slotB,
+Lineage22.2-20250815-NIGHTLY-dre, boot_b d12c5d92 and logo_b246df6f6 match,
+adb uid2000. No watcher remains. Phone NOW runs restored LineageOS. This
+approval is consumed. No further partition write is authorized.
+NEXT: improve kernel native driver status and PID1 test-stage/errno
+reporting before another test. Generic failure currently cannot distinguish
+driver initialization, device-node open, geometry ioctl, read or write-open
+errno mismatch. Mockfs DOES provide /dev mountpoint and bsd_init mounts
+devfs before PID1; do not assume missing devfs without evidence. Driver
+read-only sysctl status plus per-syscall stage/error will make next test
+targeted. Preserve cc1 baseline and ec927 failure artifacts. No speculative
+SMMU/clock/media write changes are justified by this photo.
+
+USER SPECIFICALLY APPROVED "Run corrected test and restore" for cc1c0764.
+Fresh preflight at2026-11-05 03:25:08 UTC PASSED: candidate cc1c0764 and
+backup d12c5d92 hashes, USB target match, slotB, fully booted
+Lineage22.2-20250815-NIGHTLY-dre. Starting pinned
+work/native-mapfix-operator.py test, then its restore action waits for
+fastboot and restores original boot_b. This approval is for this one image
+and its restoration, with no userdata/layout write. Do not reuse it later.
+FLASH/REBOOT SUCCEEDED by03:25:36 UTC, test session26578 exited0. Sending
+and writing boot_b both OKAY; fastboot reboot OKAY. Restore helper is now
+ACTIVE exec session70678 (started by03:25:53 UTC), waits up to900s for
+fastboot, then restores d12c5d92 boot_b and reboots. Do not start another
+operator while70678 runs. Ask for screen after about03:28:36 UTC, or capture
+panic immediately, then user returns using volume keys+Power. Run
+work/verify-platform-restore.py after helper succeeds to check Android,
+boot_b/logo_b hashes and drop ADB root back to2000. Phone CURRENTLY has
+test boot_b, not yet restored. Approval consumed; restoration remains
+authorized and required. Hardware result pending user observation.
+
+MAPPING-FIX CANDIDATE READY, NOT FLASHED: work/build-native-mapfix-2g,
+image SHA cc1c0764c78f18ba3361fb1b6886c4c925842864774c414d4a6b7c96ea03af62,
+16764928 bytes. CI41955000734 PASSED full compile/link/all66 UI patches,
+source36e70cfbf55be6abba5bb5c73e2a5994c9e69c7b, tree4cb5d1ad4ac79465911a966c9745159c365de74a.
+Kernel work/native-mapfix-kernel/kernel.development.dre SHA
+9daa2513cc0db7907a51a6c3c67de745a552844ef9cdebfd2af0ae38479e7cf2,
+17202536 bytes; ZIP SHA ae10058d136032381f0858767dd19e57bd47ccc94f5637656a2717ce7cc628b9.
+POSITIVE QEMU REGRESSION PASSES: work/qemu-native-mapfix-positive/result.json
+native_fdt_mapping_lifetime_test=true. Actual kernel logs
+"DRE UFS: transient FDT mapping lifetime PASS" after map/copy/unmap and
+valid board/RAM checks, then returns before Qualcomm MMIO; PID1,8CPU,
+RAM_MIB2047MiB and display heartbeat pass. Negative empty-ownership QEMU
+also PASSES at work/qemu-native-mapfix-2g. Both retain unmodified kernel.
+All6 exact-image cases PASS (native-mapfix-model-reports.json), private
+real GPT fixture5 commands/correct userdata also PASS
+(native-mapfix-real-gpt-report.json).47 C engine/ownership cases PASS;
+candidate init object still equals tested7-case SHA0db36f944f0391e35cdfabd4bee924adc7b487e7e35da5bb7ef23e83a377e67b.
+All test processes have exited. Phone is VERIFIED RESTORED LINEAGEOS as
+below; no watcher is active. Fresh approval is required for cc1c0764.
+PACKAGED AND PRIVACY-VERIFIED with work/package-native-mapfix.py:
+outputs/de2118-native-mapfix-test.img,
+outputs/native-mapfix-test-manifest.json,
+outputs/ios-dre-native-mapfix-source.zip (SHA d401743ceb05d9e8e925caf4a958fd922c3924856076f3a72184ec60ebf00a27).
+Source archive pins local70ed5d559c7b315f72eafbd9d17f54f2f2550af8,
+tree598c6b85b6553c781d1e470c3b324efe312e10d4. Published same tree on
+dre-next-test at3cb08f727704be32b997e3cf60eae5e9738837f6, preserving both
+prior test and CI history. This final handoff-only note does not change
+the archived source or image. work/native-mapfix-operator.py is PINNED
+cc1c0764/d12c5d92 and PREPARED ONLY, never run. Physical cmdline excludes
+both QEMU test arguments. Max537/607 bytes. Failed ec927dc0 artifacts and
+their verified-restore report are preserved. Fresh approval will be asked
+for cc1c0764; user must be present for photo and return to fastboot.
+Native storage and2047MiB RAM remain UNPROVEN ON HANDSET. This fixes and
+virtually exercises the mapping-lifetime bug; no iOS base system/Setup.app
+or iTunes restore is implemented by it.
+
 LATEST PHYSICAL RESULT: ec927dc0 FAILED before PID1/native storage IO.
 User photo20261104_211540.jpg shows vm_map_delete panic: Attempting to
 remove permanent VM map entry @vm_map.c:7940. Symbolication against exact
@@ -32,6 +123,27 @@ normal/native hardware clock checks remain strict. Positive test must find
 "DRE UFS: transient FDT mapping lifetime PASS", plus PID1,8CPU,RAM2047MiB
 and display heartbeat. Also retain empty-ownership refusal QEMU separately.
 New CI build and new image are required; no new flash is authorized.
+FIX BUILD: run41955000734 is compiling commit
+36e70cfbf55be6abba5bb5c73e2a5994c9e69c7b on dre-storage; tree
+4cb5d1ad4ac79465911a966c9745159c365de74a equals local62b14df. All12 native C
+files compile locally, symbol closure passes,47 host engine/ownership cases
+still pass. Positive QEMU synthetic fixture passes production live-memory
+validation and spans two16K pages. Builder capability check now additionally
+requires the new mapping-lifetime PASS string, so broken kernels are refused
+(this builder-only change is not part of the kernel CI input).
+NEXT once CI passes: download verified kernel to work/native-mapfix-kernel;
+build --native-ufs --ram-mib2048 with full previous diagnostic flags to
+work/build-native-mapfix-2g. Run QEMU twice SEQUENTIALLY because each writes
+the build's virtual ADT: outwork/qemu-native-mapfix-2g default empty-owner,
+then outwork/qemu-native-mapfix-positive with --native-map-test. Positive
+must record native_fdt_mapping_lifetime_test=true and RAM2047MiB/PID1/8CPU.
+Use new exact-image reports work/native-mapfix-model-reports.json (6cases)
+and work/test-mapfix-real-gpt.py -> native-mapfix-real-gpt-report.json.
+work/package-native-mapfix.py is prepared, NOT RUN; it requires both QEMU
+cases and rejects QEMU arguments in the physical cmdline. NEW output names
+de2118-native-mapfix-test.img / native-mapfix-test-manifest.json /
+ios-dre-native-mapfix-source.zip / work/native-mapfix-operator.py preserve
+all failed ec927dc0 artifacts. New flash still needs fresh explicit approval.
 
 USER NOW SPECIFICALLY APPROVED "Run combined test and restore" for ec927dc0
 (2GiB/native BSD reads). Fresh preflight PASSED local candidate ec927dc0 and
@@ -797,16 +909,16 @@ ADB was returned to uid 2000. No diagnostic image remains installed.
 
 **LIVE LOG over USB (0077, boot 0077s): no more recovery round-trips.** Boot an image with `sweetusb=2`, run `tools/sweet-usbnet.sh logs/live-NAME.txt` on the PC: it waits for the phone's CDC-ECM interface, sets 192.168.7.1/24 (sudo) and prints/saves the kernel console the phone streams every 100 ms as UDP to 192.168.7.1:5140 (starts with the last 64 KiB). `ping 192.168.7.2` checks the link. Current image: `shim/out/shim-boot-0077s.img` (kernel 0077, ADT sweet-0069hi, cpus=6, sweetfb_noconsole=1, sweetfb_hz=30, sweetusb=2). The recovery pull (`tools/sweet-log-pull.sh`) is still the way after a panic/hang before USB comes up.
 
-**🎉 USB networking works (boot 0076s, 18:24 local): `ping 192.168.7.2` from the PC answers in ~1 ms, 0 % loss (200-packet burst, 1500-byte frames, 512/1024-byte frames).** 0075: CDC-ECM function (bulk 0x81/0x01, interrupt 0x82 NETWORK_CONNECTION; host MAC 02:00:5e:77:ee:01) + kernel ethernet ifnet `ue0` (legacy output, header strip like if_fake) with 192.168.7.2/24 set from the kernel (proto_plumb + SIOCAIFADDR on an in-kernel socket). 0076: received frames into one cluster mbuf (mbuf_allocpacket gave a first mbuf of length 0 -> panic "Failed mbuf validity check: len -14"). Host side (Linux cdc_ether, interface `enp0s20f0u3u1`): `nmcli dev set IF managed no; sudo ip addr add 192.168.7.1/24 dev IF; sudo ip link set IF up`. Boot image `shim/out/shim-boot-0076s.img` (`sweetusb=2`). iOS itself does not see ue0 yet (configd needs an IONetworkInterface in IOKit).
+**ðŸŽ‰ USB networking works (boot 0076s, 18:24 local): `ping 192.168.7.2` from the PC answers in ~1 ms, 0 % loss (200-packet burst, 1500-byte frames, 512/1024-byte frames).** 0075: CDC-ECM function (bulk 0x81/0x01, interrupt 0x82 NETWORK_CONNECTION; host MAC 02:00:5e:77:ee:01) + kernel ethernet ifnet `ue0` (legacy output, header strip like if_fake) with 192.168.7.2/24 set from the kernel (proto_plumb + SIOCAIFADDR on an in-kernel socket). 0076: received frames into one cluster mbuf (mbuf_allocpacket gave a first mbuf of length 0 -> panic "Failed mbuf validity check: len -14"). Host side (Linux cdc_ether, interface `enp0s20f0u3u1`): `nmcli dev set IF managed no; sudo ip addr add 192.168.7.1/24 dev IF; sudo ip link set IF up`. Boot image `shim/out/shim-boot-0076s.img` (`sweetusb=2`). iOS itself does not see ue0 yet (configd needs an IONetworkInterface in IOKit).
 
 **USB device mode works (boot 0074s, 17:45 local): the host enumerates the phone at high speed as `1209:0001 ios-sweet "Sweet iOS (USB bring-up)"`.** 0072 read-only probe: ABL leaves the USB30_PRIM GDSC and all 7 USB clocks on, DWC3 v3.20a (GSNPSID 0x5533320a) in device mode (GCTL 0x00112000), halted (DCTL RUN_STOP 0, DSTS 0x00d3de04), event buffer still at ABL's 0xfdfc8000, QUSB2 PHY alive. 0073 (`sweetusb=2`): DCTL soft reset, own event buffer (polled, interrupt masked), ep0 DEPSTARTCFG/SETEPCONFIG/SETTRANSFRESOURCE, setup TRB, RUN_STOP; control-transfer state machine as Linux ep0.c; descriptors: vendor class, no data endpoints. It ran but no event came: **0074** forces the VBUS session in the Qualcomm wrapper (QSCRATCH 0xa6f8800: HS_PHY_CTRL |= UTMI_OTG_VBUS_VALID(20)|SW_SESSVLD_SEL(28), SS_PHY_CTRL |= LANE0_PWR_PRESENT(24), as Linux dwc3_qcom_vbus_override_enable) -> connect + enumeration. Image `shim/out/shim-boot-0074s.img`. Black Phone app: main thread waits in -[VMVoicemailManager fetchAccounts] (sync XPC; voicemail needs the modem).
 
 **Navigation works (boot 0071s on v14, log `logs/boot-0071s.txt`):** swipe up from the bottom edge returns to the home screen; app switcher works. Two fixes: **0070** pid_hibernate (syscall 435 was nosys on the macOS config -> SIGSYS killed SpringBoard in -[SBToAppsWorkspaceTransaction _didComplete] when an app left the foreground; the only CONFIG_EMBEDDED-only entry in syscalls.master); **0071** touches starting within 48 px of an edge carry kIOHIDDigitizerEventFromEdgeTip (UIKit `_UIEventHIDTouchEdgeTypeForHIDEvent` reads the digitizer EventMask 0xb0007 bits 0x800/0x1000/0x2000/0x40000). Diagnosed, not fixed: Settings (Preferences) SIGTRAP in PodcastsUI func_1cdc47c58: force-unwrap of `URL.volumeTotalCapacity` (nil on our HFS+ root). Phone/Photos/Messages show black (MobilePhone launches, no crash) - next: stack samples via boot-arg `sweetsample=MobilePhone,MobileSlideShow,MobileSMS,SpringBoard` (image `shim/out/shim-boot-0071s.img`).
 
-**🎉🎉 MILESTONE 2026-10-18 ~15:30 local: iOS 16.7 SPRINGBOARD HOME SCREEN ON THE PHONE** (boot `shim/out/shim-boot-0069s.img` = kernel 0069 + ADT `shim/out/sweet-0069hi.adt`, image **v14**; log `logs/boot-0069s-v14-HOMESCREEN.txt`). Home screen with a few apps, Settings opens, Control Center / lock screen / notification center work, touch + buttons work, 6 A55 cores (`cpus=6`), `sweetfb_noconsole=1 sweetfb_hz=30`. Known issue: cannot leave Settings (home gesture / AssistiveTouch home do nothing) - to investigate.
+**ðŸŽ‰ðŸŽ‰ MILESTONE 2026-10-18 ~15:30 local: iOS 16.7 SPRINGBOARD HOME SCREEN ON THE PHONE** (boot `shim/out/shim-boot-0069s.img` = kernel 0069 + ADT `shim/out/sweet-0069hi.adt`, image **v14**; log `logs/boot-0069s-v14-HOMESCREEN.txt`). Home screen with a few apps, Settings opens, Control Center / lock screen / notification center work, touch + buttons work, 6 A55 cores (`cpus=6`), `sweetfb_noconsole=1 sweetfb_hz=30`. Known issue: cannot leave Settings (home gesture / AssistiveTouch home do nothing) - to investigate.
 What it took today (in order): 0058 HID services (Apple IOHIDFamily-1915 user client), 0059 iPhone X identity (hw.product etc.), 0060 SPMI keys + GENI touch, 0061 1125x2436 presented display, 0062 RPMh L11C touch power + IOPMPowerSource battery, 0063 GENI FIFO packing (Goodix GT9896), 0064 PRIV_WORK_INTERVAL grant (SpringBoard "Failed to create work interval"), 0065 SMP via PSCI (6 A55), 0066 crash map regions, 0067 console mute without cons_ops write, 0068 IOSurface lookup of an already-mapped surface returns base -1 (backboardd snapshot crash), 0069 UFS log flush 10 s. Image v13: CommCenter removed from launchd.plist, BKNoWatchdogs. **Image v14** = v13 + Setup skipped (`/var/mobile/Library/Preferences/com.apple.purplebuddy.plist` SetupDone/SetupFinishedAllSteps true, SetupVersion 11, daemonizeNeedsToRun false; purplebuddy.notbackedup mini-buddy flags false; managedconfiguration.notbackedup LockdownActivationIndicatesCloudConfigurationAvailable false; springboard MCForceShowCloudConfigurationUI false) + mobileactivationd data ark seeded (`/private/var/containers/Data/System/D90C94C4-F94E-4FCF-8A28-A93BE3846D8E/Library/internal/data_ark.plist`, -ActivationState Activated etc.) + MediaToolbox D22/D221/Default SubServerConfiguration StartRecorderServer=false (mediaserverd crash loop: portrait-filter prewarm called NULL GL). **Activation:** ADT /chosen certificate-production-status 0, effective-production-status-ap 0, certificate-security-mode 1, effective-security-mode-sep 1 -> mobileactivationd's native Hactivation branch (Codex `codex/activation/report.md`; alternative 4-byte daemon patch documented there). Fallback image v13; v12 deleted.
 
-**🎉 TOUCH WORKS (boot 0063u on image v13, 2026-10-18 ~13:15 local):** tapping (i) on Setup's Hello opens the device-info sheet; swipe-up is recognised (spinner, then back to Hello - under investigation). Chain: RPMh L11C vote (0062, `bsd/dev/sweet_rpmh.c`) -> GT9896 @0x5d on GENI SE7 (0063 fixed FIFO packing: register address went out byte-swapped) -> sweet_hid_touch -> SweetHIDTouch -> backboardd. Battery icon OK (0062 SweetBattery IOPMPowerSource, static 100 %). **Image v13** (= v12 + CommCenter jobs removed from launchd.plist + `BKNoWatchdogs`=true and `FBLaunchWatchdogExceptions{com.apple.purplebuddy:100}` in /var/mobile/Library/Preferences/com.apple.springboard.plist): Setup no longer killed by the scene-create watchdog (it blocked in CoreTelephony getSubscriptionInfo -> CommCenter, Codex `codex/setup/report.md`; that report also lists how to skip Setup: SetupDone/SetupFinishedAllSteps/SetupVersion=11 in com.apple.purplebuddy.plist + activation check). v9 deleted, fallback = v12. Input latency ~1 min with 1 CPU -> Codex task 11 = SMP via PSCI (`codex/smp/`).
+**ðŸŽ‰ TOUCH WORKS (boot 0063u on image v13, 2026-10-18 ~13:15 local):** tapping (i) on Setup's Hello opens the device-info sheet; swipe-up is recognised (spinner, then back to Hello - under investigation). Chain: RPMh L11C vote (0062, `bsd/dev/sweet_rpmh.c`) -> GT9896 @0x5d on GENI SE7 (0063 fixed FIFO packing: register address went out byte-swapped) -> sweet_hid_touch -> SweetHIDTouch -> backboardd. Battery icon OK (0062 SweetBattery IOPMPowerSource, static 100 %). **Image v13** (= v12 + CommCenter jobs removed from launchd.plist + `BKNoWatchdogs`=true and `FBLaunchWatchdogExceptions{com.apple.purplebuddy:100}` in /var/mobile/Library/Preferences/com.apple.springboard.plist): Setup no longer killed by the scene-create watchdog (it blocked in CoreTelephony getSubscriptionInfo -> CommCenter, Codex `codex/setup/report.md`; that report also lists how to skip Setup: SetupDone/SetupFinishedAllSteps/SetupVersion=11 in com.apple.purplebuddy.plist + activation check). v9 deleted, fallback = v12. Input latency ~1 min with 1 CPU -> Codex task 11 = SMP via PSCI (`codex/smp/`).
 
 **INPUT WORKS (boot 0060u on a freshly flashed v12, log `logs/boot-0060u.txt`):** power, volume up, volume down reach iOS (PMIC -> sweet_keys.c -> SweetHIDButtons -> backboardd). Power locks/unlocks (screen "off" shows the kernel console because the panel never really turns off). **Device identity fixed: iPhone X** (home indicator, Face-ID-style Setup). Earlier test (0059u, `sweethidtest=15` fake Home presses) advanced Setup from Hello to the language list.
 - **0058** HID: `iokit/Kernel/arm/hid/`: IOHIDEventServiceUserClient + IOHIDEventServiceQueue + IOHIDEvent compiled UNCHANGED from Apple IOHIDFamily-1915.140.3 (= exact version of the iOS 16.7 IOHIDLib, clone in `research/iohid-1915`) over our minimal IOHIDEventService (SweetHID.cpp: SweetHIDButtons consumer page 0x0C power 0x30 / vol 0xE9/0xEA / menu 0x40; SweetHIDTouch digitizer collections). C hooks `sweet_hid_key(key, down)` (0 power, 1 vol+, 2 vol-, 3 home) and `sweet_hid_touch(finger, down, x, y)`. HID logs go to IOLog. Boot-arg `sweethidtest=N` = fake Home press every N s.
@@ -848,7 +960,7 @@ What it took today (in order): 0058 HID services (Apple IOHIDFamily-1915 user cl
 4. Apply Codex 0058 (UFS speed), consider cpus>1, check whether installcoordinationd/mediaserverd loops are gone, analyse mobileactivationd.
 5. Hide kernel console over the GUI when not debugging: boot-arg sweetfb_noconsole=1 (but then panics are not on screen).
 
-- **🎉 MILESTONE: iOS GUI ON THE PHONE - Setup.app "Hello" screen (2026-10-17 ~21:30 UTC, boot 0057u on image v12).** Photo: `/run/media/dipa/android/ios-sweet-work/MILESTONE-setup-hello-2026-10-17.jpg` (animated "dobar d(an)" hello lettering, status bar "iPod" + battery icon, bottom "Pritisnite Home za otvaranje" = "Press Home to open" (locale hr), (i) button). Rendered by iOS 16.7 SpringBoard/Setup through CoreAnimation -> backboardd -> kernel IOSurface (IOCoreSurfaceRoot) -> kernel AppleCLCD swaps -> ABL panel memory. What made it: data migration finally skipped (v12: `LastSystemVersion` 20H392 in the plain `/var/mobile/Library/Preferences/com.apple.migration.plist`; ADT `/chosen/unique-chip-id` + `chip-id` for IOPlatformUUID), 0057 (no ext resolver -> ACL containers work), plus everything before (0046 display/IOSurface, 0050 Sandbox policy, display-scale 3, containers dirs, RENAME_SWAP, AKS 35/101, 10 Hz present).
+- **ðŸŽ‰ MILESTONE: iOS GUI ON THE PHONE - Setup.app "Hello" screen (2026-10-17 ~21:30 UTC, boot 0057u on image v12).** Photo: `/run/media/dipa/android/ios-sweet-work/MILESTONE-setup-hello-2026-10-17.jpg` (animated "dobar d(an)" hello lettering, status bar "iPod" + battery icon, bottom "Pritisnite Home za otvaranje" = "Press Home to open" (locale hr), (i) button). Rendered by iOS 16.7 SpringBoard/Setup through CoreAnimation -> backboardd -> kernel IOSurface (IOCoreSurfaceRoot) -> kernel AppleCLCD swaps -> ABL panel memory. What made it: data migration finally skipped (v12: `LastSystemVersion` 20H392 in the plain `/var/mobile/Library/Preferences/com.apple.migration.plist`; ADT `/chosen/unique-chip-id` + `chip-id` for IOPlatformUUID), 0057 (no ext resolver -> ACL containers work), plus everything before (0046 display/IOSurface, 0050 Sandbox policy, display-scale 3, containers dirs, RENAME_SWAP, AKS 35/101, 10 Hz present).
   **Missing (next work, in rough order):**
   - **Input: no touch, no power button, no volume buttons** (no HID drivers; backboardd looks for IOHIDDevice / HIDServiceSupport services). Setup is stuck on "Hello".
   - **Device identity: it thinks it is an iPod with a Home button** (status bar "iPod", "Press Home to open"): MobileGestalt has no product/model identity (no /product node, product-type, etc.) - give it iPhone10,3 / home-button-less (Face ID class) identity.
@@ -963,7 +1075,7 @@ What it took today (in order): 0058 HID services (Apple IOHIDFamily-1915 user cl
 - **DECIDED (user, 2026-10-15): 64 GiB `iosroot` on LUN0 (sda), taken from userdata (wipes Android user data; Android/super kept).** Planned GPT (4K LBAs): userdata 0x2B8C00..0xD7D6FF (~43 GiB, keep type/unique GUIDs and attributes); iosroot 0xD7D700..0x1D7D6FF (0x1000000 blocks = 64 GiB, 1 MiB aligned); backup GPT area unchanged. Procedure: user backs up phone data -> boot OrangeFox recovery (adb) -> back up GPT (sgdisk --backup + raw dd of LBA 0-5 and last 6 blocks) to research/ -> sgdisk edit -> Format Data -> verify Android boots to setup. NOT EXECUTED YET.
 - **INTERNAL UFS WORKS FROM THE SHIM (read-only), user authorized internal-UFS approach incl. flashing (2026-10-15, "i allow everything").** Shim probe `shim/ufs.c` (commit `12ed3ed` + filter): ufshc@1d84000 is UFSHCI 2.1 (ver 0x210, cap 0x1587031F, 32 slots), ABL leaves HCE=1, HCS=0x10F (device present, lists ready, UIC ready); probe takes over UTRL at its own buffer (verifies UTRLBA readback before any doorbell), TEST UNIT READY/READ CAPACITY/READ(10) all succeed. LUN0 = 0x1D7D800 x 4 KiB (~126.6 GB), valid GPT (64 entries at LBA 2). Photos IMG_20261015_212916/213325/213429. Big LUN0 partitions (start in 4K LBAs / MiB): super 0xCA00/0x2200 (8.5 GiB), logdump 0x22CA00/64, minidump 0x230A00/128, rawdump 0x238A00/128, recovery 0x240C00/128, cache 0x248C00/384 ext4, exaid 0x260C00/384, cust 0x278C00/1024 ext4, **userdata 0x2B8C00/0x1AC4B MiB (~107 GiB), fs unreadable = encrypted (metadata encryption)**. cache..cust contiguous = only 1.75 GiB (too small for iOS ~10+ GiB). Plan needing user consent: shrink userdata in GPT (wipes Android data) and add an `iosroot` partition at the end of LUN0. LUNs 1-5 not listed yet (sdb..sdf backed up in backup/lun).
 - **fastboot limit measured (2026-10-15, read-only getvar):** `max-download-size: 805306368` (768 MiB); `max-fetch-size` unsupported; `is-userspace: no` (ABL fastboot). A `fastboot boot` image (shim+kernel+RAM disk) must be < 768 MiB, so the 2.5 GiB iOS shared cache cannot ride in the boot RAM disk even if XNU gets all RAM. Real userland needs storage access (UFS driver, or USB host) or a much smaller cache. Unlocking full RAM is still needed later (GUI).
-- **iOS 16 USERLAND SOURCE (Claude, 2026-10-15).** Chose **iPhone X (iPhone10,3/10,6, D22/D221AP)** iOS **16.7.16 (20H392)** over iPhone 8: same A11 (no PAC -> plain arm64, runs on Kryo 470/ARMv8.2), last iOS for A11; X userland is home-button-less and tall-screen (1125x2436 vs sweet 1080x2400), better fit for later GUI. Note the X has its OWN SystemOS cryptex (different digest from iPhone 8's). IPSW URL in `research/ipsw-x/URL.txt` (+ BuildManifest). Images on the user's external SSD (NOT in git, do not format that disk: it holds the user's photos): `/run/media/dipa/android/ios-sweet-ipsw/iPhone10,3_16.7.16_20H392/` — `087-86593-047.dmg` = Cryptex1,SystemOS (2,743,074,816 B), `087-86698-044.dmg` = OS rootfs (4,730,814,044 B), both zip CRC-32 verified, plus Firmware/*.root_hash/.trustcache/.mtree. AppOS cryptex is 087-86715-047.dmg (10 MB, same as iPhone 8).
+- **iOS 16 USERLAND SOURCE (Claude, 2026-10-15).** Chose **iPhone X (iPhone10,3/10,6, D22/D221AP)** iOS **16.7.16 (20H392)** over iPhone 8: same A11 (no PAC -> plain arm64, runs on Kryo 470/ARMv8.2), last iOS for A11; X userland is home-button-less and tall-screen (1125x2436 vs sweet 1080x2400), better fit for later GUI. Note the X has its OWN SystemOS cryptex (different digest from iPhone 8's). IPSW URL in `research/ipsw-x/URL.txt` (+ BuildManifest). Images on the user's external SSD (NOT in git, do not format that disk: it holds the user's photos): `/run/media/dipa/android/ios-sweet-ipsw/iPhone10,3_16.7.16_20H392/` â€” `087-86593-047.dmg` = Cryptex1,SystemOS (2,743,074,816 B), `087-86698-044.dmg` = OS rootfs (4,730,814,044 B), both zip CRC-32 verified, plus Firmware/*.root_hash/.trustcache/.mtree. AppOS cryptex is 087-86715-047.dmg (10 MB, same as iPhone 8).
   - Images are raw APFS; files use LZBITMAP (decmpfs type 14). 7z cannot decode. Tools: `ipsw` 3.1.738 (AUR ipsw-bin, user-approved) needs apfs-fuse on Linux; **apfs-fuse** built in user space (system cmake broken: cmake 4.4.4 wants libjsoncpp.so.27, jsoncpp 1.9.6 installed = partial upgrade, NOT fixed) with pip cmake + `-DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_CXX_FLAGS="-include cstdint"`, installed to `~/.local/bin/apfs-fuse` (+apfs-dump-quick). Mount via a comma-free symlink (apfs-fuse splits options on ',' in `iPhone10,3`; exFAT has no symlinks -> put link elsewhere): `apfs-fuse LINK/087-86698-044.dmg MNT` -> `MNT/root/...`; unmount `fusermount3 -u MNT`.
   - Verified from headers: `dyld_shared_cache_arm64` magic `dyld_v1   arm64`; `/sbin/launchd`, `/usr/lib/dyld` = cputype 0x100000c subtype 0 (plain arm64). libSystem exists only inside the cache.
   - **BLOCKER for real userland via RAM disk:** shared cache = 3.10 GiB in 44 files (~2.5 GiB without the 592 MB `.symbols`), but the kernel manages only 1.20 GiB (0xb0000000..0xfd000000). Options: (A) give XNU the phone's full ~6 GB (banks 0x80000000+2G and 0x100000000+0xfcc00000, carve-out holes need pmap support) AND check fastboot max-download-size for a multi-GB boot image; (B) storage driver (Qualcomm UFS) to read a root from flash (no flashing allowed: would need a file/partition strategy); (C) run against individual dylibs extracted from the cache (uncertain).

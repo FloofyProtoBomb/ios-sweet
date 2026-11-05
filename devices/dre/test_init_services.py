@@ -22,7 +22,7 @@ SURFACE = b'DRE SURF: IOCoreSurfaceRoot registered\n'
 FRAMEBUFFER = b'DRE FB: AppleCLCD 1080x2400 stride 4320\n'
 
 
-def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3, native=None, ram_mib=None, ram_actual=None):
+def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3, native=None, ram_mib=None, ram_actual=None, status_mode=None):
     image = mkinit.build(obj)
     macho = mkpayload.parse_macho(image)
     cpu = Uc(UC_ARCH_ARM64, UC_MODE_ARM)
@@ -44,6 +44,7 @@ def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3, native
             'hw.model': b'D22AP\0', 'hw.target': b'D22AP\0',
             'hw.ncpu': struct.pack('<I', 8), 'hw.activecpu': struct.pack('<I', active),
             'hw.memsize': struct.pack('<Q', ((ram_actual or ram_mib or 512) - 1) << 20),
+            'kern.dre_ufs_state': b'READ:PASS\0',
             'kern.bootargs': b'cpus=8 dre_report=UFS=EMU|SERIAL=EMU\0'}
 
     def reg(n): return cpu.reg_read(getattr(A, f'UC_ARM64_REG_X{n}'))
@@ -59,7 +60,10 @@ def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3, native
             if path == b'/dev/console': finish(0)
             elif native is not None and path in (b'/dev/rufsroot0', b'/dev/rdremedia0'):
                 if native == 'missing': finish(6, True)
-                elif reg(1) == 1: finish(30, True)
+                elif native == 'disk_open_error' and path == b'/dev/rdremedia0': finish(6, True)
+                elif reg(1) == 1:
+                    finish(10 if native == 'write_allowed' else 13 if native == 'write_errno' else 30,
+                           native != 'write_allowed')
                 else: finish(10 if path.endswith(b'rufsroot0') else 20)
             else: raise AssertionError(path)
         elif native is not None and call == 6:
@@ -67,22 +71,31 @@ def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3, native
         elif native is not None and call == 54:
             assert reg(0) in (10, 20)
             if native == 'ioctl_error': finish(5, True)
+            elif native == 'part_count_error' and reg(0) == 10 and reg(1) == 0x40086419: finish(5, True)
+            elif native == 'disk_ioctl_error' and reg(0) == 20: finish(25, True)
             else:
-                values = {0x40046418: struct.pack('<I', 512),
+                values = {0x40046418: struct.pack('<I', 4096 if native == 'bad_blocksize' else 512),
                           0x40086419: struct.pack('<Q', 0x8000000),
                           0x4004641d: struct.pack('<I', int(native == 'writable'))}
                 assert reg(1) in values
                 cpu.mem_write(reg(2), values[reg(1)]); finish(0)
         elif native is not None and call == 199:
-            assert [reg(i) for i in range(3)] in ([20, 4096, 0], [10, 512, 0]); finish(reg(1))
+            assert [reg(i) for i in range(3)] in ([20, 4096, 0], [10, 512, 0])
+            if native == 'part_seek_error' and reg(0) == 10: finish(29, True)
+            elif native == 'disk_seek_error' and reg(0) == 20: finish(22, True)
+            else: finish(reg(1))
         elif native is not None and call == 3:
             if reg(0) == 10:
                 assert reg(2) == 512
-                cpu.mem_write(reg(1), bytes(512)); finish(512)
+                if native == 'part_read_error': finish(5, True)
+                else:
+                    cpu.mem_write(reg(1), bytes(512)); finish(128 if native == 'part_short_read' else 512)
             else:
                 assert reg(0) == 20 and reg(2) == 4096
-                native_reads += 1
-                cpu.mem_write(reg(1), bytes(gpt)); finish(512 if native == 'short_read' else 4096)
+                if native == 'disk_read_error': finish(5, True)
+                else:
+                    native_reads += 1
+                    cpu.mem_write(reg(1), bytes(gpt)); finish(512 if native == 'short_read' else 4096)
         elif call == 336:
             opens += 1
             assert [reg(i) for i in range(4)] == [4, 0, 0, 0] and reg(5) == 65536
@@ -101,6 +114,12 @@ def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3, native
             key = bytes(cpu.mem_read(reg(0), reg(1))).decode()
             assert key in keys, key
             value = keys[key]
+            if key == 'kern.dre_ufs_state':
+                if status_mode == 'missing': finish(2, True); return
+                if status_mode == 'oversize':
+                    cpu.mem_write(reg(3), struct.pack('<Q', 97)); finish(0); return
+                if status_mode == 'unterminated': value = b'FAKE-PRIVATE-IDENTIFIER'.ljust(96, b'X')
+                if status_mode == 'control': value = b'READ:\x01FAKE-PRIVATE-IDENTIFIER\0'
             available, = struct.unpack('<Q', cpu.mem_read(reg(3), 8))
             assert len(value) <= available
             cpu.mem_write(reg(2), value); cpu.mem_write(reg(3), struct.pack('<Q', len(value))); finish(0)
@@ -121,6 +140,17 @@ def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3, native
         result = 'BSD_PARTITION+GPT_READ_PASS + WRITE_OPEN_REJECTED' if native == 'pass' else 'UNAVAILABLE_OR_FAILED'
         assert text.count('NATIVE_UFS=' + result) == cycles, text
         assert native_reads == int(native in ('pass', 'short_read', 'bad_crc')), 'native result was not cached'
+        stages = {'missing': (1,6), 'ioctl_error':(2,5), 'bad_blocksize':(2,0),
+                  'part_count_error':(3,5), 'writable':(4,0), 'part_seek_error':(5,29),
+                  'part_read_error':(6,5), 'part_short_read':(6,0), 'write_errno':(7,13),
+                  'write_allowed':(7,0), 'disk_open_error':(8,6), 'disk_ioctl_error':(9,25),
+                  'disk_seek_error':(10,22), 'disk_read_error':(11,5), 'short_read':(11,0), 'bad_crc':(12,0)}
+        if native == 'pass': assert 'NATIVE_STAGE=' not in text
+        else:
+            stage, error = stages[native]
+            assert text.count(f'NATIVE_STAGE={stage:03} ERRNO={error:03}') == cycles, text
+        state = 'STATUS_UNAVAILABLE' if status_mode else 'READ:PASS'
+        assert text.count('NATIVE_DRIVER=' + state) == cycles, text
     if ram_mib is not None:
         message = f'RAM_MIB={ram_mib - 1} PASS' if ram_actual in (None, ram_mib) else 'RAM_SIZE=UNEXPECTED'
         assert text.count(message) == cycles, text
@@ -137,11 +167,17 @@ if __name__ == '__main__':
     args = ap.parse_args()
     obj = args.object.read_bytes()
     if args.native_ufs:
-        for mode in ('pass', 'missing', 'bad_crc', 'short_read', 'ioctl_error', 'writable'):
+        for mode in ('pass', 'missing', 'bad_crc', 'short_read', 'ioctl_error', 'writable',
+                     'bad_blocksize', 'part_count_error', 'part_seek_error', 'part_read_error',
+                     'part_short_read', 'write_errno', 'write_allowed', 'disk_open_error',
+                     'disk_ioctl_error', 'disk_seek_error', 'disk_read_error'):
             run(obj, 'native ' + mode, [SURFACE + FRAMEBUFFER], 'UI_DRIVER_LOGS=SURFACE+FRAMEBUFFER', native=mode, ram_mib=args.ram_mib)
         if args.ram_mib and args.ram_mib != 512:
             run(obj, 'wrong RAM size', [SURFACE + FRAMEBUFFER], 'UI_DRIVER_LOGS=SURFACE+FRAMEBUFFER',
                 native='pass', ram_mib=args.ram_mib, ram_actual=512)
+        for mode in ('missing', 'oversize', 'unterminated', 'control'):
+            run(obj, 'driver status ' + mode, [SURFACE + FRAMEBUFFER], 'UI_DRIVER_LOGS=SURFACE+FRAMEBUFFER',
+                native='pass', ram_mib=args.ram_mib, status_mode=mode)
         sys.exit(0)
     run(obj, 'both', [b'FAKE-PRIVATE-IDENTIFIER\n' + SURFACE + FRAMEBUFFER], 'UI_DRIVER_LOGS=SURFACE+FRAMEBUFFER')
     run(obj, 'separate reads', [SURFACE, FRAMEBUFFER], 'UI_DRIVER_LOGS=SURFACE+FRAMEBUFFER')

@@ -303,6 +303,7 @@ static int disk_ioctl(dev_t dev, u_long cmd, caddr_t data, __unused int flag,
     case DKIOCGETMAXBLOCKCOUNTREAD: *(uint64_t *)data = 8; return 0;
     case DKIOCGETMAXBLOCKCOUNTWRITE: *(uint64_t *)data = writable && minor(dev) == 0 ? 8 : 0; return 0;
     case DKIOCGETFEATURES: *(uint32_t *)data = 0; return 0; /* no FUA/UNMAP promises */
+    case DKIOCISSOLIDSTATE: *(uint32_t *)data = 1; return 0; /* UFS and its virtual model */
     case DKIOCSYNCHRONIZE: {
         const dk_synchronize_t *sync = (const dk_synchronize_t *)data;
         uint64_t bytes = count_blocks(dev) * 4096;
@@ -500,7 +501,7 @@ register_devices:
     if (writable) printf("DRE UFS: userdata read-write enabled\n");
     if (virtual_disk == 1) printf("DRE UFS: simulated BSD test device ready, no Qualcomm MMIO\n");
     else if (virtual_disk == 2) printf("DRE UFS: QEMU file provider registered; not physical UFS proof\n");
-    else printf("DRE UFS: native read-only disk ready, userdata blocks=%llu\n",
+    else printf("DRE UFS: native solid-state disk ready, userdata blocks=%llu\n",
                 (unsigned long long)media.userdata_blocks);
     return 0;
 }

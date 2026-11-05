@@ -157,7 +157,7 @@ if __name__ == '__main__':
                 # The virtual ADT has an empty ownership slot: the driver
                 # must refuse it before accessing any Qualcomm hardware.
                 if args.native_bsd_test:
-                    assert 'NATIVE_UFS=BSD_PARTITION+GPT_READ_PASS + WRITE_OPEN_REJECTED' in screen
+                    assert 'NATIVE_UFS=BSD_RAW+BLOCK+GPT_PASS + WRITE_OPEN_REJECTED' in screen
                     assert 'DRE UFS: simulated BSD test device ready, no Qualcomm MMIO' in log
                     assert 'NATIVE_STAGE=' not in screen
                     state = 'VIRTUAL_TEST:READ_PASS'

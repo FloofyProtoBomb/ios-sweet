@@ -2,6 +2,46 @@
 
 ## DE2118 handoff, 2026-11-04
 
+QEMU BLOCK CHECK FOUND SECOND INTERFACE BUG: fixed-copyout CI41965737189
+SUCCESS, kernel e2de3759/imageff6e6f9a reached PID1 with no panic. Simulated
+raw partition read, GPT read/CRC and write-open rejection all succeeded;
+new stage015 returned EINVAL on the block read. Source inspection confirms
+XNU specfs set_blocksize uses d_psize as bytes/sector, not capacity. Driver
+incorrectly returned sector count (800 in fixture, >PAGE_SIZE on phone).
+Fix d_psize to DEV_BSIZE512, keep capacity in DKIOCGETBLOCKCOUNT.12 staged
+native compiles and symbol closure PASS. Session70565 exited1. No process
+or watcher remains. Do not package/flash imageff6e6f9a; preserve its logs.
+New final validation paths will be native-bsd-kernel, build-native-bsd-2g,
+qemu-native-bsd-* and native-bsd model reports. Both QEMU failures were
+synthetic, never handset tests. Physical native failure stage still unknown.
+Phone is verified restored Lineage; no new partition approval exists.
+
+NATIVE STATUS CANDIDATE BUILT: full66-patch CI41965737189 SUCCESS from
+d19bfc8db6f163fbbc339b9beaf667901b10a767. Kernel SHA
+e2de37596a3299bd88f423d1a770b11460a4659324ede442e7b0c4fac83c5efb, ZIP
+145fbe4a364f157c6eea575d5a8a36c0ce55a3ecddb1f199c9a2907cbc60325a.
+work/build-native-status-fixed-2g image SHAff6e6f9af865d3b22b7af359c4f99edfd29c1d6603dd9edeb22171d690dbaa06.
+Generic identity,8CPU,2048MiB window. Built init.o is byte-identical to
+the27-case tested object. Validation session70565 is running QEMU BSD,
+then mapping and refusal, then6 exact-image cases and private GPT fixture.
+No phone operation is running or approved; Lineage remains restored.
+
+COPYOUT FIX CI41965737189 is running from remote
+d19bfc8db6f163fbbc339b9beaf667901b10a767, tree5117e4363784dc0d21f0b418f6657ec394a2cf6d.
+NEW INIT CHECK also reads /dev/ufsroot0 through the kernel buffer cache
+after the raw partition/GPT path, matching the first16 bytes of both
+userdata reads.15 stages now.27 actual-object tests PASS including block
+open/seek/read/short-read/data mismatch; nonzero fixture data catches stale
+buffer comparisons. New init is assembled outside the kernel; no extra
+kernel rebuild is needed for this check. Final source will be published on
+dre-next-test after validating it with the fixed kernel.
+Pre-fix kernel's QEMU map and empty-owner cases both PASS, proving live
+sysctl status and stage/errno formatting. Its simulated BSD case remains
+FAILED (PAN copy bug). Never package or flash image8d6d0b0d. Preserve it and
+its exact panic symbols. New paths use native-status-fixed-kernel,
+build-native-status-fixed-2g and qemu-native-status-fixed-*; do not overwrite
+failed artifacts. No phone operation/watchers, Lineage safely restored.
+
 QEMU BSD REGRESSION FOUND A REAL COPY BUG: CI41964576407/kernel7c5c1f46,
 image8d6d0b0d, panics in memcpy to PID1 user VA while handling the512-byte
 userdata read. bsd/kern/kern_physio.c wires pages but leaves b_datap as user

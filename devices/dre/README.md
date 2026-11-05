@@ -43,6 +43,9 @@ syscall errno. Errno zero means a returned value or GPT check failed.
 | 010 | Seek to the GPT header at byte 4096 |
 | 011 | Read the GPT header |
 | 012 | Validate GPT geometry and header CRC |
+| 013 | Open the block userdata device read-only |
+| 014 | Seek to byte 512 on the block device |
+| 015 | Read 512 bytes through the buffer cache; match the raw read's first 16 bytes |
 
 `qemu_ui.py --native-bsd-test` adds a third, explicitly simulated backend.
 It requires both QEMU test arguments, the additional BSD-test argument and

@@ -218,7 +218,9 @@ static int disk_ioctl(dev_t dev, u_long cmd, caddr_t data, __unused int flag,
 }
 static int disk_psize(dev_t dev)
 {
-    return ready && minor(dev) <= 1 ? (int)MIN(count_blocks(dev) * 8, INT_MAX) : -1;
+    /* XNU specfs set_blocksize consumes d_psize as bytes per sector.
+     * Capacity is reported separately by DKIOCGETBLOCKCOUNT. */
+    return ready && minor(dev) <= 1 ? DEV_BSIZE : -1;
 }
 static int disk_read(dev_t dev, struct uio *uio, __unused int flags)
 {

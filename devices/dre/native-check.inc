@@ -67,6 +67,8 @@ Ldre_check_native:
     b.cs Lnative_syscall_error
     cmp x0, #512
     b.ne Lnative_cleanup
+    ldp x9, x10, [sp, #64]
+    stp x9, x10, [sp, #16]       /* Match the later block-device read. */
     mov x0, x20
     mov x16, #6
     svc #0x80
@@ -163,6 +165,41 @@ Lnative_crc_bit:
     mvn w9, w9
     cmp w9, w23
     b.ne Lnative_cleanup
+    mov x0, x20
+    mov x16, #6
+    svc #0x80
+    mov x20, #-1
+    mov w28, #0x0d02 /* stage 13: open the block userdata device */
+    adr x0, Lnative_block
+    mov x1, #0
+    mov x2, #0
+    mov x16, #5
+    svc #0x80
+    b.cs Lnative_syscall_error
+    mov x20, x0
+    mov w28, #0x0e02 /* stage 14: seek on the block path */
+    mov x1, #512
+    mov x2, #0
+    mov x16, #199
+    svc #0x80
+    b.cs Lnative_syscall_error
+    cmp x0, #512
+    b.ne Lnative_cleanup
+    mov w28, #0x0f02 /* stage 15: read via the kernel buffer cache */
+    mov x0, x20
+    add x1, sp, #64
+    mov x2, #512
+    mov x16, #3
+    svc #0x80
+    b.cs Lnative_syscall_error
+    cmp x0, #512
+    b.ne Lnative_cleanup
+    ldp x9, x10, [sp, #64]
+    ldp x11, x12, [sp, #16]
+    cmp x9, x11
+    b.ne Lnative_cleanup
+    cmp x10, x12
+    b.ne Lnative_cleanup
     mov w28, #1
     b Lnative_cleanup
 Lnative_syscall_error:
@@ -210,9 +247,10 @@ Lnative_cached:
     ret
 Lnative_part: .asciz "/dev/rufsroot0"
 Lnative_disk: .asciz "/dev/rdremedia0"
+Lnative_block: .asciz "/dev/ufsroot0"
 .p2align 3
 Lnative_signature: .ascii "EFI PART"
-Lnative_pass: .ascii "NATIVE_UFS=BSD_PARTITION+GPT_READ_PASS + WRITE_OPEN_REJECTED\n"
+Lnative_pass: .ascii "NATIVE_UFS=BSD_RAW+BLOCK+GPT_PASS + WRITE_OPEN_REJECTED\n"
 Lnative_pass_end:
 Lnative_fail: .ascii "NATIVE_UFS=UNAVAILABLE_OR_FAILED\n"
 Lnative_fail_end:

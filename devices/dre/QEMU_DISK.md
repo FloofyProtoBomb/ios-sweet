@@ -38,7 +38,7 @@ arbitrary guest kernel code. User-space semihosting remains disabled.
 
 ```sh
 python devices/dre/test_qemu_disk.py --zig /path/to/zig \
-  --qemu /path/to/qemu-system-aarch64 --out /scratch/qemu-disk-tests
+  --qemu /path/to/qemu-system-aarch64 --out /scratch/qemu-disk-tests --fault-model
 ```
 
 Nine bare-metal EL1 tests use the production helper and synthetic scratch
@@ -51,6 +51,15 @@ Exception vectors record unexpected guest faults instead of labeling them a
 test pass. Case 9 is an optional real-file oversize check needing a filesystem
 that permits sparse files larger than 16 TiB; common NTFS/ext4 configurations
 reject that fixture before execution.
+
+The optional `--fault-model` also runs 15 host-side cases against the same
+production helper with a synthetic semihost transport. These exercise the
+UINT32_MAX-block boundary without a giant file, handles larger than32 bits,
+seek/read/write/open/close failures, flush reopen/length failures, invalid
+authorization arguments, and frequency changes after opening. They verify
+that poisoned I/O performs no further host calls and short reads do not
+publish partial bytes. They supplement the real AArch64 ABI tests rather
+than replacing them.
 
 Specifications: [Arm semihosting ABI](https://github.com/ARM-software/abi-aa/blob/main/semihosting/semihosting.rst)
 and [QEMU invocation options](https://www.qemu.org/docs/master/system/invocation.html).

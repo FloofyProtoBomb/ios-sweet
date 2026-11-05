@@ -164,7 +164,12 @@ for attempt in 1 2 3; do
 	# Repairing the Unicode catalog can leave volume-header accounting for
 	# the next pass. Only a subsequent successful read-only check is proof.
 	fsck.hfsplus -f -y "$out" | grep -v 'Illegal name' || true
-	python3 "$(dirname "$0")/normalize-hfs-image-size.py" "$out" "$expected_bytes"
+	if ! python3 "$(dirname "$0")/normalize-hfs-image-size.py" "$out" "$expected_bytes"; then
+		# A checker recheck can leave primary/alternate flags inconsistent.
+		# Keep the original size bound and allow the next repair pass; never
+		# trim disagreeing headers or accept an oversized image.
+		continue
+	fi
 	if fsck.hfsplus -f -n "$out"; then exit 0; fi
 done
 echo "HFS image still fails read-only validation after three repair passes" >&2

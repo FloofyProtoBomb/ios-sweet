@@ -44,6 +44,9 @@ if __name__ == '__main__':
     parser.add_argument('image', type=Path)
     parser.add_argument('expected_bytes', type=int)
     args = parser.parse_args()
-    removed = normalize(args.image, args.expected_bytes)
+    try:
+        removed = normalize(args.image, args.expected_bytes)
+    except ValueError as error:
+        parser.exit(1, f'Refused image-size normalization: {error}\n')
     if removed:
         print(f'Removed {removed} bytes of fsck cache padding outside the declared HFS volume')

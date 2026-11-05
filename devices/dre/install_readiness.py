@@ -32,7 +32,7 @@ RW_MARKER = b'DRE UFS: userdata read-write enabled'
 REQUIRED_ARGS = {'rd':'ufsroot0', 'dre_ufs':'1', 'dre_ufs_rw':'1', 'rootrw':'1',
                  'unentitled_ios_sim_launch':'1', 'ignition_level':'1', 'cpus':'8',
                  'sweetfb_noconsole':'1', 'sweetfb_hz':'30'}
-QEMU_ARGS = {'dre_qemu_affinity', 'dre_ufs_map_test', 'dre_ufs_bsd_test'}
+QEMU_ARGS = {'dre_qemu_affinity', 'dre_ufs_map_test', 'dre_ufs_bsd_test', 'dre_ufs_qemu_file'}
 
 
 def require(condition, reason):

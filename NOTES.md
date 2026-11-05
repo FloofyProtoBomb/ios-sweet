@@ -2,6 +2,35 @@
 
 ## DE2118 handoff, 2026-11-05
 
+LATEST CI AND INSTALL ANSWER: still NOT ready to install iOS. Physical native
+UFS READ(10) timeout remains, so native system-root mounting is unavailable;
+GPU/Metal is also unproven. Original Lineage is restored/boot-complete onb.
+User asked again; answer was explicitly no, with these observed blockers.
+c96600a/treeb23af961 was published exactly as57f48523597d6878da3d947a62be430721934224.
+All resulting jobs are terminal. Driver42100154921 whole-job SUCCESS and
+nativeSDKjob127500510681/run42100154812 whole-job SUCCESS on Intel16.4/22F76.
+Native archive13448279370 ZIPd8c536bcbf0f04db4d6f57f28bfcaf759610856f7732b565e945814d925d2d08;
+actual signed ARM64 transport dylibcce2dc7d06ef2ece6ffa71778c630b7d01a62e6e10846f41dfb6b418516c9a3c.
+Curated actual SDK/Mach-O/source/signature proof:
+../../outputs/metal-runtime/sdk-boundary-57f485.json. No device/GPU pass.
+Rust setup acquired exactLLVM/realRust/iOSstd and assembled fixtures, then
+failed beforeCargo because the assumed ~/.cargo/bin/cargo proxy was absent.
+be59773 uses actualobserved rustup run1.98.0 cargo with sameversion/target/lock
+checks. Mesa reached configuration after actualtools/source/strict-linkcontrols
+and failed on a redundant legacy absolute in-tree ABIinclude.9bfa7ae removes
+it only in the DREoverlay; fresh17-patchprep and actualMeson fixture PASS.
+XNU42100154912 failed during installhdrs: the bridge demanded kernelxnu.obj
+before its creation; pinnedbuilder instead uses siblingxnu-hdrs.obj first.
+b661bf7 supports ONLY those two bounded phases with same419-input/output
+digests.17fixtures and17authentic reconstructed installhdrs pairs PASS, with
+the primary absent. ActualbootstrapBSDoutputs were missing from failed archive;
+nextCI must still prove their digest and all newerSDKcompilation/fulllink.
+15035a1 safelyunwraps one bounded savedActions ZIP before the original full
+archive hash checks. Actual preserved artifact13450035796 copies prepare to
+identical35cache files; expires2027-02-03. No archivedApplefiles enterGit.
+One batch of these grounded corrections is being prepared on the same branch;
+do not restart jobs individually or perform any new phone write on old approval.
+
 PHYSICAL f390 TEST COMPLETED AND LINEAGE RESTORED. User explicitly approved
 f390f982 temporary boot_b test+original restore. Fresh exact private-target,
 slotb,unlockedyes,bootloader-mode and96MiB boot_b checks passed. The bootloader

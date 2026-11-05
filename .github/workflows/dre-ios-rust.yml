@@ -202,7 +202,7 @@ jobs:
           export PATH="$HOME/.cargo/bin:$PATH"
           python3 devices/dre/gpu/runtime/build_bridge.py \
             --source out/metal306-bridge-source --out out/metal306-bridge-ios \
-            --cargo "$HOME/.cargo/bin/cargo" --llvm-as "$DRE_LLVM_AS" --target ios \
+            --rustup "$(command -v rustup)" --llvm-as "$DRE_LLVM_AS" --target ios \
             --frontend-contract out/metal306-frontend/bridge-symbol-contract.json
       - uses: actions/upload-artifact@v4
         if: always()

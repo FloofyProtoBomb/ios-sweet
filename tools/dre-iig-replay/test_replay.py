@@ -102,6 +102,36 @@ class ReplayTest(unittest.TestCase):
         self.run_replay()
         self.assertEqual({p.name: p.read_bytes() for p in self.cwd.iterdir()}, self.outputs)
 
+    def test_bootstrap_replays_before_kernel_object_directory_exists(self):
+        bootstrap = self.obj.with_name("xnu-hdrs.obj")
+        relative = self.cwd.relative_to(self.obj)
+        self.obj.rename(bootstrap)
+        self.cwd = bootstrap / relative
+        self.assertFalse(self.obj.exists())
+        recipe = self.recipe.copy()
+        recipe[12] = f"-I{bootstrap / 'bsd'}"
+        self.run_replay(recipe)
+        self.assertEqual({p.name: p.read_bytes() for p in self.cwd.iterdir()}, self.outputs)
+
+    def test_refuses_unrecognized_object_root(self):
+        different = self.obj.with_name("other.obj")
+        relative = self.cwd.relative_to(self.obj)
+        self.obj.rename(different)
+        self.cwd = different / relative
+        recipe = self.recipe.copy()
+        recipe[12] = f"-I{different / 'bsd'}"
+        self.assert_refused("unexpected IIG object root", recipe)
+
+    def test_refuses_object_root_outside_configured_build_directory(self):
+        outside = self.src.parent / "outside" / "xnu-hdrs.obj"
+        outside.parent.mkdir()
+        relative = self.cwd.relative_to(self.obj)
+        self.obj.rename(outside)
+        self.cwd = outside / relative
+        recipe = self.recipe.copy()
+        recipe[12] = f"-I{outside / 'bsd'}"
+        self.assert_refused("IIG output is outside the build directory", recipe)
+
     def test_refuses_changed_definition(self):
         self.write_source("xnu/iokit/DriverKit/Foo.iig", b"changed\n")
         self.assert_refused(r"source closure differs.*Foo\.iig")
@@ -160,6 +190,53 @@ class ReplayTest(unittest.TestCase):
         with self.assertRaisesRegex(replay.Refusal, "artifact ZIP digest differs"):
             replay.prepare(self.archive, cache, self.profile)
         self.assertFalse(cache.exists())
+
+    def saved_copy(self, members):
+        wrapper = self.archive.with_name("saved-copy.zip")
+        with zipfile.ZipFile(wrapper, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for name, data in members:
+                archive.writestr(name, data)
+        return wrapper
+
+    def assert_bad_saved_copy(self, wrapper, reason):
+        cache = self.cache.with_name("rejected-copy")
+        with self.assertRaisesRegex(replay.Refusal, reason):
+            replay.prepare(wrapper, cache, self.profile)
+        self.assertFalse(cache.exists())
+
+    def test_replays_saved_copy_with_exact_original_zip(self):
+        wrapper = self.saved_copy([(replay.SAVED_ORIGIN_MEMBER, self.archive.read_bytes())])
+        cache = self.cache.with_name("prepared-copy")
+        replay.prepare(wrapper, cache, self.profile)
+        self.assertEqual({p.name: p.read_bytes() for p in cache.iterdir()},
+                         {p.name: p.read_bytes() for p in self.cache.iterdir()})
+
+    def test_refuses_wrong_saved_copy_member_or_extra_member(self):
+        data = self.archive.read_bytes()
+        for members in (
+            [("../dre-iig-original.zip", data)],
+            [("different.zip", data)],
+            [(replay.SAVED_ORIGIN_MEMBER, data), ("extra", b"extra")],
+        ):
+            with self.subTest(names=[name for name, _ in members]):
+                self.assert_bad_saved_copy(self.saved_copy(members), "must contain only")
+
+    def test_refuses_wrong_inner_digest_or_size(self):
+        data = self.archive.read_bytes()
+        corrupt = bytes([data[0] ^ 1]) + data[1:]
+        for inner, reason in (
+            (corrupt, "original ZIP digest differs"),
+            (data + b"x", "member size differs"),
+        ):
+            with self.subTest(reason=reason):
+                wrapper = self.saved_copy([(replay.SAVED_ORIGIN_MEMBER, inner)])
+                self.assert_bad_saved_copy(wrapper, reason)
+
+    def test_refuses_oversize_outer_archive(self):
+        wrapper = self.archive.with_name("oversize.zip")
+        limit = self.profile["artifact"]["zip_bytes"] + replay.MAX_WRAPPER_OVERHEAD
+        wrapper.write_bytes(bytes(limit + 1))
+        self.assert_bad_saved_copy(wrapper, "exceeds the saved-copy size bound")
 
 
 if __name__ == "__main__":

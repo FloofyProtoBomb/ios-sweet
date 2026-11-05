@@ -216,7 +216,7 @@ rustup target add --toolchain 1.98.0 aarch64-apple-ios
 LLVM_AS=$(python3 -c 'import json; print(json.load(open("out/llvm21/llvm-acquisition.json"))["llvm_as"])')
 python3 devices/dre/gpu/runtime/build_bridge.py \
   --source out/bridge-source --out out/bridge-ios \
-  --cargo "$HOME/.cargo/bin/cargo" --llvm-as "$LLVM_AS" --target ios \
+  --rustup "$(command -v rustup)" --llvm-as "$LLVM_AS" --target ios \
   --frontend-contract out/metal306-frontend/bridge-symbol-contract.json
 ```
 

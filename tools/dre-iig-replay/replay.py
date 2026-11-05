@@ -10,6 +10,7 @@ from pathlib import Path
 import plistlib
 import posixpath
 import re
+import stat
 import sys
 import tarfile
 import tempfile
@@ -17,6 +18,8 @@ import zipfile
 
 
 PROFILE = Path(__file__).with_name("profile.json")
+SAVED_ORIGIN_MEMBER = "dre-iig-original.zip"
+MAX_WRAPPER_OVERHEAD = 64 * 1024
 DEFINITIONS = "xnu/iokit/DriverKit"
 SEARCH_ROOTS = ("xnu/iokit", "xnu/osfmk", "xnu/bsd", "build/xnu.obj/bsd",
                 "xnu/EXTERNAL_HEADERS")
@@ -119,11 +122,41 @@ def load_profile():
     return profile
 
 
+def original_zip(path, pin):
+    expected_size = pin["zip_bytes"]
+    maximum = expected_size + MAX_WRAPPER_OVERHEAD
+    with path.open("rb") as source:
+        data = source.read(maximum + 1)
+    require(len(data) <= maximum, "artifact ZIP exceeds the saved-copy size bound")
+    if len(data) == expected_size and sha256(data) == pin["zip_sha256"]:
+        return data
+
+    # The preservation job uploads the original ZIP as one artifact member.
+    # Only its inner, digest-pinned bytes are permitted into the buildtree
+    # reader. Nothing from the outer archive is extracted to the filesystem.
+    with zipfile.ZipFile(io.BytesIO(data)) as wrapper:
+        members = wrapper.infolist()
+        if [member.orig_filename for member in members] == ["buildtree.tgz"]:
+            raise Refusal("artifact ZIP digest differs")
+        require(len(members) == 1 and members[0].orig_filename == SAVED_ORIGIN_MEMBER,
+                "saved-copy ZIP must contain only dre-iig-original.zip")
+        member = members[0]
+        require(stat.S_IFMT(member.external_attr >> 16) in (0, stat.S_IFREG) and
+                not member.flag_bits & 1 and
+                member.compress_type in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED),
+                "saved-copy ZIP member is not an unencrypted regular file")
+        require(member.file_size == expected_size and member.compress_size <= len(data),
+                "saved-copy ZIP member size differs")
+        with wrapper.open(member) as source:
+            original = source.read(expected_size + 1)
+    require(len(original) == expected_size and sha256(original) == pin["zip_sha256"],
+            "saved-copy original ZIP digest differs")
+    return original
+
+
 def checked_archive(path, profile):
     pin = profile["artifact"]
-    require(path.stat().st_size == pin["zip_bytes"], "artifact ZIP size differs")
-    data = path.read_bytes()
-    require(sha256(data) == pin["zip_sha256"], "artifact ZIP digest differs")
+    data = original_zip(path, pin)
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         require(archive.namelist() == ["buildtree.tgz"], "unexpected ZIP member list")
         require(archive.getinfo("buildtree.tgz").file_size == pin["tgz_bytes"],
@@ -244,11 +277,21 @@ def install_output(path, data):
 
 
 def replay(args, profile, env=os.environ, cwd=None):
-    cache, src, obj, sdk = (
+    cache, src, sdk = (
         Path(env[f"DRE_IIG_REPLAY_{key}"]).resolve(strict=True)
-        for key in ("CACHE", "SRCROOT", "OBJROOT", "SDKROOT")
+        for key in ("CACHE", "SRCROOT", "SDKROOT")
     )
-    cwd = Path.cwd().resolve() if cwd is None else cwd.resolve()
+    cwd = Path.cwd().resolve() if cwd is None else cwd.resolve(strict=True)
+    kernel_obj = Path(env["DRE_IIG_REPLAY_OBJROOT"])
+    require(kernel_obj.is_absolute() and kernel_obj.name == "xnu.obj",
+            "expected the configured kernel xnu.obj path")
+    build = kernel_obj.parent.resolve(strict=True)
+    require(cwd.is_relative_to(build) and cwd != build, "IIG output is outside the build directory")
+    phase = cwd.relative_to(build).parts[0]
+    # The pinned builder generates DriverKit once during installhdrs, before
+    # the kernel object directory exists, then again in the kernel build.
+    require(phase in ("xnu-hdrs.obj", "xnu.obj"), "unexpected IIG object root")
+    obj = build / phase
     name, outputs = validate_recipe(args, src, obj, sdk, profile["classes"], cwd)
     settings = plistlib.loads((sdk / "SDKSettings.plist").read_bytes())
     require(settings.get("CanonicalName") == profile["consumer_sdk"],

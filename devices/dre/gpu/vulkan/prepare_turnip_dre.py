@@ -93,6 +93,9 @@ def prepare(args, out: Path) -> dict:
     meson = vulkan / "meson.build"
     replace_once(meson, "files('tu_knl_darwin.cc', 'tu_builtin_cache.cc')",
         "files('tu_knl_darwin.cc', 'tu_builtin_cache.cc', 'dre_darwin.c')")
+    # DRE headers are adjacent to the KMD sources. The reference driver used
+    # an external ABI directory, and Meson rejects absolute in-tree paths.
+    replace_once(meson, "  libtu_includes += include_directories(get_option('tu-darwin-abi-dir'), is_system : false)\n", "")
     replace_once(meson, "  tu_link_args += ['-Wl,-undefined,dynamic_lookup']\n", "")
     replace_once(meson,
         "  tu_deps += dependency('appleframeworks', modules : ['IOKit', 'CoreGraphics', 'Foundation', 'QuartzCore'])",

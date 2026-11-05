@@ -10,8 +10,10 @@ can build them with the matching old kernel sources.
 it, the 17 generated pairs, and a digest of the generator input inventory.
 The archive comes from run 42090341731 at source 2201e807 and contains output
 from DriverKit-286 with macOS SDK 14.0. Keep the downloaded ZIP and extracted
-files in build storage. The ZIP digest must match even if the artifact must
-be recovered from a saved copy after Actions retention expires.
+files in build storage. The original ZIP digest must match. When the original
+artifact expires, `--artifact` also accepts the GitHub archive that contains
+only `dre-iig-original.zip`. The tool reads that single member within the
+size limit and checks the original digest before opening the buildtree.
 
 Prepare a fresh cache after verifying the pinned archive. Point XNU's existing
 `IIG` override at the executable replay script and export the four absolute
@@ -28,7 +30,11 @@ export IIG="$PWD/tools/dre-iig-replay/replay.py"
 ```
 
 Each call checks the interface, output basenames, ordered include roots,
-compiler SDK identity, and historical preprocessor arguments. The source
+compiler SDK identity, and historical preprocessor arguments. The working
+directory selects either `xnu-hdrs.obj` during header installation
+or `xnu.obj` during the kernel build. The configured `xnu.obj` path may be
+absent during header installation. Both phases check their own generated
+BSD headers against the same pinned digests. The source
 inventory includes the interface definitions, ABI and generation anchors,
 and all repository candidates for recursively discovered literal includes
 and include probes across the original search roots. It follows both

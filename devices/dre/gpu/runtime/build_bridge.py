@@ -93,12 +93,13 @@ def build(args, out: Path) -> dict:
         NMB_FC_AIR=str(fixture_dir / "function_constant.air"), NMB_SCANOUT_AIR=str(fixture_dir / "scanout_convert.air"))
     manifest = out / "Cargo.toml"
     shutil.copyfile(source / "Cargo.toml", manifest)
-    # rustup selects its proxy by argv[0]. Resolving cargo's symlink to rustup
-    # would invoke the manager rather than the pinned cargo tool.
-    cargo = args.cargo.absolute()
-    toolchain = "+1.98.0"
-    cargo_version = run([cargo, toolchain, "--version"], out, "cargo-version", env)
-    if not re.search(r"cargo 1\.98\.0\b", cargo_version):
+    if args.rustup:
+        cargo = [args.rustup.absolute(), "run", "1.98.0", "cargo"]
+    else:
+        # Preserve the proxy basename because rustup dispatches by argv[0].
+        cargo = [args.cargo.absolute(), "+1.98.0"]
+    cargo_version = run([*cargo, "--version"], out, "cargo-version", env)
+    if not re.search(r"^cargo 1\.98\.0(?:\s|$)", cargo_version):
         raise ValueError("requires the official Rust1.98.0 toolchain")
     sdk = None
     target = None
@@ -117,7 +118,7 @@ def build(args, out: Path) -> dict:
             raise ValueError("Cargo.lock differs from the resolved matching bridge pin")
         shutil.copyfile(lock, out / "Cargo.lock")
     elif args.resolve_lock:
-        run([cargo, toolchain, "generate-lockfile", "--manifest-path", manifest], out, "cargo-lock", env)
+        run([*cargo, "generate-lockfile", "--manifest-path", manifest], out, "cargo-lock", env)
     else:
         raise ValueError("a qualified bridge Cargo.lock is required (initial host resolution uses --resolve-lock)")
     lock_sha = sha(out / "Cargo.lock")
@@ -125,7 +126,7 @@ def build(args, out: Path) -> dict:
         "target": args.target, "sdk": sdk, "cargo_version": cargo_version,
         "assembler_version": llvm_version, "assembler_sha256": sha(assembler),
         "fixtures": fixtures, "cargo_lock_sha256": lock_sha})
-    cargo_args = [cargo, toolchain, "build", "--release", "--locked", "--manifest-path", manifest, "-j", "2"]
+    cargo_args = [*cargo, "build", "--release", "--locked", "--manifest-path", manifest, "-j", "2"]
     if target:
         cargo_args += ["--target", target]
     run(cargo_args, out, "cargo-build", env, timeout=1200)
@@ -168,7 +169,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)
-    parser.add_argument("--cargo", required=True, type=Path, help="official rustup cargo proxy with1.98.0 installed")
+    tool = parser.add_mutually_exclusive_group(required=True)
+    tool.add_argument("--rustup", type=Path, help="rustup executable with toolchain 1.98.0 installed")
+    tool.add_argument("--cargo", type=Path, help="rustup Cargo proxy with toolchain 1.98.0 installed")
     parser.add_argument("--llvm-as", required=True, type=Path)
     parser.add_argument("--target", choices=("host", "ios"), default="host")
     parser.add_argument("--lockfile", type=Path)

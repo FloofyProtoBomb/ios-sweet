@@ -94,7 +94,7 @@ def build(args, out: Path) -> dict:
             k + " = " + repr(flags) + "\n" for k in
             ("c_args", "cpp_args", "objc_args", "c_link_args", "cpp_link_args", "objc_link_args")), encoding="utf-8")
     options = ["-Dgallium-drivers=", "-Dvulkan-drivers=freedreno", "-Dfreedreno-kmds=darwin",
-        "-Dtu-darwin-abi-dir=" + str(source / "src/freedreno/vulkan"), "-Dplatforms=[]", "-Dglx=disabled",
+        "-Dplatforms=[]", "-Dglx=disabled",
         "-Degl=disabled", "-Dgbm=disabled", "-Dopengl=false", "-Dgles1=disabled", "-Dgles2=disabled",
         "-Dllvm=disabled", "-Dshared-glapi=disabled", "-Dxmlconfig=disabled", "-Dshader-cache=enabled",
         "-Dtools=", "-Dbuild-tests=false", "-Dvideo-codecs=", "-Dvulkan-layers=", "-Dlibunwind=disabled",

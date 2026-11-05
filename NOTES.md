@@ -91,7 +91,7 @@ uses M=0 for DOMAIN_ATTR_S1_BYPASS. Require stable route/context and no
 active faults, retain read-only command allowlist/private arena/restore,
 and do not admit ordinary translated M=1 page-table proofs as DMA.
 
-FOLLOW-UP READY FOR PACKAGING: --ufs-handoff-read is now implemented as
+FOLLOW-UP PACKAGED: --ufs-handoff-read is now implemented as
 a separate opt-in requiring --driver-prep. ufs_handoff_dma.c recognizes
 the observed CBAR stage-1-disabled/stage-2-bypass mode with default/known
 attributes. It uses only the existing private below-4G UFS arena, checks
@@ -130,6 +130,16 @@ exec-out merges dd's stderr, so capture only the verified 24576 data
 bytes before trailing record-count text. No userdata/files were read.
 No host test or restore process remains alive; no new phone test is
 approved for 16dd2e95. Preserve the physically tested ce4ffafd artifacts.
+Candidate outputs/de2118-ufs-read-test.img is 16719872 bytes, with
+ufs-read-test-manifest.json and ios-dre-handoff-source.zip. Source
+76e9474d7262dfda6544da81932577b2d82e05f8 was published as
+5fdf015a87cff2686005a448abaa2ebbb3f0fe60 on dre-next-test; trees match
+114cad9bd6e0314f60446976fe6b2bf971686308. work/handoff-read-operator.py
+is pinned to this candidate and verified original d12c5d92 backup, with
+15-minute restore wait. Do not reuse the prior read-only-survey approval:
+this new opt-in can issue the four allowed read-only UFS commands via the
+observed M=0/stage2-bypass route. Specific new test/restore approval is
+required before writing boot_b. No operator or test process is running.
 Keep handset-tested outputs/de2118-ui-smp-test.img and its source archive
 unchanged. Phone is now back in verified LineageOS, ADB uid 2000.
 The read-only USB check after host tests confirms the expected phone is

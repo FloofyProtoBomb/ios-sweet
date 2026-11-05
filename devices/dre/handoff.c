@@ -22,7 +22,10 @@ const char *dre_board_error(void);
 #endif
 
 #define BASE UINT64_C(0x100000000)
-#define SIZE UINT64_C(0x20000000)
+#ifndef DRE_RAM_SIZE
+#define DRE_RAM_SIZE UINT64_C(0x20000000)
+#endif
+#define SIZE DRE_RAM_SIZE
 #define LIMIT (BASE + SIZE)
 extern const char _head[], _end[], _payload_start[], _payload_end[];
 

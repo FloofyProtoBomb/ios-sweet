@@ -2,6 +2,42 @@
 
 ## DE2118 handoff, 2026-11-04
 
+NEXT PHONE CANDIDATE IS HOST-VALIDATED AND READY, NOT YET FLASHED:
+work/build-native-storage-2g/dre-xnu-boot.img,16764928 bytes,SHA
+ec927dc08a201f7e980619aca2a5e77b33ba9ce612659350f34d0fe69015f882.
+Native-policy kernel CI41951808461 PASSED compilation/link/all66 UI patches,
+sourcecdd53443c638c64f191e495b3944befa13c94a00. Kernel is now
+work/native-storage-kernel-owned/kernel.development.dre,17202536 bytes,SHA
+945a7ed64f0f09d38c4ad5868341328e0721c101af55ff408ef96a0eb35749b2.
+Verified kernel ZIP SHA74ba1138e1f5930541fdbb2350f6a6cdcc8c350d6fca607f59707be3fc476611.
+Selected --ram-mib2048: 4G..6G upper physical window, with1MiB panic log
+excluded. QEMU PASSES with all8 CPUs, SGI,PID1,identity,display services,
+RAM_MIB=2047 PASS, and native disk refused before MMIO for empty ownership.
+The kernel bytes are unchanged in QEMU. Evidence work/qemu-native-storage-2g.
+All6 exact-image fault cases PASS (work/native-storage-model-reports.json),
+plus private real-GPT fixture5 commands and correct userdata boundaries
+(work/native-storage-real-gpt-report.json). Metadata CRC/arena/FDT/image PA
+handoff is verified by the actual shim executing in the model. Packaging
+checks the largest constructed command line as537/607
+boot argument bytes. Native engine/ownership/RAM cases47 PASS; exact PID1
+object matches the previously tested7-case object SHA0db36f944f0391e35cdfabd4bee924adc7b487e7e35da5bb7ef23e83a377e67b.
+No tests/processes/watchers remain active. No new partition write approved.
+The physical phone remains restored LineageOS from16dd2e95. New native BSD
+reads and2GiB RAM boot are not handset-proven. Test must temporarily write
+boot_b and restore d12c5d92... after user returns to fastboot. Never flash
+older f8a4615d or the mismatched-kernel host-only image. Packaging script is
+work/package-native-storage.py (paths updated for2G/owned kernel,47+7 cases).
+It requires a clean committed tree and scans candidate/source for private
+IDs, live FDT/GPT and firmware. It prepares a pinned operator but does not
+run it. Source RAM support is local0d33864, kernel-code parent78dd4aa.
+Publish final source to dre-next-test to avoid another kernel build for
+shim/init/ADT-only changes; preserve dre-storage at the passing CI commit.
+PACKAGING PASSED: outputs/de2118-native-storage-test.img,
+outputs/native-storage-test-manifest.json and
+outputs/ios-dre-native-storage-source.zip. Image/restore hashes and all
+privacy exclusions pass. work/native-storage-operator.py is pinned to
+ec927dc0 and d12c5d92 and is PREPARED ONLY. No phone write performed.
+
 CURRENT CANDIDATE GATE: run41950005082 PASSED compilation/link and all66
 patch checks. Kernel b7687a43b45aeeab4021aacc0bf6cb0282f544921d448786d5b2cdfe248c4e6d
 is work/native-storage-kernel/kernel.development.dre (17202464 bytes), ZIP
@@ -23,7 +59,24 @@ so it refuses the earlier b768 kernel. A new CI build is required.
 work/build-native-owned-model is HOST-ONLY with corrected shim but old
 kernel, for validating metadata before rebuilding; NEVER PACKAGE/FLASH IT.
 User asked whether iOS can use all RAM: answered current512MiB cap,4GiB
-hardware, expansion pending with firmware/modem reservations preserved.
+hardware, protected firmware/modem reservations. The existing conservative
+RAM policy accepts contiguous 4G..6G (2048MiB) and rejects2049MiB. Added an
+opt-in --ram-mib512/1024/2048 in builder/ADT/shim consistency checks, plus
+PID1 hw.memsize check (expected2047MiB after paniclog reservation), and QEMU
+virtual RAM sizing. These are SHIM/INIT/ADT changes, not kernel patch changes,
+so use the pending native-policy CI kernel; do not trigger another kernel
+build for them. Host tests now47 engine/ownership/RAM cases and7 PID1 cases
+including wrong-memory-size rejection PASS. Two exact HOST-ONLY shim cases
+also PASS with the new ownership policy and correct runtime metadata:
+work/native-owned-preflight-reports.json (handoff_m0 andready). The old
+kernel inside that host-only image still must never reach the phone.
+NEW CI run41951808461 is building sourcecdd53443c638c64f191e495b3944befa13c94a00
+(local78dd4aa/tree0b1965f44a43b2d6958b59adbc5edad182a3c3d7). When it passes,
+build a NEW native+2048MiB image to work/build-native-storage (save the old
+f8 build or use a different directory and adapt scripts). QEMU must show
+RAM_MIB=2047 PASS. Expand the packaging manifest to47 engine cases/7 PID1
+cases, document2GiB window and kernelCI4 IDs, then ask fresh boot_b test
+approval. No physical native reads or larger-RAM boot have happened yet.
 
 NATIVE STORAGE DEVELOPMENT (next test, NOT handset-proven): source now adds
 an opt-in native read-only BSD adapter and generated UI patch 0103. Explicit

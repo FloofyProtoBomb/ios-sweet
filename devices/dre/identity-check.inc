@@ -110,6 +110,9 @@ Ldre_print_report:
 #ifdef DRE_EXPECT_CPUS
     bl Ldre_check_cpus
 #endif
+#ifdef DRE_EXPECT_RAM_MIB
+    bl Ldre_check_memory
+#endif
 #ifdef DRE_CHECK_UI_SERVICES
     bl Ldre_check_ui
 #endif

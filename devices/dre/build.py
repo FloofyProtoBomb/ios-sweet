@@ -57,6 +57,8 @@ def main():
                     help="temporarily vote touch clocks, inspect GENI, select live-DT firmware")
     ap.add_argument("--ui-services", action="store_true", help="publish display/watchdog nodes for the UI/SMP kernel")
     ap.add_argument("--cpus", type=int, choices=range(1, 9), default=1, help="selected CPU count; >1 requires --ui-services")
+    ap.add_argument("--ram-mib", type=int, choices=(512, 1024, 2048), default=512,
+                    help="upper-RAM window; checked against live RAM and every reservation before XNU")
     ap.add_argument("--product-adt", type=Path, help="optional private D22AP Apple ADT for /product metadata")
     args = ap.parse_args()
     if (args.identity or args.board_tests) and not (args.xnu or args.upstream_0027):
@@ -79,6 +81,8 @@ def main():
         ap.error("--ui-services/--product-adt require a native UI/SMP kernel via --xnu")
     if (args.cpus != 1 or args.product_adt) and not args.ui_services:
         ap.error("--cpus >1 and --product-adt require --ui-services")
+    if args.ram_mib != 512 and not args.ui_services:
+        ap.error("expanded RAM requires --ui-services")
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     zig = os.path.abspath(args.zig) if Path(args.zig).is_file() else args.zig
@@ -102,6 +106,9 @@ def main():
             init_flags += ["-DDRE_CHECK_NATIVE_UFS"]
             cc += ["-DDRE_NATIVE_UFS"]
             sources += [HERE / "storage_handoff.c", HERE / "storage_abi.c"]
+        cc += [f"-DDRE_RAM_SIZE=0x{args.ram_mib << 20:x}ULL"]
+        if args.ram_mib != 512:
+            init_flags += [f"-DDRE_EXPECT_RAM_MIB={args.ram_mib - 1}"]
         if args.ui_services:
             init_flags += [f"-DDRE_EXPECT_CPUS={args.cpus}", "-DDRE_CHECK_UI_SERVICES"]
             cc += [f"-DDRE_SMP_COUNT={args.cpus}"]
@@ -149,7 +156,7 @@ def main():
                         "-o", str(init_obj)], check=True)
         embed(kernel, out, init_obj, donor=args.upstream_0027 is not None, identity_path=args.identity,
               ui=args.ui_services, cpus=args.cpus, product_path=args.product_adt,
-              native_ufs=args.native_ufs)
+              native_ufs=args.native_ufs, ram_mib=args.ram_mib)
         source = out / "embedded.S"
         payload = (out / "payload.bin").read_bytes()
         # Zig's assembly cache does not track the file named by .incbin.
@@ -179,7 +186,7 @@ def main():
     image.write_bytes(code)
     output = out / ("dre-xnu-boot.img" if kernel else "dre-probe-boot.img")
     output.write_bytes(boot_v3(code))
-    info = {'device': 'DE2118', 'ui_services': args.ui_services, 'cpus': args.cpus,
+    info = {'device': 'DE2118', 'ui_services': args.ui_services, 'cpus': args.cpus, 'ram_mib': args.ram_mib,
             'board_tests': args.board_tests, 'dma_context': args.dma_context,
             'driver_prep': args.driver_prep,
             'ufs_handoff_read': args.ufs_handoff_read,

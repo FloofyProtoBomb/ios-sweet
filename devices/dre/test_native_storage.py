@@ -98,6 +98,9 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return t += 1000000; }
         assert live(C.create_string_buffer(data), (C.c_uint64 * 8)(*w), len(data)); checks += 1
         w[3] = 0x82000000; w[7] = zlib.crc32(struct.pack('<7Q', *w[:7]))
         assert not live(C.create_string_buffer(data), (C.c_uint64 * 8)(*w), len(data)); checks += 1
+        for mib in (512, 1024, 1536, 2048, 2049):
+            assert bool(ram(C.create_string_buffer(data), 0x100000000, mib << 20)) == (mib <= 2048)
+            checks += 1
     memory = C.create_string_buffer(0x8000)
     va = (C.addressof(memory) + 0x3fff) & ~0x3fff
     pa = 0xa8040000

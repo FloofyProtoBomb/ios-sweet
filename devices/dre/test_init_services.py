@@ -22,7 +22,7 @@ SURFACE = b'DRE SURF: IOCoreSurfaceRoot registered\n'
 FRAMEBUFFER = b'DRE FB: AppleCLCD 1080x2400 stride 4320\n'
 
 
-def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3, native=None):
+def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3, native=None, ram_mib=None, ram_actual=None):
     image = mkinit.build(obj)
     macho = mkpayload.parse_macho(image)
     cpu = Uc(UC_ARCH_ARM64, UC_MODE_ARM)
@@ -43,6 +43,7 @@ def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3, native
     keys = {'hw.machine': b'iPhone10,3\0', 'hw.product': b'iPhone10,3\0',
             'hw.model': b'D22AP\0', 'hw.target': b'D22AP\0',
             'hw.ncpu': struct.pack('<I', 8), 'hw.activecpu': struct.pack('<I', active),
+            'hw.memsize': struct.pack('<Q', ((ram_actual or ram_mib or 512) - 1) << 20),
             'kern.bootargs': b'cpus=8 dre_report=UFS=EMU|SERIAL=EMU\0'}
 
     def reg(n): return cpu.reg_read(getattr(A, f'UC_ARM64_REG_X{n}'))
@@ -120,6 +121,9 @@ def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3, native
         result = 'BSD_PARTITION+GPT_READ_PASS + WRITE_OPEN_REJECTED' if native == 'pass' else 'UNAVAILABLE_OR_FAILED'
         assert text.count('NATIVE_UFS=' + result) == cycles, text
         assert native_reads == int(native in ('pass', 'short_read', 'bad_crc')), 'native result was not cached'
+    if ram_mib is not None:
+        message = f'RAM_MIB={ram_mib - 1} PASS' if ram_actual in (None, ram_mib) else 'RAM_SIZE=UNEXPECTED'
+        assert text.count(message) == cycles, text
     if expected.endswith('SURFACE+FRAMEBUFFER') and len(chunks) == 0:
         assert opens <= 2, 'successful startup evidence was not cached'
     print('PASS', name)
@@ -129,11 +133,15 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('object', type=Path, help='Mach-O object assembled with CPU/UI/board flags')
     ap.add_argument('--native-ufs', action='store_true')
+    ap.add_argument('--ram-mib', type=int, choices=(512, 1024, 2048))
     args = ap.parse_args()
     obj = args.object.read_bytes()
     if args.native_ufs:
         for mode in ('pass', 'missing', 'bad_crc', 'short_read', 'ioctl_error', 'writable'):
-            run(obj, 'native ' + mode, [SURFACE + FRAMEBUFFER], 'UI_DRIVER_LOGS=SURFACE+FRAMEBUFFER', native=mode)
+            run(obj, 'native ' + mode, [SURFACE + FRAMEBUFFER], 'UI_DRIVER_LOGS=SURFACE+FRAMEBUFFER', native=mode, ram_mib=args.ram_mib)
+        if args.ram_mib and args.ram_mib != 512:
+            run(obj, 'wrong RAM size', [SURFACE + FRAMEBUFFER], 'UI_DRIVER_LOGS=SURFACE+FRAMEBUFFER',
+                native='pass', ram_mib=args.ram_mib, ram_actual=512)
         sys.exit(0)
     run(obj, 'both', [b'FAKE-PRIVATE-IDENTIFIER\n' + SURFACE + FRAMEBUFFER], 'UI_DRIVER_LOGS=SURFACE+FRAMEBUFFER')
     run(obj, 'separate reads', [SURFACE, FRAMEBUFFER], 'UI_DRIVER_LOGS=SURFACE+FRAMEBUFFER')

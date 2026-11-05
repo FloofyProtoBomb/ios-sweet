@@ -75,10 +75,11 @@ if __name__ == '__main__':
                     str(HERE / 'qemu_start.S'), '-o', str(out / 'start.elf')], check=True)
     subprocess.run([args.zig, 'objcopy', '-O', 'binary', '-j', '.text', str(out / 'start.elf'), str(out / 'start.bin')], check=True)
     symbols = symbol_values(kernel, {'_iso_font', '_msgbufp'})
+    virtual_ram_gib = max(4, 3 + (info.get('ram_mib', 512) + 1023) // 1024)
     font = common.payload_data(payload, symbols['_iso_font'], 4096)
     command = [str(Path(args.qemu).resolve()) if Path(args.qemu).exists() else args.qemu,
         '-M', 'virt,gic-version=3,virtualization=on', '-cpu', 'cortex-a76',
-        '-smp', str(info['cpus']), '-m', '4G', '-display', 'none', '-serial', 'none',
+        '-smp', str(info['cpus']), '-m', f'{virtual_ram_gib}G', '-display', 'none', '-serial', 'none',
         '-nodefaults', '-qmp', 'stdio', '-no-reboot',
         '-device', f'loader,file=ram.bin,addr={base:#x},force-raw=on',
         '-device', f'loader,file=start.bin,addr={common.STUB_PA:#x},force-raw=on',
@@ -102,6 +103,8 @@ if __name__ == '__main__':
             screen = ''
             tags = ('DRE identity checks PASS', f"CPUS={info['cpus']}/{info['cpus']} PASS",
                     'UI_DRIVER_LOGS=SURFACE+FRAMEBUFFER', 'DRE init: still alive')
+            if info.get('ram_mib', 512) != 512:
+                tags += (f"RAM_MIB={info['ram_mib'] - 1} PASS",)
             while time.monotonic() < deadline:
                 time.sleep(min(15, max(0, deadline - time.monotonic())))
                 qmp('stop')
@@ -137,6 +140,8 @@ if __name__ == '__main__':
                       'qemu': version, 'ios_user_interface_rendered': False, 'phone_tested': False}
             if info.get('native_ufs'):
                 result['native_ufs_missing_ownership_refused'] = True
+            result['ram_window_mib'] = info.get('ram_mib', 512)
+            result['virtual_machine_ram_gib'] = virtual_ram_gib
             (out / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
             print(f"PASS QEMU {info['cpus']} active CPUs, SGIs, PID 1, identity and display services", flush=True)
         finally:

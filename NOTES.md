@@ -2,6 +2,41 @@
 
 ## DE2118 handoff, 2026-11-04
 
+LATEST PHONE TEST: user specifically approved "Run UFS read test and
+restore" for 16dd2e95. Target USB Android matched; candidate/original
+backup hashes rechecked; pinned helper flashed boot_b and rebooted by
+2026-11-05 00:51:39 UTC. The photo CONFIRMS physical UFS_IO=GPT_PASS/N=5,
+UFS_ADMIT=HANDOFF_BYPASS and UD=1b1228/cac5d3: start1774120, count13288915
+of 4096-byte blocks, exactly matching the read-only Android baseline
+(50.69 GiB). Five read-only capacity/GPT commands succeeded with no media
+write. PID1/identity/heartbeat, all eight CPUs and display-service logs
+PASS afterward, confirming the guard and host restoration allowed handoff.
+USB_PLAN=TRB_PLAN_OK/40/20/4, so width64 descriptor planning now passes.
+GPI idle1f, SPI plan OK, touch votes restored; GPI route still unmatched
+fault, no touch input/USB enumeration/GPU acceleration. Raw transcription
+is outputs/ufs-read-handset-results.json; keep the photo private.
+
+Restore helper 91393 successfully wrote original boot_b and rebooted by
+00:56:23 UTC. Post-restore verification PASSED: LineageOS
+22.2-20250815-NIGHTLY-dre boot_completed=1 on B, original boot_b SHA
+d12c5d921522abd545c39884f00af6265ff32f749afbdb1917aa3c741601c44c,
+installed artwork SHA 246df6f62775406ceff376cfeae7f80d2f1007ba870b86c9a0831fac0e813587,
+and ADB uid2000. No watcher remains. The approval is consumed. The
+phone is running VERIFIED RESTORED LINEAGEOS, not the diagnostic.
+No userdata/GPT/partition-layout write is authorized or being performed.
+
+Next main storage work: port this successful early handoff read path into
+an opt-in native DRE XNU BSD block device, with owned DMA mapping/bounce
+buffer, cache maintenance, serialized strategy/read I/O and the same
+route/context/fault checks. Do not blindly enable Redmi 0028/0030/0034:
+their hardcoded resources and DMA assumptions differ. Read-only root
+device validation comes before a separately approved full iOS root write.
+No persistent XNU disk, filesystem mount, Setup.app/SpringBoard boot or
+storage write has been demonstrated by this success. Preserve all prior
+images, backup, private GPT and measured layout. All eight CPU cores and
+display-service startup remain confirmed; touch needs GPI DMA ownership /
+pin setup, USB needs a controller/EP0 backend, GPU acceleration is pending.
+
 LATEST DEVELOPMENT: user said "ok continue" after the verified 8cd8bf6f
 test/restore. The ce4ffafd test below completed; LineageOS is restored and
 hash-verified. No restore watcher remains and that approval is consumed.
@@ -102,7 +137,7 @@ guard after attaching the host keeps safe_to_handoff false even after
 list restoration; failed restoration also stops XNU until reset. Plain
 translated M=1 paths remain blocked. This is not a persistent XNU driver.
 
-The host-only follow-up image at work/build-handoff-read is SHA-256
+The now handset-tested follow-up image at work/build-handoff-read is SHA-256
 16dd2e956ed0659d9c81758693f54ff5edac514d5fd3a40ecedf1ff23ad559ad.
 It retains native f5c205... and unchanged diagnostic init. Twenty targeted
 exact-image synthetic cases PASS across handoff-read-model-reports.json
@@ -128,8 +163,9 @@ result work/handoff-real-gpt-model-report.json. Never publish this GPT
 (contains device GUIDs). All root batches ended at ADB uid2000. ADB
 exec-out merges dd's stderr, so capture only the verified 24576 data
 bytes before trailing record-count text. No userdata/files were read.
-No host test or restore process remains alive; no new phone test is
-approved for 16dd2e95. Preserve the physically tested ce4ffafd artifacts.
+No host test or restore process remains alive. The explicitly approved
+16dd2e95 test and verified restoration completed as recorded at the top.
+Further tests need new approval. Preserve all physically tested artifacts.
 Candidate outputs/de2118-ufs-read-test.img is 16719872 bytes, with
 ufs-read-test-manifest.json and ios-dre-handoff-source.zip. Source
 76e9474d7262dfda6544da81932577b2d82e05f8 was published as
@@ -139,7 +175,8 @@ is pinned to this candidate and verified original d12c5d92 backup, with
 15-minute restore wait. Do not reuse the prior read-only-survey approval:
 this new opt-in can issue the four allowed read-only UFS commands via the
 observed M=0/stage2-bypass route. Specific new test/restore approval is
-required before writing boot_b. No operator or test process is running.
+was granted for that one run, which has completed. No operator or test
+process is running, and no further partition write is authorized.
 Keep handset-tested outputs/de2118-ui-smp-test.img and its source archive
 unchanged. Phone is now back in verified LineageOS, ADB uid 2000.
 The read-only USB check after host tests confirms the expected phone is

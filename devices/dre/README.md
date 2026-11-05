@@ -329,6 +329,14 @@ initial checker rejected. The corrected USB builder accepts widths up
 to 64 with checked end addresses and no shift-by-64. No USB function or
 GPI DMA mapping is configured by these follow-up changes.
 
+Physical image `16dd2e95` passed the guarded UFS capacity/GPT read: five
+read-only commands, `GPT_PASS`, and `userdata` start/count matching the
+private Android baseline (4096-byte blocks, about 50.69 GiB). The corrected
+64-bit USB capability/TRB-plan check also passed; CPU/display/PID 1 checks
+remained successful. The original LineageOS boot image was restored and
+readback-hash verified afterward. This proves the early handoff read path;
+a native XNU block device and persistent iOS filesystem are still needed.
+
 The final filesystem will be sized against its verified target partition;
 the root-image script's default 16 GiB is not intended to limit usable space.
 Any later partition/layout write needs separate confirmation. No Android

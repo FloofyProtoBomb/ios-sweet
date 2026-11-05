@@ -5,6 +5,13 @@ test passed on the DE2118 while LineageOS supplied all GPU services. XNU has
 only identified the A619 and observed its power domains off. Neither result
 establishes native queue execution or an iOS graphics API.
 
+A later Android Vulkan test executed actual project metallib-derived shaders:
+257 compute results, 255 input/255 output guard words and 4,096 offscreen BGRA
+pixels all matched, with positive hardware GPU timestamp intervals. Qualified
+SPIR-V 1.4 inputs preserved the original translated instruction words. This
+is physical compiler/shader evidence using LineageOS's driver; it does not
+execute the offline Mesa IR3 binaries or prove native XNU/Metal support.
+
 ## Executable backend pieces
 
 `a619_backend.c` implements a restricted initialized-ring submission path.

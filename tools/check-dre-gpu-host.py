@@ -39,9 +39,16 @@ def main():
               'native_gpu_execution': False, 'metal_acceleration_pass': False}
 
     def run(command, log, timeout=120):
-        with (out / log).open('wb') as stream:
-            subprocess.run(command, cwd=ROOT, stdout=stream,
-                           stderr=subprocess.STDOUT, timeout=timeout, check=True)
+        path = out / log
+        try:
+            with path.open('wb') as stream:
+                subprocess.run(command, cwd=ROOT, stdout=stream,
+                               stderr=subprocess.STDOUT, timeout=timeout, check=True)
+        except (OSError, subprocess.SubprocessError):
+            if path.exists():
+                print(path.read_text(encoding='utf-8', errors='replace')[-7000:],
+                      file=sys.stderr, flush=True)
+            raise
 
     try:
         run([args.cc, '--version'], 'compiler-version.log')

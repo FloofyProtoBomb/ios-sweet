@@ -18,7 +18,7 @@ struct fixture {
 };
 static const uint32_t impl_offsets[]={0x6000,0x6060,0x678c,0x6794,0x6800,0x6900,0x6924,0x6928,0x6930,0x6960,0x6b64,0x6b68};
 static const uint32_t impl_values[]={0x2378,0x1055,8,0x28,6,0x3ff,0x204,0x11000,0x800,0xffffffff,0x1a5551,0x9a82a382};
-static unsigned index(uint64_t address)
+static unsigned register_index(uint64_t address)
 { assert(address>=BASE && address<BASE+0x10000 && !(address&3)); return (unsigned)((address-BASE)/4); }
 static int guard(void *cookie)
 { struct fixture *f=cookie; f->guards++; return f->owner; }
@@ -31,7 +31,7 @@ static int read32(void *cookie,uint64_t address,uint32_t *value)
 {
     struct fixture *f=cookie; f->reads++;
     if (f->fail_read==address) { f->fail_read=0; return 0; }
-    *value=f->regs[index(address)]; return 1;
+    *value=f->regs[register_index(address)]; return 1;
 }
 static int read64(void *cookie,uint64_t address,uint64_t *value)
 {
@@ -59,7 +59,7 @@ static int write32(void *cookie,uint64_t address,uint32_t value)
             assert(f->regs[(CB+0x7f4)/4]==0);
         }
     }
-    if (f->writes!=f->ignore_write) f->regs[index(address)]=value;
+    if (f->writes!=f->ignore_write) f->regs[register_index(address)]=value;
     if (a==CB+0x7f0) {
         f->tlb_count++;
         f->regs[(CB+0x7f4)/4]=(f->tlb_count<=f->timeouts);
@@ -73,7 +73,7 @@ static int write64(void *cookie,uint64_t address,uint64_t value)
     f->writes++;
     assert(!(f->regs[CB/4]&1) && (f->regs[0xc00/4]&0x30000)==0x20000);
     if (f->writes!=f->ignore_write) {
-        unsigned i=index(address); f->regs[i]=(uint32_t)value; f->regs[i+1]=(uint32_t)(value>>32);
+        unsigned i=register_index(address); f->regs[i]=(uint32_t)value; f->regs[i+1]=(uint32_t)(value>>32);
     }
     if (f->writes==f->lose_write) f->owner=0;
     return f->writes!=f->fail_write;

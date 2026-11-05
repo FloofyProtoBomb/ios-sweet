@@ -169,6 +169,27 @@ frequencies650/565/430/355/253MHz. Current253MHz is not a voltage-policy proof.
 ROM modelpropsDE2117/OnePlusN200 are unified ROM labels, not reidentification.
 Queries left ADB UID2000, no reboot/flash/partition changes. Private reference
 under android-gpu-reference/; curated output android-gpu-reference.json.
+
+ACTUAL ANDROID SHADER TEST: binary09726d9d854fcad2ac7c7d39d944a4749bc75e515692a8c93f7a1fab8d5f1318,
+officialNDKr30/UID2000, executed metallib-derived project shaders on A619.
+Khronos spirv-as/vulkan1.1spv1.4 reassembly +spirv-val preserved every original
+instruction word and canonical disassembly; only qualified headers changed.
+257 compute values,255 input/255 output guards and4096BGRA pixels PASS.
+Actual48-bit GPU timestamp intervals986/1146ticks. Helper/result cleanup and
+postcheck UID2000/privateidentity/Lineage boot_completed1 PASS. No root/reboot/
+flash/partition action. Reports android-vulkan-probe/run-v1/ onD. This proves
+Android driver shader execution, NOT our offlineMesaIR3/nativeXNU/Metal stack.
+
+METAL CI SOURCE published remote7ab95c7e9b8bd514785f3b5328d476088eb4e282
+on dre-metal-build+dre-next-test; exacttree18f487f7da47a98efa00bb381d37c05f6bcb8923
+matches local39eab1f. No kernel rebuild: dre-storage remains provenf69ff180.
+DedicatedCI41987308385 compiled all native helpers and Metal probe with
+officialiPhoneSDK PASS, then failed host SMMU fixture: static index() conflicted
+with Darwin strings.h. Factory/frontend were skipped. Artifact13397030963
+ZIPee1ccce884aadd04037ac172ac46a303651a6e596c3bbd69901ad43371274cd6
+CRC/SHA verified; exactcompilerlog retained. Root renamed only fixture helper
+and adds bounded log-tail reporting. Factory/frontend checks now run after an
+unrelated failure so the next run collects independent compilation results.
 IOSurface7a139c0 fixes actual retained result refs, raced cached lookup,
 closed-client race, category counters/state+0x18 and honest unsupported
 accel/events. Actual affected methods13scenarios+8000 concurrent ASan/UBSan

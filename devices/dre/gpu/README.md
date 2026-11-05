@@ -38,6 +38,45 @@ ownership or failed recovery requires reset while retaining all resources.
 An inherited already-on block is borrowed without changing its power state.
 The module does not enable voltage rails or program PLLs, an SMMU or SCM.
 
+`a619_zap.c` validates full ELF32 Hexagon ZAP images, builds the exact
+header-plus-hash PAS metadata, and bounds relocated segment copies to the
+owned reserved microcode range. It rejects overlapping segments, truncated
+files, unsupported layouts, wrong alignment and overlapping CPU buffers.
+The private DE2118 firmware produces metadata byte-for-byte equal to its
+private MDT. The firmware and metadata bytes remain outside the repository.
+
+`a619_pas13.c` executes the legitimate supported/init-image/memory-setup/
+auth-and-reset sequence for peripheral 13 only. It uses the parser above and
+provides shutdown/recovery. Standard SMC64 register arguments, Qualcomm A6
+continuations, busy backoff, error propagation and exclusive ownership are
+checked. Its optional EL1 `a619_smc64.c` transport preserves the continuation
+register; it is never invoked by the host tests. The platform must first prove
+SMC64 discovery, SCM clocks, the exact reserved region, private firmware hash,
+contiguous non-cacheable mappings and exclusive PAS/GPU ownership. Unknown
+completion or failed shutdown requires reset with memory retained. Retry
+loops are bounded, but secure firmware can itself hang inside an SMC. No
+secure authentication bypass is implemented.
+
+`a619_smmu.c` constructs a restricted three-level 39-bit/4KiB domain and
+programs one exclusively owned, disabled nonsecure context bank for SID0.
+It verifies live capabilities, all stream matches, CB sharing, idle/fault
+state and the pinned Holi global implementation configuration before writes.
+Page-table RAM and every mapped page need an actual ownership callback.
+Mappings support RO executable firmware, RW non-executable data and guard
+holes; physical aliases, writable executable pages and table self-mapping
+are rejected. TCR/TTBR/MAIR/ACTLR writes, readback, context TLB retirement
+and rollback are implemented. A faulting stream is established before any
+translation disablement, avoiding an intermediate physical bypass path.
+
+The SMMU module never changes global CR0, the global implementation registers,
+other SMRs/CBs, or secure SID2. The platform must supply CX power/memnoc clocks,
+exclusive quiescent GPU ownership, ASID/CB reservations, Normal-NC table RAM
+and a legitimate initialized global state. It refuses unknown global state
+rather than resetting secure mappings. The first window is limited to 2MiB;
+this is a bring-up domain, not a per-process graphics memory manager. Unsafe
+failure retains all pages until reset; release requires the GPU to remain
+quiescent through power-down or reassignment.
+
 Run the production C against the synthetic device and compile both ARM64
 formats:
 
@@ -45,14 +84,24 @@ formats:
 python devices/dre/gpu/test_backend.py --zig /path/to/zig --out /tmp/a619-tests
 # Optional private input; only metadata is printed, nothing is copied.
 python devices/dre/gpu/test_backend.py --zig /path/to/zig --out /tmp/a619-tests \
-  --firmware /private/a630_sqe.fw --firmware-manifest /private/manifest.json
+  --firmware /private/a630_sqe.fw --firmware-manifest /private/manifest.json \
+  --zap /private/a615_zap.elf --zap-mdt /private/a615_zap.mdt
 ```
 
 This covers 56 queue/firmware cases and 16,384 independently checked packet
 parities. It includes missing prerequisites, ownership changes, ring mismatch,
 stale data, pointer-only/data-only completion, timeout and a stopped timer.
-There are also 38 Holi power/ownership/recovery checks. These are synthetic
+There are also 38 Holi power/ownership/recovery, 46 ZAP parser/relocation
+35 PAS-13 ABI/authentication/recovery and 74 SMMUv2 activation/table-walk/
+secure-isolation/rollback checks. These are synthetic
 hardware tests, not native handset execution.
+
+## IOSurface runtime fixes
+
+[IOSURFACE_ABI.md](IOSURFACE_ABI.md) records the selected iOS framework ABI,
+the real CPU allocation/mapping implementation, and the incremental kernel
+lifetime/use-count patch with production-method concurrency tests. This is
+separate from A619 GPU mapping, synchronization and Metal support.
 
 ## Metal acceptance executable
 
@@ -70,7 +119,9 @@ dre-metal-probe dre-metal-probe.metallib dre-metal-probe.metal report.json
 The program requires a real `MTLDevice`, the native A619 chip/counters below,
 an offline metallib and runtime MSL compilation, private-buffer compute and
 blit with 257 exact results, an offscreen draw with 4,096 checked pixels,
-and an IOSurface-backed render with the same pixel checks. Each command
+and a CoreVideo IOSurface-backed render with the same pixel checks. It uses
+public CoreVideo allocation/Metal texture-cache APIs and verifies an IOSurface
+is actually present; private IOSurface headers are not required. Each command
 buffer has a five-second completion deadline. Missing APIs, nil objects,
 failed compilation, mismatched results or missing native completion progress
 produce a nonzero exit with the failing stage. No CPU-rendered fallback is
@@ -113,6 +164,10 @@ Primary references:
 
 - [Pinned Holi device tree](https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/arch/arm64/boot/dts/vendor/qcom/holi-gpu.dtsi)
 - [Pinned A6xx driver](https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/gpu/msm/adreno_a6xx.c)
+- [Pinned Qualcomm MDT metadata loader](https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/soc/qcom/mdt_loader.c)
+- [Pinned Holi SMMUv2 bindings](https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/arch/arm64/boot/dts/vendor/qcom/msm-arm-smmu-holi.dtsi)
+- [Pinned ARM SMMU implementation](https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/iommu/arm-smmu.c)
+- [Pinned Qualcomm SCM transport](https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/firmware/qcom_scm-smc.c)
 - [Pinned PM4 packet definitions](https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/gpu/msm/adreno_pm4types.h)
 - [Apple Metal compute workflow](https://developer.apple.com/documentation/metal/performing-calculations-on-a-gpu)
 - [Mesa Freedreno/Turnip](https://docs.mesa3d.org/drivers/freedreno.html)

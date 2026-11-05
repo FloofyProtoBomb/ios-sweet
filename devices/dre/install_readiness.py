@@ -31,8 +31,10 @@ RESTORE_SHA256 = 'd12c5d921522abd545c39884f00af6265ff32f749afbdb1917aa3c741601c4
 RW_MARKER = b'DRE UFS: userdata read-write enabled'
 REQUIRED_ARGS = {'rd':'ufsroot0', 'dre_ufs':'1', 'dre_ufs_rw':'1', 'rootrw':'1',
                  'unentitled_ios_sim_launch':'1', 'ignition_level':'1', 'cpus':'8',
+                 'launchd_unsecure_cache':'1',
                  'sweetfb_noconsole':'1', 'sweetfb_hz':'30'}
-QEMU_ARGS = {'dre_qemu_affinity', 'dre_ufs_map_test', 'dre_ufs_bsd_test'}
+QEMU_ARGS = {'dre_qemu_affinity', 'dre_ufs_map_test', 'dre_ufs_bsd_test', 'dre_ufs_qemu_file',
+             'interrupt-masked-debug-mode'}
 
 
 def require(condition, reason):
@@ -69,7 +71,9 @@ def inspect_hfs(path, expected_bytes=USERDATA_BYTES):
         require(attributes & (1 << 13), 'installation root must be journaled')
         jib, = struct.unpack_from('>I', header, 12)
         require(0 < jib < total, 'missing or out-of-range journal info block')
-        require(alternate[:4] == header[:4] and alternate[40:52] == header[40:52], 'alternate HFS header geometry differs')
+        # The alternate header may retain stale free/file/write counters after
+        # a clean Linux HFS+ unmount; only block size/count define geometry.
+        require(alternate[:4] == header[:4] and alternate[40:48] == header[40:48], 'alternate HFS header geometry differs')
         catalog_start, catalog_count = struct.unpack_from('>II', header, 288)
         require(catalog_start > 0 and catalog_count > 0 and catalog_start + catalog_count <= total,
                 'invalid initial catalog extent')
@@ -224,6 +228,18 @@ def inspect_root_tree(root):
             'dyld_cache_bytes':sum(p.stat().st_size for p in files), 'container_directories':True}
 
 
+def inspect_install_arguments(command):
+    args = {}
+    for word in shlex.split(command):
+        key, sep, value = word.partition('=')
+        require(key not in args, 'duplicate boot argument')
+        args[key] = value if sep else True
+    require(not QEMU_ARGS.intersection(args), 'QEMU-only arguments in handset image')
+    require(all(args.get(k) == v for k,v in REQUIRED_ARGS.items()),
+            'boot payload is diagnostic or lacks required writable-iOS-root arguments')
+    return args
+
+
 def inspect_boot(build, kernel):
     require(build is not None and build.is_dir(), 'missing boot build directory')
     macho_arm64(kernel)
@@ -248,15 +264,7 @@ def inspect_boot(build, kernel):
     require(boot[4096:4096 + kernel_size].count(payload) == 1, 'boot image does not contain this exact payload')
     cmd = payload[0x48:0x48 + 608]
     require(b'\0' in cmd, 'boot command line is not terminated')
-    words = shlex.split(cmd.split(b'\0')[0].decode('ascii'))
-    args = {}
-    for word in words:
-        key, sep, value = word.partition('=')
-        require(key not in args, 'duplicate boot argument')
-        args[key] = value if sep else True
-    require(not QEMU_ARGS.intersection(args), 'QEMU-only arguments in handset image')
-    require(all(args.get(k) == v for k,v in REQUIRED_ARGS.items()),
-            'boot payload is diagnostic or lacks required writable-iOS-root arguments')
+    inspect_install_arguments(cmd.split(b'\0')[0].decode('ascii'))
     off, size = struct.unpack_from('<QQ', payload, 0x20)
     require(0 < size <= len(payload) and off <= len(payload) - size, 'payload ADT range is invalid')
     root, consumed = adt.parse(payload[off:off + size])

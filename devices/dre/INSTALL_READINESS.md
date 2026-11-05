@@ -58,7 +58,7 @@ The boot payload must omit the diagnostic RAM disk and select:
 
 ```text
 rd=ufsroot0 dre_ufs=1 dre_ufs_rw=1 rootrw=1 cpus=8
-unentitled_ios_sim_launch=1 ignition_level=1
+unentitled_ios_sim_launch=1 ignition_level=1 launchd_unsecure_cache=1
 sweetfb_noconsole=1 sweetfb_hz=30
 ```
 
@@ -71,6 +71,13 @@ identity, eight CPU nodes, the validated upper-memory window and the local
 development properties used for first setup. QEMU-only flags are forbidden
 in a handset payload. Console suppression starts after the first GUI swap;
 panic drawing remains enabled.
+
+The root builder modifies `launchd.plist` for local development. Its existing
+`patch-launchd-plist.py` flow requires `launchd_unsecure_cache=1`; without it,
+the stock cache loader seeks an AMFI-backed signed cache and aborts. The first
+full-root QEMU boot reproduced that failure after executing Apple's early
+boot tasks. This explicit development option does not supply Apple trust
+cache approval, device activation or a Secure Enclave.
 
 Example final audit (paths are local, unpublished Apple artifacts):
 
@@ -109,3 +116,37 @@ not a fallback on this handset. Recheck the actual fastboot target, slot,
 partition capacities and download limit before an approved installation;
 use chunked sparse flashing within that measured limit. This workflow does
 not establish Apple-server activation, iTunes restore or a USB gadget driver.
+
+## Explicit Metal acceptance probe
+
+`install_metal_probe.py` adds the three CI acceptance artifacts to an offline
+HFS image; it never contacts a phone, creates an autostart job or claims Metal
+support. It checks their `SHA256SUMS`, plain-arm64 iOS executable target,
+Metal-library header and exact project-owned shader. Root Linux and full
+`/proc` visibility are required to reject another image owner before libguestfs
+writes. Stop every guestmount/QEMU instance using the image first; the helper
+also takes an advisory lock for cooperating tools.
+
+```sh
+sudo env LIBGUESTFS_BACKEND=direct LIBGUESTFS_BACKEND_SETTINGS=force_kvm \
+  LIBGUESTFS_CACHEDIR=/private/path/guestfs-cache \
+  python3 devices/dre/install_metal_probe.py \
+  --artifacts /private/path/metal-probe-ci-artifact \
+  --image /private/path/ios-dre-20H392-full.img \
+  --reports /private/path/new-probe-install-report-directory
+```
+
+The image must already be exactly 54,431,395,840 bytes, clean, journaled and
+case-sensitive HFSX. Uploads go to `/usr/local/bin/dre-metal-probe` and
+`/usr/local/share/dre-metal-probe/dre-metal-probe.{metallib,metal}` with root
+ownership and executable/data permissions. Explicit unmount/sync precedes
+bounded filesystem repair, guarded checker-padding normalization and final
+read-only verification. The helper then checks the uploaded hashes, ownership
+and permissions and binds its report to the final image SHA-256. Regenerate
+the sparse transport and complete root inspection after this change. A failed
+operation leaves `completed: false`; do not distribute that intermediate image.
+
+`python3 devices/dre/test_install_metal_probe.py` exercises malformed-artifact
+and live-image-owner guards. The optional `--integration NEW_DIRECTORY` case
+uses real guestfish and hfsprogs on a newly created 64 MiB scratch image,
+substituting that test geometry only inside the test process.

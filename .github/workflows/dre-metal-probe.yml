@@ -1,0 +1,40 @@
+name: dre-metal-probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [dre-metal-build]
+    paths:
+      - 'devices/dre/gpu/**'
+      - '.github/workflows/dre-metal-probe.yml'
+
+concurrency:
+  group: dre-metal-probe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select matching Xcode
+        run: |
+          XC=$(ls -d /Applications/Xcode_*.app | sort -V | head -1)
+          echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
+          sudo xcode-select -s "$XC"
+      - name: Compile actual iOS Metal workload and Adreno primitives
+        run: |
+          bash devices/dre/gpu/build_metal_probe.sh out/dre-metal-probe
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          for SOURCE in devices/dre/gpu/a619_*.c; do
+            NAME=$(basename "$SOURCE" .c)
+            xcrun --sdk iphoneos clang -target arm64-apple-ios16.0 -isysroot "$SDK" \
+              -ffreestanding -O2 -Wall -Wextra -Werror -c "$SOURCE" \
+              -o "out/dre-metal-probe/$NAME.o"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dre-metal-probe
+          path: out/dre-metal-probe/
+          if-no-files-found: error

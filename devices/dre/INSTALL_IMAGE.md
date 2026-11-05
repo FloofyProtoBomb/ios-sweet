@@ -51,6 +51,23 @@ read-only `fsck.hfsplus -fn` must succeed after any repairs. Retain
 that exact log, the raw image hash, and an inspection of the actual completed
 HFS image with `install_readiness.py --inspect-root-only`.
 
+An optional compiled Metal acceptance probe can be inserted before freezing
+the image. Download its matching CI artifact and keep the executable,
+metallib, shader source and `SHA256SUMS` together. With the raw image completely
+unmounted, run the host-only installer as Linux root:
+
+```sh
+python3 devices/dre/install_metal_probe.py --artifacts /private/metal-probe \
+  --image root.img --reports /private/reports/metal-probe-install
+```
+
+The installer verifies the CI files, rejects an image owned by another
+process, installs the three files with fixed ownership and modes, and performs
+a final read-only filesystem check. It does not autostart the probe. Installing
+this executable does not provide a Metal runtime or GPU driver. After any
+image modification, regenerate the mounted-root inspection, filesystem-check
+proof, raw hash and sparse transport so they all identify the same image.
+
 Create a complete initial Android sparse transport image:
 
 ```sh
@@ -63,6 +80,12 @@ chunks, refuses overwrite, hashes the complete expanded contents, and records
 the transport SHA-256. Real source-file holes are treated as zeros without
 reading them from disk. `test_install_sparse.py` verifies the output with
 Android's independent `simg2img` decoder.
+
+When copying the raw image to another filesystem, verify the destination
+independently. A successful source hash or copy command does not establish
+that the destination bytes match. The sparse manifest's `expanded_sha256`
+must equal the final raw image's SHA-256. Keep the complete sparse transport;
+trimming zero chunks would reintroduce a dependency on old phone contents.
 
 Do not use `tools/sparsediff.py` for the first install: it requires OLD to
 match the partition's existing image. Installation still requires the exact

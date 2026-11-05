@@ -2,42 +2,88 @@
 
 ## DE2118 handoff, 2026-11-04
 
-ACTIVE INSTALL PREPARATION (USER AUTHORIZED SUBAGENTS): user asks fix native
-UFS timeout and prepare all iOS installation prerequisites before next test,
-explicitly requires Metal acceleration and asks WiFi/BT. Explained current
-Metal/WiFi/BT are NOT IMPLEMENTED; all hardware requirements must be tracked
-without claiming generic GPU probes equal Metal. No phone test/write
-authorization for any new image; phone remains verified Lineage, no watcher.
-Subagents ios_install_image owns root image/tools (CodexDreBuild WSL distro
-created specifically at D:/CodexWork/dre-ios-install/linux/distro), gpu_metal
-owns gpu/**, install_readiness owns validator and now QEMU-only file disk.
-Large artifacts on D:. Ubuntu24.04.5 base verified via official SHA256SUMS.
-All3 official Apple DMGs downloaded/ZIP-CRC+SHA verified in
-D:/CodexWork/dre-ios-install/firmware: OS80f426d5..., SystemOS9cd738f3...,
-AppOS391f2df3..., BuildManifest20H392/D22AP verified. Private; never upload.
-Image agent constructing exact54431395840-byte journaled HFSX with real
-Setup.app and44dyld cache files, first-run setup; host guestfs backend,
-no phone media write. Final image/fsck/sparse proof still pending.
-Native UFS candidate changes UNPROVEN ON PHONE: map validated owned DMA RAM
-Normal-NC with ml_io_map_wcomb (registers remain Device), verify kvtophys
-endpoints; capture failed command/op/doorbell/interrupts/OCS before abort.
-Photo previously onlyIO:COMMAND_TIMEOUT, no opcode known. New mapping is a
-grounded DMA-memory correction, NOT a confirmed physical timeout fix yet.
-Added opt-in userdata-only WRITE10+mandatory SYNCHRONIZE_CACHE API, default
-read-only, exclude bothGPT areas, no SMMU/reset/clock/media writes by tests.
-Native RW handles512-byte read-modify-write and structured+legacy HFS flush
-ioctls; advertises no FUA/UNMAP.66 portable engine/ownership/read/write/
-flush/restore checks PASS, all12 staged native C compiles/symbol closure PASS.
-Still need real QEMU RW/HFS regression, install-root builder mode (no md0),
-private /product D22AP extraction, kernel CI including compiler-cache, Metal
-probe compile and integration. File-backed QEMU provider agent will enable
-actual iOS userspace validation on a scratch image without handset writes.
-Fresh mobileactivationd MCM container absent; activation completion remains
-pending first boot, do not fabricate metadata. Full Metal and native GPU cold
-start remain missing; agent adding bounded actual backend primitives and
-real Metal acceptance executable, not an acceleration claim. WiFi/BT etc
-not implemented. Current source contains agents' committed tools plus root
-uncommitted native changes. Preserve all prior tested images and backups.
+ACTIVE INSTALL PREPARATION, UPDATED2026-11-05 (USER AUTHORIZED SUBAGENTS).
+User wants native UFS timeout fixed and iOS install prerequisites including
+actual GPU/Metal before next phone test. WiFi/BT also requested. No new phone
+write/test approval exists. Phone is verified restored Lineage, NO WATCHER.
+Keep original boot/logo, modem/persist/recovery/GPT intact. Apple inputs/private
+identifiers never enter git. Large working artifacts on D:/CodexWork/dre-ios-install.
+
+CURRENT KERNEL fce3ae657868be30c164dc6d2eb9001f3c215a53597813ea8998ba2172754a4d
+at kernel/kernel.development.dre. Full CI41972412354 build job127063457920
+SUCCESS, all66patches. Workflow failure was only old Metal SDK header error;
+dedicated actual Metal compile CI41972992128 SUCCESS after public CoreVideo fix.
+Metal executable/metallib/MSL installed in immutable root; never run, not driver.
+Remote dre-storage7a56fea treefcf47bed matches local7526af7 kernel sources.
+Next combined kernel CI must include new UFS power/timeout and IOSurface fix.
+
+FULL ROOT images/ios-dre-20H392-full.img exact54431395840B, SHA
+8ba6026a82bcd6e4b9903cd1d33061e8d914a97800f61d0575025b95acdb20bc.
+Final clean readonly fsck, actual Setup retained first-run,44 shared-cache
+files/50 critical hashes/hardlinks/owners verified;41844289536B free.
+Windows raw hash independently verified. Full Android sparse12143414180B,
+SHAd9d288bb90c29363b91b42138b446ae10be67a5d7f19cba4b77dbc4eabc08f0e,
+27442chunks, complete expansion SHA/CRC audited, no DONT_CARE. Reports under
+reports/ and outputs/ios-root-preparation. Offline host_prepared=true for
+old install boot1131f930; physical storage/UI/Metal proof false. New v2 boot
+d8f4d111 must replace old boot in final audit after VM iteration stabilizes.
+Root frozen; mutate only disposable scratch clones. Activation remains pending
+real first-boot MCM container. Do not fabricate container metadata or claim setup.
+
+INSTALL BUILDER --install-root imports private D22AP /product, omits RAMDisk,
+uses rd=ufsroot0, userdata-RW,8CPU/2048MiB. Old boot1131f930 reproduced actual
+Applelaunchd+earlytasks, then cache-loader AMFI lookup abort. Concrete fix
+eb8087a adds documented launchd_unsecure_cache=1 for intentionally modified
+launchd.plist, not fabricated trust-cache positives. New build-ios-root-v2
+SHAd8f4d111b77a1faddaf7aa46aa5f3bf6c3d01afbc1a49b61f325f09173cae862.
+Fullroot qemu-ios-root-v2 passed early boot and exec SpringBoard PID26, then
+TCG interrupt-latency hygiene panic. No Setup/UI rendering proof. v3 uses
+QEMU-only interrupt-masked-debug-mode=1 TRACE; physical checks unchanged.
+Readiness agent owns qemu-ios-root-v3 session57057 (clone/boot), cumulative
+kernel logs/framebuffer/register snapshots.45 artifact checks PASS (f0a1936).
+
+REAL HFS REGRESSION qemu-hfs-root-v1 PASS with unchanged kernel and actual
+64MiB journaled HFSX file root: static PID1 create/write/fsync/F_FULLFSYNC,
+reopen/readback, both legacy and structured DKIOCSYNCHRONIZE. Independent
+readonly guestfish readback matched exact file/hash after VM exit. This
+exercises native BSD/HFS callbacks through explicit simulated file provider;
+never accesses Qualcomm MMIO or proves phone UFS. Full QEMU BSD, owned NC/FDT
+mapping and empty-owner refusal all PASS at qemu-next-{bsd,map,refusal},
+8CPU/2047MiB/PID1/display.6 exact-image guard cases +private real GPT baseline
+and27 actual diagnostic init syscall cases PASS for c9233311 candidate.
+
+NATIVE UFS CANDIDATE: map exclusively boot-owned lowDDR Normal-NC using
+ml_io_map_wcomb; prove kvtophys endpoints. Hardware effect still UNPROVEN.
+Independent review found no descriptor VA leak, timer mismatch, managed WB
+alias or loader overwrite; early/native share engine and19.2MHz guards.
+New b68f72e native guard checks GDSC power before clocks. Timeout captures
+validity mask/power/UTRL/OP/tag/DB/IS/OCS/HCS/UEC/ticks before abort. Original
+fault printed before unsafe-restoration panic; lost/unverified power retains
+buffers and requires reset, no unsafe HCI restoration.74 production C
+ownership/read/write/flush/restore checks and13/13 staged ARM64 compiles PASS.
+Opt-in userdata-only WRITE10+SYNCHRONIZE_CACHE, defaultRO, both GPT regions
+excluded; physical native read/write/durability NOT PROVEN. No blind resets
+or SMMU/clock/route changes. Need full new CI + relevant QEMU before packaging.
+
+GPU: guarded queue/SPTPRAC/PAS13/SID0 SMMUv2 primitives64a69c3,249 synthetic
+plus16384 packet checks and ARM64 ELF/Mach-O compile PASS. Native GPU cold
+start/providers/SQE+CP, actual execution, IOSurface GPU coherency/fences/
+presentation and compatible Metal runtime/compiler remain MISSING.
+IOSurface7a139c0 fixes actual retained result refs, raced cached lookup,
+closed-client race, category counters/state+0x18 and honest unsupported
+accel/events. Actual affected methods13scenarios+8000 concurrent ASan/UBSan
+calls PASS; complete patched kernel C++ ARM64 compile PASS. Trap4/5 unchanged.
+Root stage_xnu integration prepared: UI67patches including gpu/0104. User's
+iOS16.5 IOSurface SDK link is headers/modules/.tbd only, not driver/runtime.
+
+RADIO39f4680 inventory: captured ICNSS2 Adrastea/SNOC WLAN,12CE IRQs/SID0x80,
+MSA and shared RPM-SMD rails; BT WCN399x power binding and candidate GENI
+UART0x4a84000. Exact silicon/fw/UART association not proven.22 pinned primary
+sources. WiFi/BT drivers absent; no working radio claim. No phone operations.
+Subagents: gpu_metal owns gpu/**; install_readiness owns validator/QEMU root;
+ios_install_image finished frozen image, radio inventory and independent
+native UFS review. Root owns staging/UFS/builder/NOTES/publishing.
+This active block supersedes all preparation statuses below.
 
 LATEST PHYSICAL RESULT1104ecab: photo20261104_233145.jpg confirms
 NATIVE_DRIVER=IO:COMMAND_TIMEOUT, NATIVE_UFS=UNAVAILABLE_OR_FAILED,

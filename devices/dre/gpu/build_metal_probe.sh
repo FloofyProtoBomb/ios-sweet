@@ -9,7 +9,7 @@ out=$(cd "$out" && pwd)
 sdk=$(xcrun --sdk iphoneos --show-sdk-path)
 xcrun --sdk iphoneos clang -target arm64-apple-ios16.0 -isysroot "$sdk" \
     -fobjc-arc -fblocks -O2 -Wall -Wextra -Werror -Wno-deprecated-declarations \
-    "$here/metal_probe.m" -framework Foundation -framework Metal -framework IOSurface \
+    "$here/metal_probe.m" -framework Foundation -framework Metal -framework CoreVideo \
     -o "$out/dre-metal-probe"
 xcrun --sdk iphoneos metal -target air64-apple-ios16.0 -isysroot "$sdk" \
     -std=ios-metal2.3 -c "$here/metal_probe.metal" -o "$out/dre-metal-probe.air"

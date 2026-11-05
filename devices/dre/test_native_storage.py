@@ -24,7 +24,9 @@ class State(C.Structure):
         [(n, C.c_uint64) for n in ('last', 'first', 'blocks')] + \
         [('commands', C.c_uint), ('safe', C.c_int), ('guard', C.c_void_p), ('cookie', C.c_void_p), ('lost', C.c_int)] + \
         [(n,C.c_uint32) for n in ('last_opcode','command_lba','fault_doorbell','fault_interrupts','fault_hcs','fault_ocs')] + \
-        [('fault_uec',C.c_uint32*5),('command_ticks',C.c_uint64)]
+        [('fault_uec',C.c_uint32*5)] + \
+        [(n,C.c_uint32) for n in ('fault_valid','fault_power','fault_utrl_lo','fault_utrl_hi')] + \
+        [('command_ticks',C.c_uint64)]
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
@@ -126,12 +128,19 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return t += 1000000; }
     struct.pack_into('<I', header, 16, zlib.crc32(header[:92]))
     payload = bytes((i * 17 + 3) % 256 for i in range(4096))
     disk = {1: bytes(header), 2: bytes(entries), 100: payload}
-    for mode in ('pass', 'guard_before', 'guard_after', 'timeout', 'ocs', 'restore', 'short'):
+    for mode in ('pass', 'guard_before', 'guard_after', 'timeout', 'ocs', 'restore', 'short',
+                 'timeout_restore', 'timeout_power_off', 'timeout_power_unreadable', 'timeout_layer_unreadable'):
         regs = {0: 1 << 24, 0x34: 1, 0x30: 3, 0x58: 0, 0x78: 0,
-                0x50: 0x81000000, 0x54: 0, 0x60: 1, 0x24: 0x1234}
+                0x50: 0x81000000, 0x54: 0, 0x60: 1, 0x24: 0x1234, 0x20: 0x100}
+        regs.update({0x38 + i * 4: 0x80000001 + i for i in range(5)})
         commands = []; active_mode = 'pass'; callback_errors = []
         @READ
         def rd(address, out):
+            if address == 0x01445004:
+                if active_mode == 'timeout_power_unreadable': return 0
+                out[0] = 0 if active_mode == 'timeout_power_off' else 1 << 31
+                return 1
+            if active_mode == 'timeout_layer_unreadable' and address == 0x04804040: return 0
             if address - 0x04804000 not in regs: return 0
             out[0] = regs[address - 0x04804000]; return 1
         @WRITE
@@ -139,7 +148,9 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return t += 1000000; }
             try:
                 off = address - 0x04804000
                 assert off in (0x20, 0x24, 0x50, 0x54, 0x58, 0x5c, 0x60)
-                if active_mode in ('restore', 'write_restore') and off == 0x50 and value == 0x81000000: return 0
+                if active_mode in ('restore', 'write_restore', 'timeout_restore') and off == 0x50 and value == 0x81000000: return 0
+                if active_mode in ('timeout_power_off', 'timeout_power_unreadable') and commands:
+                    assert False, 'attempted register restoration after lost/unverified domain'
                 if off == 0x5c: regs[0x58] = 0; return 1
                 regs[off] = value
                 if off != 0x58: return 1
@@ -154,7 +165,7 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return t += 1000000; }
                     assert command[1] == (0x20 if op == 0x2a else 0x40)
                     assert (words[0] >> 25) & 3 == (1 if op == 0x2a else 2)
                 commands.append(op)
-                if active_mode == 'timeout' or active_mode == 'write_timeout' and op == 0x2a or active_mode == 'flush_timeout' and op == 0x35: return 1
+                if active_mode.startswith('timeout') or active_mode == 'write_timeout' and op == 0x2a or active_mode == 'flush_timeout' and op == 0x35: return 1
                 data = b''
                 if op == 0x9e: data = struct.pack('>QI', 999, 4096) + bytes(20)
                 if op == 0x28:
@@ -188,17 +199,29 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return t += 1000000; }
         result = read(C.byref(route), C.byref(state), guard, None, 100, out)
         expected = {'pass': b'READ_PASS', 'guard_before': b'DMA_GUARD_BLOCKED',
                     'guard_after': b'DMA_GUARD_CHANGED', 'timeout': b'COMMAND_TIMEOUT',
-                    'ocs': b'BAD_RESPONSE', 'restore': b'RESTORE_FAILED', 'short': b'SHORT_TRANSFER'}[mode]
+                    'ocs': b'BAD_RESPONSE', 'restore': b'RESTORE_FAILED', 'short': b'SHORT_TRANSFER',
+                    'timeout_restore':b'RESTORE_FAILED', 'timeout_power_off':b'POWER_LOST',
+                    'timeout_power_unreadable':b'POWER_UNVERIFIED',
+                    'timeout_layer_unreadable':b'COMMAND_TIMEOUT'}[mode]
         assert not callback_errors, callback_errors
         assert result == expected, (mode, result)
-        if mode == 'timeout':
+        if mode.startswith('timeout'):
             assert state.last_opcode == 0x28 and state.command_lba == 100
-            assert state.fault_doorbell == 1 and state.fault_ocs == 0xf
+            assert state.fault_ocs == 0xf
             assert state.command_ticks >= 9600000
-        assert bool(state.safe) == (mode not in ('guard_after', 'restore'))
+            if mode in ('timeout_power_off', 'timeout_power_unreadable'):
+                assert state.fault_valid == (0x80000100 if mode.endswith('off') else 0x80000000)
+            else:
+                assert state.fault_doorbell == 1 and state.fault_hcs == 3
+                assert state.fault_utrl_lo == pa and state.fault_utrl_hi == 0
+                assert state.fault_power == 1 << 31
+                assert state.fault_valid == (0x800007ff ^ (1 << 5) if mode.endswith('layer_unreadable') else 0x800007ff)
+                assert list(state.fault_uec) == [0x80000001 + i if not (i == 2 and mode.endswith('layer_unreadable')) else 0 for i in range(5)]
+        assert bool(state.safe) == (mode not in ('guard_after', 'restore', 'timeout_restore', 'timeout_power_off', 'timeout_power_unreadable'))
         assert out.raw == (payload if mode == 'pass' else b'Z' * 4096)
         assert commands == ([] if mode == 'guard_before' else [0x28])
-        if mode != 'restore': assert [regs[o] for o in (0x50, 0x54, 0x60, 0x24)] == [0x81000000, 0, 1, 0x1234]
+        if mode not in ('restore', 'timeout_restore', 'timeout_power_off', 'timeout_power_unreadable'):
+            assert [regs[o] for o in (0x50, 0x54, 0x60, 0x24)] == [0x81000000, 0, 1, 0x1234]
         checks += 1
         if mode == 'pass':
             commands.clear()

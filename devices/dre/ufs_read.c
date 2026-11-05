@@ -18,7 +18,7 @@ extern int dre_write32(uintptr_t address, uint32_t value);
 #define BLOCK 4096u
 
 /* Kernel ownership uses an entire 16K page outside XNU's managed RAM.
- * The native adapter maps it Device/uncached and provides its physical
+ * The native adapter maps RAM Normal Non-cacheable and provides its physical
  * address separately: a kernel VA must never enter a hardware descriptor. */
 #ifdef DRE_UFS_KERNEL
 extern volatile uint8_t *dre_kernel_ufs_arena;
@@ -108,14 +108,22 @@ static void clear_arena(void)
 static void timeout_snapshot(struct dre_ufs_read_state *s, uint64_t start)
 {
     s->command_ticks = ticks() - start;
-    read_reg(DOORBELL, &s->fault_doorbell);
-    read_reg(0x20, &s->fault_interrupts);
-    read_reg(0x30, &s->fault_hcs);
+    s->fault_valid = DRE_UFS_FAULT_CAPTURED;
+    fence();
     s->fault_ocs = DMA_RING[2] & 255;
-    for (unsigned i = 0; i < 5; i++) read_reg(0x38 + i * 4, &s->fault_uec[i]);
+    if (dre_read32(0x01445004, &s->fault_power)) s->fault_valid |= 1u << 8;
+    /* A known-off/unknown domain is not a safe HCI diagnostic aperture. */
+    if (!(s->fault_valid & (1u << 8)) || !(s->fault_power & (1u << 31))) return;
+    if (read_reg(DOORBELL, &s->fault_doorbell)) s->fault_valid |= 1u;
+    if (read_reg(0x20, &s->fault_interrupts)) s->fault_valid |= 1u << 1;
+    if (read_reg(0x30, &s->fault_hcs)) s->fault_valid |= 1u << 2;
+    for (unsigned i = 0; i < 5; i++)
+        if (read_reg(0x38 + i * 4, &s->fault_uec[i])) s->fault_valid |= 1u << (3 + i);
+    if (read_reg(UTRL_LO, &s->fault_utrl_lo)) s->fault_valid |= 1u << 9;
+    if (read_reg(UTRL_HI, &s->fault_utrl_hi)) s->fault_valid |= 1u << 10;
 }
 
-/* This interface accepts only the four commands constructed here. */
+/* This interface accepts only the explicitly constructed commands below. */
 static const char *submit_data(struct dre_ufs_read_state *s, unsigned op, uint32_t lba,
                                const uint8_t *input)
 {
@@ -297,6 +305,12 @@ static const char *transaction(const struct dre_dma_route *route, struct dre_ufs
     }
     error = read_gpt(s);
 restore:
+    /* A domain lost during a command cannot be safely quiesced/restored
+     * through its HCI aperture. Retain the DMA buffers and require reset. */
+    if (s->fault_valid & DRE_UFS_FAULT_CAPTURED) {
+        if (!(s->fault_valid & (1u << 8))) return "POWER_UNVERIFIED";
+        if (!(s->fault_power & (1u << 31))) return "POWER_LOST";
+    }
     /* Stop before restoring addresses. Never enter XNU with unowned DMA active. */
     if (!write_reg(CLEAR, ~1u) || !wait_reg(DOORBELL, UINT32_MAX, 0) ||
         !write_reg(RUN_STOP, 0) || !wait_reg(RUN_STOP, 1, 0) ||

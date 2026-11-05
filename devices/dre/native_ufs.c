@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT
- * Opt-in DE2118 read-only BSD disk. Reuses the handset-tested C engine,
- * with a shim-owned uncached low-DDR arena. No SMMU/clock/media writes. */
+ * Opt-in DE2118 BSD disk, read-only unless dre_ufs_rw=1 is supplied.
+ * Reuses the guarded C engine with shim-owned Normal-NC low-DDR RAM.
+ * Writes are restricted to validated userdata; no SMMU or clock changes. */
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/buf.h>
@@ -99,6 +100,9 @@ int dre_write32(uintptr_t address, uint32_t value)
 }
 static int native_guard(void *cookie)
 {
+    uint32_t power;
+    if (!dre_read32(0x01445004, &power)) { set_state("POWER", "READ_FAILED"); return 0; }
+    if (!(power & (1u << 31))) { set_state("POWER", "DOMAIN_OFF"); return 0; }
     struct dre_ufs_clock_state clocks = {0};
     const char *result = dre_ufs_clocks(&clocks, 0);
     if (strcmp(result, "READY")) {
@@ -111,16 +115,27 @@ static int native_guard(void *cookie)
 }
 static int check_result(const char *result, const char *expected)
 {
+    if (media.fault_valid & DRE_UFS_FAULT_CAPTURED) {
+        /* Preserve the original command failure even if abort/restoration
+         * replaced COMMAND_TIMEOUT with RESTORE_FAILED or GUARD_CHANGED. */
+        printf("DRE UFS timeout: N=%u OP=%x TAG=%x ARENA=%llx UTRL=%x:%08x VALID=%x POWER=%x DB=%x IS=%x OCS=%x\n",
+            media.commands, media.last_opcode, media.commands & 255,
+            dre_kernel_ufs_arena_pa, media.fault_utrl_hi, media.fault_utrl_lo,
+            media.fault_valid, media.fault_power, media.fault_doorbell,
+            media.fault_interrupts, media.fault_ocs);
+        printf("DRE UFS timeout: HCS=%x UEC=%x/%x/%x/%x/%x ticks=%llu LBA=%x\n",
+            media.fault_hcs, media.fault_uec[0], media.fault_uec[1], media.fault_uec[2],
+            media.fault_uec[3], media.fault_uec[4], media.command_ticks, media.command_lba);
+    }
     if (!media.safe_to_handoff)
-        panic("DRE UFS: unsafe DMA/host state (%s; %s), reset required", result, driver_state);
+        panic("DRE UFS: unsafe DMA/host state (%s; %s), reset required; OP=%x DB=%x IS=%x OCS=%x VALID=%x",
+              result, driver_state, media.last_opcode, media.fault_doorbell,
+              media.fault_interrupts, media.fault_ocs, media.fault_valid);
     if (strcmp(result, expected)) {
         if (!strcmp(result, "COMMAND_TIMEOUT")) {
             snprintf(driver_state, sizeof(driver_state),
                 "IO:%s/N=%u/OP=%x/DB=%x/IS=%x/OCS=%x", result, media.commands,
                 media.last_opcode, media.fault_doorbell, media.fault_interrupts, media.fault_ocs);
-            printf("DRE UFS timeout: HCS=%x UEC=%x/%x/%x/%x/%x ticks=%llu LBA=%x\n",
-                media.fault_hcs, media.fault_uec[0], media.fault_uec[1], media.fault_uec[2],
-                media.fault_uec[3], media.fault_uec[4], media.command_ticks, media.command_lba);
         } else if (strncmp(result, "DMA_GUARD_", 10)) set_state("IO", result);
         printf("DRE UFS: read disabled: %s\n", result);
         dead = 1;

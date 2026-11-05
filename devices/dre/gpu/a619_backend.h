@@ -2,6 +2,9 @@
 #pragma once
 #include <stddef.h>
 #include <stdint.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define DRE_A619_CHIP_ID UINT32_C(0x06010900)
 #define DRE_A619_GPU_BASE UINT64_C(0x05900000)
@@ -65,3 +68,6 @@ struct dre_a619_sqe {
  * into GPU VA space. This view alone does not authenticate/load firmware. */
 const char *dre_a619_sqe_view(uint32_t chip_id, const void *file, size_t bytes,
     struct dre_a619_sqe *view);
+#ifdef __cplusplus
+}
+#endif

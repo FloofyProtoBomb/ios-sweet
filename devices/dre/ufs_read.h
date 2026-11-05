@@ -2,6 +2,7 @@
 #pragma once
 #include "dma_route.h"
 typedef int (*dre_ufs_dma_guard)(void *cookie);
+#define DRE_UFS_FAULT_CAPTURED (1u << 31)
 
 struct dre_ufs_read_state {
     uint32_t capabilities, block_size, ocs, response, status;
@@ -14,6 +15,9 @@ struct dre_ufs_read_state {
     /* Snapshot before abort/restoration destroys the timed-out descriptor. */
     uint32_t last_opcode, command_lba, fault_doorbell, fault_interrupts, fault_hcs;
     uint32_t fault_ocs, fault_uec[5];
+    /* Bits 0..2: DB/IS/HCS; 3..7: layer errors; 8: power; 9..10: UTRL.
+     * Bit31 means capture attempted, including when register reads failed. */
+    uint32_t fault_valid, fault_power, fault_utrl_lo, fault_utrl_hi;
     uint64_t command_ticks;
 };
 

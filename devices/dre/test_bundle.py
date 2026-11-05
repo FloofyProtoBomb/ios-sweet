@@ -163,6 +163,10 @@ def run(image, dtb, syms, case, context_probe=False, driver_prep=False, handoff_
             SMMU: 1 << 10, SMMU + 0x20: (1 << 30) | (1 << 29) | (1 << 27) | (8 << 9) | 8,
             SMMU + 0x24: (6 << 28) | 32}
     regs.update({a: v for a, v in zip(CLOCKS, (1, OFF | 0xb, 0x229, 0x229))})
+    # UFSHCI's five read-only layer error registers are sampled on timeout.
+    # Keep them explicit so unexpected peripheral accesses still fail closed.
+    error_registers = {UFS + 0x38 + i * 4 for i in range(5)}
+    regs.update({address: 0x80000001 + i for i, address in enumerate(sorted(error_registers))})
     for i in range(8):
         regs[SMMU + 0x800 + i * 4] = 0
         regs[SMMU + 0xc00 + i * 4] = 0
@@ -414,6 +418,9 @@ def run(image, dtb, syms, case, context_probe=False, driver_prep=False, handoff_
         nonlocal context_high_reads, handoff_checks
         assert size == 4 and address in regs, f'unexpected MMIO read {address:#x}/{size}'
         reads.add(address)
+        if address in error_registers:
+            assert case in ('command_timeout', 'abort_stuck', 'handoff_timeout')
+            assert regs[UFS + 0x58] & 1, 'timeout snapshot happened after abort'
         if case == 'context_changed' and address == cb + 0x24:
             context_high_reads += 1
             regs[address] = context_high_reads
@@ -509,6 +516,10 @@ def run(image, dtb, syms, case, context_probe=False, driver_prep=False, handoff_
     cpu.reg_write(UC_ARM64_REG_X0, tree)
     cpu.emu_start(LOAD, base + entry - va, count=1000000000 if handoff_read else 250000000)
     assert stopped_error == unsafe, ('handoff safety gate', case, stopped_error)
+    if case in ('command_timeout', 'abort_stuck', 'handoff_timeout'):
+        assert error_registers <= reads, 'missing bounded UFS timeout diagnostics'
+    else:
+        assert not error_registers & reads, 'sampled layer errors without a command timeout'
     if not unsafe:
         assert cpu.reg_read(UC_ARM64_REG_PC) == base + entry - va, 'instruction budget ended before XNU handoff'
     fields = bytes(cpu.mem_read(syms['report'], syms['report_size'])).split(b'\0')[0].decode().removeprefix('dre_report=').split('|')

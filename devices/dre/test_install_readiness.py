@@ -27,6 +27,15 @@ def main():
         else:
             raise AssertionError('invalid artifact was accepted: ' + expected)
         checks += 1
+    command = ' '.join(f'{key}={value}' for key,value in r.REQUIRED_ARGS.items())
+    assert r.inspect_install_arguments(command)['rd'] == 'ufsroot0'; checks += 1
+    for option in ('dre_qemu_affinity=1', 'dre_ufs_map_test=1', 'dre_ufs_bsd_test=1',
+                   'dre_ufs_qemu_file=1', 'interrupt-masked-debug-mode=1'):
+        reject(lambda:r.inspect_install_arguments(command + ' ' + option), 'QEMU-only')
+    reject(lambda:r.inspect_install_arguments(command + ' rootrw=0'), 'duplicate')
+    reject(lambda:r.inspect_install_arguments(command.replace('rootrw=1', 'rootrw=0')), 'writable-iOS-root')
+    reject(lambda:r.inspect_install_arguments(command.replace('launchd_unsecure_cache=1', 'launchd_unsecure_cache=0')),
+           'writable-iOS-root')
     with tempfile.TemporaryDirectory(dir=args.out) as tmp:
         tmp = Path(tmp)
         image = tmp/'hfs.img'; size = 8 << 20
@@ -51,6 +60,11 @@ def main():
         reject(lambda:r.inspect_hfs(image,size+4096),'exact userdata')
         bad=bytearray(raw); bad[-1024:-1022]=b'H+'; image.write_bytes(bad)
         reject(lambda:r.inspect_hfs(image,size),'alternate')
+        bad=bytearray(raw); struct.pack_into('>I', bad, size-1024+48, size//4096-12)
+        image.write_bytes(bad)
+        assert r.inspect_hfs(image,size)['free_bytes'] == size-8*4096; checks += 1
+        bad=bytearray(raw); struct.pack_into('>I', bad, size-1024+44, size//4096-1)
+        image.write_bytes(bad); reject(lambda:r.inspect_hfs(image,size),'alternate')
         bad=bytearray(raw); bad[3*4096+51]=0xcf; image.write_bytes(bad)
         reject(lambda:r.inspect_hfs(image,size),'binary key')
 

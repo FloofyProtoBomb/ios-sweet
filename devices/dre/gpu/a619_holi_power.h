@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: MIT */
 #pragma once
 #include "a619_backend.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define DRE_A619_GCC_CFG UINT64_C(0x01436004)
 #define DRE_A619_CX_GDSCR UINT64_C(0x0599106c)
@@ -35,3 +38,6 @@ const char *dre_a619_holi_sptprac_enable(struct dre_a619_holi_power *state,
     const struct dre_a619_ops *ops);
 const char *dre_a619_holi_sptprac_release(struct dre_a619_holi_power *state,
     const struct dre_a619_ops *ops);
+#ifdef __cplusplus
+}
+#endif

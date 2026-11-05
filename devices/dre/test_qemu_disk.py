@@ -109,6 +109,7 @@ def main():
     ap.add_argument('--zig',required=True); ap.add_argument('--qemu',required=True)
     ap.add_argument('--out',type=Path,required=True)
     ap.add_argument('--case',type=int,action='append')
+    ap.add_argument('--fault-model',action='store_true',help='also run host failure/64-bit-boundary model tests')
     args=ap.parse_args();args.zig=str(Path(args.zig).resolve());args.qemu=str(Path(args.qemu).resolve())
     args.out=args.out.resolve();args.out.mkdir(parents=True,exist_ok=True)
     names=('rw_bounds_flush','read_only','disabled_no_trap','phone_frequency_no_trap','empty_rejected',
@@ -118,8 +119,18 @@ def main():
     # common NTFS/ext4 configurations reject creation before QEMU can test it.
     for i in (args.case if args.case is not None else range(9)):
         reports.append(run_case(args,i,names[i]));print('PASS',names[i],flush=True)
+    fault_cases=0
+    if args.fault_model:
+        exe=args.out/('fault-model.exe' if sys.platform=='win32' else 'fault-model')
+        subprocess.run([args.zig,'cc','-O2','-DDRE_QEMU_DISK_HOST_TEST',str(HERE/'qemu_disk.c'),
+                        str(HERE/'test_qemu_disk_faults.c'),'-o',str(exe)],check=True)
+        for i in range(15):
+            subprocess.run([str(exe),str(i)],check=True)
+            fault_cases+=1
+        print('PASS',fault_cases,'host failure/64-bit-boundary model cases',flush=True)
     (args.out/'result.json').write_text(json.dumps({'status':'PASS','cases':reports,
         'host_hardware_durability_proven':False,'native_ufs_proven':False,
+        'host_failure_model_cases':fault_cases,
         'oversize_real_file_case_selected':bool(args.case and 9 in args.case)},indent=2)+'\n')
 
 

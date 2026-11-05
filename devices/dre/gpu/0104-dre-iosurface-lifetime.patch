@@ -1,0 +1,265 @@
+--- a/iokit/Kernel/arm/SweetSurface.cpp
++++ b/iokit/Kernel/arm/SweetSurface.cpp
+@@ -22,8 +22,9 @@
+  * into each task that creates or looks it up; mappings are counted per
+  * client and dropped on release or close.
+  *
+- * Values, notifications, accelerators and shared events are accepted and
+- * ignored (logged once per selector).
++ * CPU metadata compatibility remains limited. Accelerator/shared-event calls
++ * return unsupported until real native providers exist. Use counts and mapping
++ * result lifetimes are implemented independently of GPU synchronization.
+  */
+ #include "SweetSurface.h"
+ 
+@@ -64,6 +65,7 @@
+ #define DRE_SURFACE_MAX_PROPS         (64u << 10)
+ #define DRE_SURFACE_ROW_ALIGN         64
+ #define DRE_SURFACE_TIMESTAMPS        0x800   /* offset in the state page */
++#define DRE_SURFACE_STATE_USECOUNT    0x18  /* packed u32 categories 0 and 1 */
+ #define DRE_SURFACE_STATE_SEED        0xc     /* u32 in the state page */
+ #define kIOSurfaceLockReadOnly          0x1
+ 
+@@ -108,6 +110,33 @@
+ sweet_surface_seed(SweetSurface *s)
+ {
+ 	return (uint32_t *)((uint8_t *)s->state->getBytesNoCopy() + DRE_SURFACE_STATE_SEED);
++}
++
++/* CPU metadata only: this does not wait for a GPU or perform DMA cache
++ * ownership transfer. The state page is user read-only, and the two category
++ * counters are published in one aligned atomic store for framework readers. */
++static IOReturn
++sweet_surface_use_change(SweetSurface *s, uint32_t category, uint32_t amount, bool add)
++{
++    if (category >= 2) {
++        return kIOReturnBadArgument;
++    }
++    uint64_t *shared = (uint64_t *)((uint8_t *)s->state->getBytesNoCopy() +
++        DRE_SURFACE_STATE_USECOUNT);
++    IOReturn ret = kIOReturnSuccess;
++    IOLockLock(sweet_surface_lock);
++    uint64_t packed = __atomic_load_n(shared, __ATOMIC_RELAXED);
++    uint32_t current = (uint32_t)(packed >> (32 * category));
++    if ((add && amount > UINT32_MAX - current) || (!add && amount > current)) {
++        ret = add ? kIOReturnNoResources : kIOReturnBadArgument;
++    } else {
++        uint32_t next = add ? current + amount : current - amount;
++        uint64_t mask = UINT64_C(0xffffffff) << (32 * category);
++        packed = (packed & ~mask) | ((uint64_t)next << (32 * category));
++        __atomic_store_n(shared, packed, __ATOMIC_RELEASE);
++    }
++    IOLockUnlock(sweet_surface_lock);
++    return ret;
+ }
+ 
+ /*
+@@ -357,6 +386,7 @@
+ 	IOMemoryMap  *data;
+ 	IOMemoryMap  *state;
+ 	uint32_t      count;
++    uint32_t      useCount[2];
+ 
+ 	bool init() APPLE_KEXT_OVERRIDE { return OSObject::init(); }
+ 	void free() APPLE_KEXT_OVERRIDE;
+@@ -370,6 +400,12 @@
+ 	OSSafeReleaseNULL(data);
+ 	OSSafeReleaseNULL(state);
+ 	if (surface != NULL) {
++        for (uint32_t category = 0; category < 2; category++) {
++            if (useCount[category] != 0) {
++                sweet_surface_use_change(surface, category, useCount[category], false);
++                useCount[category] = 0;
++            }
++        }
+ 		sweet_surface_put(surface);
+ 		surface->release();
+ 		surface = NULL;
+@@ -405,6 +441,7 @@
+ 	task_t   fTask;
+ 	IOLock  *fLock;
+ 	OSArray *fRefs;
++    bool     fClosed;
+ 
+ 	SweetSurfaceRef *findRef(uint32_t id, unsigned int *index);
+ 	IOReturn addRef(SweetSurface *s, SweetSurfaceRef **refOut, bool *existing);
+@@ -420,7 +457,9 @@
+ 	    void *reference) APPLE_KEXT_OVERRIDE;
+ 	IOExternalTrap *getTargetAndTrapForIndex(IOService **targetP, UInt32 index) APPLE_KEXT_OVERRIDE;
+ 
+-	IOReturn trapUseCount(void *id, void *category, void *, void *, void *, void *);
++	IOReturn changeUseCount(uint32_t id, uint32_t category, bool add);
++    IOReturn trapIncrementUse(void *id, void *category, void *, void *, void *, void *);
++    IOReturn trapDecrementUse(void *id, void *category, void *, void *, void *, void *);
+ 	IOReturn trapLock(void *id, void *options, void *seedOut, void *, void *, void *);
+ 	IOReturn trapUnlock(void *id, void *options, void *seedOut, void *, void *, void *);
+ 	IOReturn trapRelease(void *id, void *, void *, void *, void *, void *);
+@@ -450,6 +489,7 @@
+ 		return false;
+ 	}
+ 	fTask = owningTask;
++    fClosed = false;
+ 	fLock = IOLockAlloc();
+ 	fRefs = OSArray::withCapacity(16);
+ 	return fLock != NULL && fRefs != NULL;
+@@ -470,6 +510,7 @@
+ IOSurfaceRootUserClient::clientClose(void)
+ {
+ 	IOLockLock(fLock);
++    fClosed = true;
+ 	fRefs->flushCollection();
+ 	IOLockUnlock(fLock);
+ 	terminate();
+@@ -508,8 +549,14 @@
+ {
+ 	*existing = false;
+ 	IOLockLock(fLock);
++    if (fClosed) {
++        IOLockUnlock(fLock);
++        sweet_surface_put(s);
++        return kIOReturnNotOpen;
++    }
+ 	SweetSurfaceRef *ref = findRef(s->id, NULL);
+ 	if (ref != NULL && ref->surface == s) {
++        ref->retain();             /* caller owns this retain across result copy */
+ 		IOLockUnlock(fLock);
+ 		sweet_surface_put(s);
+ 		*refOut = ref;
+@@ -527,6 +574,7 @@
+ 	s->retain();
+ 	ref->surface = s;
+ 	ref->count = 1;
++    ref->useCount[0] = ref->useCount[1] = 0;
+ 	ref->data = s->memory->createMappingInTask(fTask, 0, kIOMapAnywhere | s->mapCache);
+ 	ref->state = s->state->createMappingInTask(fTask, 0, kIOMapAnywhere | kIOMapReadOnly);
+ 	if (ref->data == NULL || ref->state == NULL) {
+@@ -534,18 +582,29 @@
+ 		return kIOReturnVMError;
+ 	}
+ 	IOLockLock(fLock);
++    if (fClosed) {
++        IOLockUnlock(fLock);
++        ref->release();
++        return kIOReturnNotOpen;
++    }
+ 	SweetSurfaceRef *raced = findRef(s->id, NULL);
+ 	if (raced != NULL && raced->surface == s) {
+-		/* Another thread mapped it meanwhile: count there, drop ours. */
+-		raced->count++;
++        /* Same cached-client result as the initial lookup path. The losing
++         * mapping owns only its incoming user count and is released below. */
++        raced->retain();
+ 		IOLockUnlock(fLock);
+ 		ref->release();
+ 		*refOut = raced;
++        *existing = true;
+ 		return kIOReturnSuccess;
+ 	}
+-	fRefs->setObject(ref);
++    if (!fRefs->setObject(ref)) {
++        IOLockUnlock(fLock);
++        ref->release();
++        return kIOReturnNoMemory;
++    }
+ 	IOLockUnlock(fLock);
+-	ref->release();         /* fRefs holds it */
++    /* fRefs owns one retain; return the allocation retain to the caller. */
+ 	*refOut = ref;
+ 	return kIOReturnSuccess;
+ }
+@@ -640,9 +699,16 @@
+ 		IOFreeData(out, DRE_SURFACE_RESULT_SIZE);
+ 	}
+ 	if (ret != kIOReturnSuccess && !existing) {
+-		/* The caller never learns the id: undo this create/lookup. */
+-		trapRelease((void *)(uintptr_t)s->id, NULL, NULL, NULL, NULL, NULL);
+-	}
++        /* Undo only our exact mapping. A release and a new lookup may have
++         * installed another mapping for this id while the result was built. */
++        unsigned int index;
++        IOLockLock(fLock);
++        if (findRef(s->id, &index) == ref) {
++            fRefs->removeObject(index);
++        }
++        IOLockUnlock(fLock);
++	}
++    ref->release();
+ 	return ret;
+ }
+ 
+@@ -772,8 +838,19 @@
+ 		sweet_surf_log_once("sel", selector);
+ 		return kIOReturnSuccess;
+ 	}
++    case 12: /* BindAccel: no native accelerator attachment provider */
++    case 36: case 37: case 38: /* shared-event create/signal/map family */
++    case 39: case 40: case 41: case 42: case 45: /* event/accelerator operations */
++        for (uint32_t i = 0; i < args->scalarOutputCount; i++) {
++            args->scalarOutput[i] = 0;
++        }
++        if (args->structureOutput != NULL) {
++            bzero(args->structureOutput, args->structureOutputSize);
++        }
++        sweet_surf_log_once("unsupported", selector);
++        return kIOReturnUnsupported;
+ 	default:
+-		/* Values, notifications, ownership, timestamps...: accept and ignore. */
++		/* Existing CPU metadata compatibility; not a GPU capability claim. */
+ 		for (uint32_t i = 0; i < args->scalarOutputCount; i++) {
+ 			args->scalarOutput[i] = 0;
+ 		}
+@@ -786,10 +863,41 @@
+ }
+ 
+ IOReturn
+-IOSurfaceRootUserClient::trapUseCount(__unused void *id, __unused void *category,
++IOSurfaceRootUserClient::changeUseCount(uint32_t id, uint32_t category, bool add)
++{
++    if (category >= 2) {
++        return kIOReturnBadArgument;
++    }
++    IOLockLock(fLock);
++    SweetSurfaceRef *ref = findRef(id, NULL);
++    IOReturn ret = kIOReturnNotFound;
++    if (ref != NULL) {
++        uint32_t current = ref->useCount[category];
++        if ((add && current == UINT32_MAX) || (!add && current == 0)) {
++            ret = add ? kIOReturnNoResources : kIOReturnBadArgument;
++        } else {
++            ret = sweet_surface_use_change(ref->surface, category, 1, add);
++            if (ret == kIOReturnSuccess) {
++                ref->useCount[category] = add ? current + 1 : current - 1;
++            }
++        }
++    }
++    IOLockUnlock(fLock);
++    return ret;
++}
++
++IOReturn
++IOSurfaceRootUserClient::trapIncrementUse(void *id, void *category,
+     void *, void *, void *, void *)
+ {
+-	return kIOReturnSuccess;
++    return changeUseCount((uint32_t)(uintptr_t)id, (uint32_t)(uintptr_t)category, true);
++}
++
++IOReturn
++IOSurfaceRootUserClient::trapDecrementUse(void *id, void *category,
++    void *, void *, void *, void *)
++{
++    return changeUseCount((uint32_t)(uintptr_t)id, (uint32_t)(uintptr_t)category, false);
+ }
+ 
+ static IOReturn
+@@ -862,8 +970,8 @@
+ }
+ 
+ static IOExternalTrap sweet_surface_traps[] = {
+-	[kSweetSurfaceTrapIncrementUse]  = { NULL, (IOTrap) & IOSurfaceRootUserClient::trapUseCount },
+-	[kSweetSurfaceTrapDecrementUse]  = { NULL, (IOTrap) & IOSurfaceRootUserClient::trapUseCount },
++	[kSweetSurfaceTrapIncrementUse]  = { NULL, (IOTrap) & IOSurfaceRootUserClient::trapIncrementUse },
++	[kSweetSurfaceTrapDecrementUse]  = { NULL, (IOTrap) & IOSurfaceRootUserClient::trapDecrementUse },
+ 	[kSweetSurfaceTrapLock]          = { NULL, (IOTrap) & IOSurfaceRootUserClient::trapLock },
+ 	[kSweetSurfaceTrapUnlock]        = { NULL, (IOTrap) & IOSurfaceRootUserClient::trapUnlock },
+ 	[kSweetSurfaceTrapRelease]       = { NULL, (IOTrap) & IOSurfaceRootUserClient::trapRelease },

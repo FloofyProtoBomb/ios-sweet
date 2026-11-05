@@ -17,6 +17,8 @@ ap.add_argument('--zig',default='zig')
 ap.add_argument('--out',required=True,type=Path)
 ap.add_argument('--firmware',type=Path)
 ap.add_argument('--firmware-manifest',type=Path)
+ap.add_argument('--zap',type=Path)
+ap.add_argument('--zap-mdt',type=Path)
 args=ap.parse_args()
 args.out.mkdir(parents=True,exist_ok=True)
 binary=args.out/('test-a619-backend.exe' if sys.platform=='win32' else 'test-a619-backend')
@@ -35,7 +37,39 @@ power=args.out/('test-a619-power.exe' if sys.platform=='win32' else 'test-a619-p
 subprocess.run([args.zig,'cc','-O2','-Wall','-Wextra','-Werror',str(HERE/'a619_holi_power.c'),
     str(HERE/'test_a619_holi_power.c'),'-o',str(power)],check=True)
 subprocess.run([str(power.resolve())],check=True)
+zap=args.out/('test-a619-zap.exe' if sys.platform=='win32' else 'test-a619-zap')
+subprocess.run([args.zig,'cc','-O2','-Wall','-Wextra','-Werror',str(HERE/'a619_zap.c'),
+    str(HERE/'test_a619_zap.c'),'-o',str(zap)],check=True)
+zap_extra=[]
+if args.zap or args.zap_mdt:
+    if not args.zap or not args.zap_mdt or not args.firmware_manifest:
+        ap.error('--zap and --zap-mdt require each other and --firmware-manifest')
+    entries=json.loads(args.firmware_manifest.read_text())
+    for name,path in [('a615_zap.elf',args.zap),('a615_zap.mdt',args.zap_mdt)]:
+        entry=next(e for e in entries if e['name']==name)
+        assert path.stat().st_size==entry['bytes']
+        assert hashlib.file_digest(path.open('rb'),'sha256').hexdigest()==entry['sha256']
+    zap_extra=[str(args.zap),str(args.zap_mdt)]
+subprocess.run([str(zap.resolve()),*zap_extra],check=True)
+pas=args.out/('test-a619-pas13.exe' if sys.platform=='win32' else 'test-a619-pas13')
+subprocess.run([args.zig,'cc','-O2','-Wall','-Wextra','-Werror',str(HERE/'a619_zap.c'),
+    str(HERE/'a619_pas13.c'),str(HERE/'test_a619_pas13.c'),'-o',str(pas)],check=True)
+subprocess.run([str(pas.resolve())],check=True)
+smmu=args.out/('test-a619-smmu.exe' if sys.platform=='win32' else 'test-a619-smmu')
+subprocess.run([args.zig,'cc','-O2','-Wall','-Wextra','-Werror',str(HERE/'a619_smmu.c'),
+    str(HERE/'test_a619_smmu.c'),'-o',str(smmu)],check=True)
+subprocess.run([str(smmu.resolve())],check=True)
 for target,suffix in [('aarch64-linux-musl','o'),('aarch64-macos-none','macho.o')]:
+    subprocess.run([args.zig,'cc','-target',target,'-ffreestanding','-fno-builtin',
+        '-mgeneral-regs-only','-mstrict-align','-O2','-Wall','-Wextra','-Werror','-c',
+        str(HERE/'a619_smmu.c'),'-o',str(args.out/('a619_smmu.'+suffix))],check=True)
+    for source in ['a619_pas13','a619_smc64']:
+        subprocess.run([args.zig,'cc','-target',target,'-ffreestanding','-fno-builtin',
+            '-mgeneral-regs-only','-mstrict-align','-O2','-Wall','-Wextra','-Werror','-c',
+            str(HERE/(source+'.c')),'-o',str(args.out/(source+'.'+suffix))],check=True)
+    subprocess.run([args.zig,'cc','-target',target,'-ffreestanding','-fno-builtin',
+        '-mgeneral-regs-only','-mstrict-align','-O2','-Wall','-Wextra','-Werror','-c',
+        str(HERE/'a619_zap.c'),'-o',str(args.out/('a619_zap.'+suffix))],check=True)
     subprocess.run([args.zig,'cc','-target',target,'-ffreestanding','-fno-builtin',
         '-mgeneral-regs-only','-mstrict-align','-O2','-Wall','-Wextra','-Werror','-c',
         str(HERE/'a619_holi_power.c'),'-o',str(args.out/('a619_holi_power.'+suffix))],check=True)

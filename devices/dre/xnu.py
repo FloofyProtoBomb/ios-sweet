@@ -164,7 +164,10 @@ def embed(kernel, out, init_obj, donor=False, identity_path=None,
     if native_ufs:
         cmdline += " dre_ufs=1"
     if install_root:
+        # mkiosroot intentionally edits launchd.plist for this local port.
+        # The stock loader otherwise insists on its signed AMFI-backed cache.
         cmdline += (' dre_ufs_rw=1 rootrw=1 unentitled_ios_sim_launch=1 ignition_level=1'
+                    ' launchd_unsecure_cache=1'
                     ' sweetfb_noconsole=1 sweetfb_hz=30')
     if len(cmdline.encode()) >= 608: raise ValueError('boot arguments exceed shim limit')
     data, _ = mkpayload.build(str(kernel), str(adt_path), cmdline, str(ramdisk) if ramdisk else None)

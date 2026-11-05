@@ -114,7 +114,12 @@ def stage(out, profile="bringup"):
             continue
         (out / local.name).write_bytes(local.read_bytes())
     if profile == "ui":
-        for local in (Path(__file__).parent / "ui").glob("*.patch"):
+        here = Path(__file__).parent
+        ui_patches = list((here / "ui").glob("*.patch"))
+        # This reviewed runtime patch fixes the common IOSurface implementation;
+        # it neither starts Adreno nor advertises a native Metal provider.
+        ui_patches.append(here / "gpu/0104-dre-iosurface-lifetime.patch")
+        for local in sorted(ui_patches):
             content = local.read_bytes()
             if local.name.startswith('0103-'):
                 content += native_storage_assets().encode()

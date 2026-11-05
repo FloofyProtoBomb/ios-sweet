@@ -2,7 +2,7 @@
 // End-to-end acceptance test, not a Metal implementation or GPU emulator.
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
-#import <IOSurface/IOSurface.h>
+#import <CoreVideo/CoreVideo.h>
 #import <dispatch/dispatch.h>
 #include <sys/sysctl.h>
 #include <stdint.h>
@@ -105,29 +105,48 @@ static BOOL pixels(const void *memory, size_t rowBytes)
     }
     return YES;
 }
+static void releaseSurface(CVPixelBufferRef pixel, CVMetalTextureCacheRef cache, CVMetalTextureRef texture)
+{
+    if (texture) CFRelease(texture);
+    if (cache) CFRelease(cache);
+    if (pixel) CVPixelBufferRelease(pixel);
+}
 static BOOL render(id<MTLDevice> device, id<MTLCommandQueue> queue,
     id<MTLLibrary> library, BOOL sharedSurface, NSError **error)
 {
     MTLTextureDescriptor *desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
         width:64 height:64 mipmapped:NO];
     desc.usage = MTLTextureUsageRenderTarget;
-    desc.storageMode = sharedSurface ? MTLStorageModeShared : MTLStorageModePrivate;
-    IOSurfaceRef surface = NULL;
+    desc.storageMode = MTLStorageModePrivate;
+    CVPixelBufferRef pixel = NULL;
+    CVMetalTextureCacheRef cache = NULL;
+    CVMetalTextureRef cvTexture = NULL;
     id<MTLTexture> texture;
     if (sharedSurface) {
         NSDictionary *properties = @{
-            (__bridge NSString *)kIOSurfaceWidth:@64, (__bridge NSString *)kIOSurfaceHeight:@64,
-            (__bridge NSString *)kIOSurfaceBytesPerElement:@4, (__bridge NSString *)kIOSurfaceBytesPerRow:@256,
-            (__bridge NSString *)kIOSurfaceAllocSize:@16384, (__bridge NSString *)kIOSurfacePixelFormat:@(0x42475241u)};
-        surface = IOSurfaceCreate((__bridge CFDictionaryRef)properties);
-        if (!surface) return NO;
-        texture = [device newTextureWithDescriptor:desc iosurface:surface plane:0];
+            (__bridge NSString *)kCVPixelBufferMetalCompatibilityKey:@YES,
+            (__bridge NSString *)kCVPixelBufferIOSurfacePropertiesKey:@{},
+            (__bridge NSString *)kCVPixelBufferBytesPerRowAlignmentKey:@256};
+        NSDictionary *textureProperties = @{
+            (__bridge NSString *)kCVMetalTextureUsage:@(MTLTextureUsageRenderTarget)};
+        if (CVPixelBufferCreate(kCFAllocatorDefault, 64, 64, kCVPixelFormatType_32BGRA,
+                (__bridge CFDictionaryRef)properties, &pixel) != kCVReturnSuccess || !pixel ||
+            !CVPixelBufferGetIOSurface(pixel) ||
+            CVMetalTextureCacheCreate(kCFAllocatorDefault, NULL, device, NULL, &cache) != kCVReturnSuccess || !cache ||
+            CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, cache, pixel,
+                (__bridge CFDictionaryRef)textureProperties, MTLPixelFormatBGRA8Unorm, 64, 64, 0,
+                &cvTexture) != kCVReturnSuccess || !cvTexture) {
+            releaseSurface(pixel,cache,cvTexture); return NO;
+        }
+        texture = CVMetalTextureGetTexture(cvTexture);
     } else texture = [device newTextureWithDescriptor:desc];
-    if (!texture) { if (surface) CFRelease(surface); return NO; }
+    if (!texture) { releaseSurface(pixel,cache,cvTexture); return NO; }
     id<MTLCommandBuffer> commands = [queue commandBuffer];
-    if (!encodeRender(device, library, texture, commands, error)) { if (surface) CFRelease(surface); return NO; }
+    if (!encodeRender(device, library, texture, commands, error)) {
+        releaseSurface(pixel,cache,cvTexture); return NO;
+    }
     id<MTLBuffer> readback = nil;
-    if (!surface) {
+    if (!pixel) {
         readback = [device newBufferWithLength:16384 options:MTLResourceStorageModeShared];
         id<MTLBlitCommandEncoder> blit = [commands blitCommandEncoder];
         if (!readback || !blit) return NO;
@@ -135,16 +154,23 @@ static BOOL render(id<MTLDevice> device, id<MTLCommandQueue> queue,
             sourceSize:MTLSizeMake(64, 64, 1) toBuffer:readback destinationOffset:0
             destinationBytesPerRow:256 destinationBytesPerImage:16384];
         [blit endEncoding];
+    } else {
+        // Core Video requires its wrapper retained until GPU completion. Keep
+        // these references even if the five-second wait returns a timeout.
+        CVPixelBufferRetain(pixel); CFRetain(cache); CFRetain(cvTexture);
+        [commands addCompletedHandler:^(id<MTLCommandBuffer> unused) {
+            (void)unused; releaseSurface(pixel,cache,cvTexture);
+        }];
     }
     BOOL ok = completed(commands, error);
-    if (ok && surface) {
-        ok = IOSurfaceLock(surface, kIOSurfaceLockReadOnly, NULL) == 0;
+    if (ok && pixel) {
+        ok = CVPixelBufferLockBaseAddress(pixel, kCVPixelBufferLock_ReadOnly) == kCVReturnSuccess;
         if (ok) {
-            ok = pixels(IOSurfaceGetBaseAddress(surface), IOSurfaceGetBytesPerRow(surface));
-            IOSurfaceUnlock(surface, kIOSurfaceLockReadOnly, NULL);
+            ok = pixels(CVPixelBufferGetBaseAddress(pixel), CVPixelBufferGetBytesPerRow(pixel));
+            if (CVPixelBufferUnlockBaseAddress(pixel, kCVPixelBufferLock_ReadOnly) != kCVReturnSuccess) ok = NO;
         }
     } else if (ok) ok = pixels(readback.contents, 256);
-    if (surface) CFRelease(surface);
+    releaseSurface(pixel,cache,cvTexture);
     return ok;
 }
 static int writeReport(NSMutableDictionary *report, NSString *path, int result)
@@ -174,7 +200,7 @@ int main(int argc, const char **argv)
             uint64_t submitted = 0, retired = 0;
             if (!counter("kern.dre_gpu_chip_id", &chip, sizeof(chip)) || chip != 0x06010900 ||
                 !counter("kern.dre_gpu_submitted", &submitted, sizeof(submitted)) ||
-                !counter("kern.dre_gpu_completed", &retired, sizeof(retired)))
+                !counter("kern.dre_gpu_completed", &retired, sizeof(retired)) || retired > submitted)
                 return writeReport(report, path, 1);
             report[@"stage"] = @"offline_library";
             id<MTLLibrary> offline = [device newLibraryWithFile:[NSString stringWithUTF8String:argv[1]] error:&error];
@@ -202,7 +228,7 @@ int main(int argc, const char **argv)
             uint64_t afterSubmitted = 0, afterRetired = 0;
             if (!counter("kern.dre_gpu_submitted", &afterSubmitted, sizeof(afterSubmitted)) ||
                 !counter("kern.dre_gpu_completed", &afterRetired, sizeof(afterRetired)) ||
-                afterSubmitted < submitted || afterRetired < retired ||
+                afterSubmitted < submitted || afterRetired < retired || afterRetired > afterSubmitted ||
                 afterSubmitted - submitted < 4 || afterRetired - retired < 4)
                 return writeReport(report,path,1);
             report[@"native_submissions_delta"] = @(afterSubmitted - submitted);

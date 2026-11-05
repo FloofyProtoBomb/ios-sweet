@@ -55,6 +55,10 @@ def main():
     ap.add_argument("--native-ufs", action="store_true", help="transfer owned DMA memory to the opt-in native read-only XNU driver")
     ap.add_argument("--install-root", action="store_true",
                     help="boot writable iOS from userdata; no diagnostic RAM root (requires private product ADT)")
+    ap.add_argument("--quiet-boot", action="store_true",
+                    help="hide normal XNU console output on install boots while retaining panics")
+    ap.add_argument("--panel-hz", type=int, choices=(45, 60, 90),
+                    help="target a known panel mode with software vsync; does not set the panel mode")
     ap.add_argument("--ufs-read-test", action="store_true",
                     help="read capacity/GPT on LUN 0 only if physical DMA is verified")
     ap.add_argument("--touch-preflight", action="store_true",
@@ -69,6 +73,8 @@ def main():
     ap.add_argument("--gpu-firmware-relocated", action="store_true",
                     help="opt-in v2 boot-held aligned PAS13 load arena; requires private firmware provisioning and real relocated-PAS policy")
     args = ap.parse_args()
+    if args.quiet_boot and not args.install_root:
+        ap.error("--quiet-boot requires --install-root")
     if args.install_root:
         if not args.xnu or not args.product_adt:
             ap.error('--install-root requires --xnu and --product-adt')
@@ -99,6 +105,8 @@ def main():
         ap.error("--native-ufs requires --ufs-handoff-read and --ui-services")
     if (args.ui_services or args.product_adt) and not args.xnu:
         ap.error("--ui-services/--product-adt require a native UI/SMP kernel via --xnu")
+    if args.panel_hz is not None and not args.ui_services:
+        ap.error("--panel-hz requires --ui-services")
     if (args.cpus != 1 or args.product_adt) and not args.ui_services:
         ap.error("--cpus >1 and --product-adt require --ui-services")
     if args.ram_mib != 512 and not args.ui_services:
@@ -194,7 +202,8 @@ def main():
               ui=args.ui_services, cpus=args.cpus, product_path=args.product_adt,
               native_ufs=args.native_ufs, ram_mib=args.ram_mib, install_root=args.install_root,
               gpu_firmware=gpu_firmware is not None,
-              gpu_firmware_relocated=args.gpu_firmware_relocated)
+              gpu_firmware_relocated=args.gpu_firmware_relocated,
+              quiet_boot=args.quiet_boot, panel_hz=args.panel_hz)
         if gpu_firmware is not None:
             # Private output only. The kernel anchor was matched before any
             # compilation. No default image, source digest or boot argument
@@ -254,6 +263,10 @@ def main():
             'product_metadata_imported': args.product_adt is not None,
             'image_sha256': hashlib.sha256(output.read_bytes()).hexdigest(),
             'kernel_sha256': hashlib.sha256(kernel.read_bytes()).hexdigest() if kernel else None}
+    if args.quiet_boot:
+        info['quiet_boot'] = True
+    if args.panel_hz is not None:
+        info['software_vsync_hz'] = args.panel_hz
     if gpu_firmware is not None:
         info.update(private_gpu_firmware_provisioned=True, gpu_firmware_source="UNVALIDATED_OPT_IN",
                     gpu_firmware_handoff_version=2 if args.gpu_firmware_relocated else 1,

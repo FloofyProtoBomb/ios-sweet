@@ -141,7 +141,7 @@ def tree(identity=None, ui=False, cpus=1, product_path=None, native_ufs=False, r
 
 def embed(kernel, out, init_obj, donor=False, identity_path=None,
           ui=False, cpus=1, product_path=None, native_ufs=False, ram_mib=512, install_root=False,
-          gpu_firmware=False, gpu_firmware_relocated=False):
+          gpu_firmware=False, gpu_firmware_relocated=False, quiet_boot=False, panel_hz=None):
     data = kernel.read_bytes()
     if donor:
         data = retarget(data)
@@ -160,6 +160,10 @@ def embed(kernel, out, init_obj, donor=False, identity_path=None,
     if install_root and (not native_ufs or not ui or not product_path or
         b'DRE UFS: userdata read-write enabled' not in data):
         raise ValueError('--install-root requires UI, product metadata and a userdata-RW native kernel')
+    if quiet_boot and (not install_root or b"dre_quiet_boot\0" not in data):
+        raise ValueError("--quiet-boot requires an install-root kernel with quiet-console support")
+    if panel_hz is not None and (not ui or panel_hz not in (45, 60, 90) or b"dre_panel_hz\0" not in data):
+        raise ValueError("--panel-hz requires a supported mode and a kernel with DRE vsync timing support")
     if gpu_firmware and (not native_ufs or not ui or donor or not all(marker in data for marker in
         (b'_dre_gpu_fw_native_load\0', b'_dre_gpu_fw_trusted_anchor\0'))):
         raise ValueError('private GPU firmware requires actual optional native firmware sources in the target kernel')
@@ -176,7 +180,8 @@ def embed(kernel, out, init_obj, donor=False, identity_path=None,
         ramdisk = out / "dre-init.macho"
         ramdisk.write_bytes(mkinit.build(init_obj.read_bytes()))
     root_device = 'ufsroot0' if install_root else 'md0'
-    cmdline = f"debug=0xc serial=3 cpus={cpus} keepsyms=1 -enable_kprintf_spam -noprogress rd={root_device}"
+    console = "dre_quiet_boot=1" if quiet_boot else "-enable_kprintf_spam"
+    cmdline = f"debug=0xc serial=3 cpus={cpus} keepsyms=1 {console} -noprogress rd={root_device}"
     if ui:
         cmdline += " msgbuf=65536"  # Retain driver-start records until diagnostic PID 1.
     if native_ufs:
@@ -187,6 +192,8 @@ def embed(kernel, out, init_obj, donor=False, identity_path=None,
         cmdline += (' dre_ufs_rw=1 rootrw=1 unentitled_ios_sim_launch=1 ignition_level=1'
                     ' launchd_unsecure_cache=1'
                     ' sweetfb_noconsole=1 sweetfb_hz=30')
+    if panel_hz is not None:
+        cmdline += f" dre_panel_hz={panel_hz}"
     if len(cmdline.encode()) >= 608: raise ValueError('boot arguments exceed shim limit')
     data, _ = mkpayload.build(str(kernel), str(adt_path), cmdline, str(ramdisk) if ramdisk else None)
     (out / "payload.bin").write_bytes(data)

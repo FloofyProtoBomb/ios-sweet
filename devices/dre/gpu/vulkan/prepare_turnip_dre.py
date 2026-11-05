@@ -111,8 +111,10 @@ def prepare(args, out: Path) -> dict:
         "#define TU_DRE_NO_LEGACY_DIAGNOSTICS 1\n"
         "#if defined(__APPLE__) && !defined(TU_DRE_NO_LEGACY_DIAGNOSTICS)\n")
     header = vulkan / "tu_device.h"
-    replace_once(header, "struct tu_physical_device\n{\n",
-        "struct tu_physical_device\n{\n   uint64_t dre_reset_generation; /* DRE native epoch, never a fabricated ID */\n")
+    # Mesa's Vulkan handle cast requires vk.base at offset zero.
+    replace_once(header, "};\nVK_DEFINE_HANDLE_CASTS(tu_physical_device, vk.base,",
+        "   uint64_t dre_reset_generation; /* DRE native epoch */\n"
+        "};\nVK_DEFINE_HANDLE_CASTS(tu_physical_device, vk.base,")
     knl_header = vulkan / "tu_knl.h"
     replace_once(knl_header, "VkResult tu_knl_darwin_load(struct tu_instance *instance);",
         "VkResult tu_knl_darwin_load(struct tu_instance *instance);\n"

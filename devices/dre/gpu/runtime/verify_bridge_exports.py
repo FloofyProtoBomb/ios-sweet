@@ -54,7 +54,9 @@ def verify(archive: Path, contract: Path, nm: Path, out: Path) -> dict:
     with archive.open("rb") as stream:
         if stream.read(8) != b"!<arch>\n":
             raise ValueError("input is not a real static archive")
-    args = [str(nm), "--extern-only", "--defined-only", "--format=posix", str(archive)]
+    # Check native definitions directly. Rust's embedded LLVM bitcode can be
+    # newer than the LLVM assembler selected for the Metal compiler.
+    args = [str(nm), "--no-llvm-bc", "--extern-only", "--defined-only", "--format=posix", str(archive)]
     result = subprocess.run(args, capture_output=True, text=True, timeout=120, check=True)
     (out / "bridge-exports.log").write_text(result.stdout + result.stderr, encoding="utf-8")
     report = compare(json.loads(contract.read_text(encoding="utf-8")), result.stdout)

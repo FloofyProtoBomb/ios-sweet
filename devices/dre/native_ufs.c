@@ -245,26 +245,29 @@ static void disk_strategy_common(buf_t bp, int user_buffer)
         unsigned skip = position % 4096;
         uint32_t take = MIN(count - done, 4096u - skip);
         if (block > UINT32_MAX) { error = EINVAL; break; }
-        set_state("READ", "BEGIN");
-        if (virtual_disk) {
-            if (block == 1 || block == 2) memcpy(bounce, virtual_gpt + (block - 1) * 4096, 4096);
-            else if (virtual_disk == 2 && block >= 100 && block - 100 < media.userdata_blocks) {
-                if (!dre_qemu_disk_read(block - 100, bounce)) error = EIO;
-            } else if (virtual_disk == 1 && block >= 100 && block < 200)
-                memcpy(bounce, virtual_userdata + (block - 100) * 4096, 4096);
-            else memset(bounce, (uint8_t)block, sizeof(bounce));
-        } else {
-            error = check_result(dre_ufs_read_block_guarded(&dma.route, &media,
-                native_guard, &dma, (uint32_t)block, bounce), "READ_PASS");
+        /* Partial writes must preserve the other sectors. A full 4 KiB
+         * write replaces every byte of the bounce block before submission. */
+        if (reading || take != sizeof(bounce)) {
+            set_state("READ", "BEGIN");
+            if (virtual_disk) {
+                if (block == 1 || block == 2) memcpy(bounce, virtual_gpt + (block - 1) * 4096, 4096);
+                else if (virtual_disk == 2 && block >= 100 && block - 100 < media.userdata_blocks) {
+                    if (!dre_qemu_disk_read(block - 100, bounce)) error = EIO;
+                } else if (virtual_disk == 1 && block >= 100 && block < 200)
+                    memcpy(bounce, virtual_userdata + (block - 100) * 4096, 4096);
+                else memset(bounce, (uint8_t)block, sizeof(bounce));
+            } else {
+                error = check_result(dre_ufs_read_block_guarded(&dma.route, &media,
+                    native_guard, &dma, (uint32_t)block, bounce), "READ_PASS");
+            }
+            if (error) break;
         }
-        if (error) break;
         if (reading) {
             if (user_buffer) error = copyout(bounce + skip, (user_addr_t)(uintptr_t)mapped + done, take);
             else memcpy(mapped + done, bounce + skip, take);
             if (error) { set_state("READ", "COPYOUT_FAILED"); break; }
         } else {
-            /* Read-modify-write preserves the other512-byte sectors within
-             * one native4K block. physio wires user input before our lock. */
+            /* physio wires user input before our lock. */
             if (user_buffer) error = copyin((user_addr_t)(uintptr_t)mapped + done, bounce + skip, take);
             else memcpy(bounce + skip, mapped + done, take);
             if (error) { set_state("WRITE", "COPYIN_FAILED"); break; }

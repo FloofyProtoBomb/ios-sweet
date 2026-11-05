@@ -1,0 +1,324 @@
+{
+  "schema": 1,
+  "orchestrator": {
+    "repository": "https://github.com/UniXNU/UniXNU",
+    "commit": "32446c8f15722e583f9353d4f22bcfcb0f9ad695",
+    "files": {
+      "scripts/build-adreno-metal-bridge.py": "4d095c98eb50b35c938bb98fcfa43744997fc89ac9a10cd13d5a0da67af99fdb",
+      "scripts/build-turnip-darwin.py": "930ffaf18447c721e50585501493d2095bc959b774a92be417feb82f66021511",
+      "scripts/data/gpu-metal-vulkan-inputs.json": "fd0392a2512092ffe9bbaffaaafa93083607173af7703849998bc3464c6b3051",
+      "scripts/data/adreno-compiler-inputs.json": "add783c19b56cf439470d84640ddc4c14ef8336b12e89c519d6cbc43d53869bb"
+    }
+  },
+  "frontend_assets": {
+    "bridge/NativeMetalBridge.rs": "5a92c3aa596f0776e03be35a9571a4666087cef27e772a4dc16b1a75d1ac8e88",
+    "bridge/NativeMetalBridge.h": "5deb52c8cbb9097e8431f719cced1b534eed5a1e87410ca86f78478c09b08448",
+    "shaders/scanout_convert.ll": "a7d2660ec3b3e0f88db02e1942f9b30f2df710020188d6f03d7b5cb0fb0df446"
+  },
+  "translator": {
+    "repository": "https://github.com/steelbrain/metal2vulkan",
+    "commit": "624bab3918de5b978e1101517abca2b4fa426565",
+    "branch": "development",
+    "clone": "depth 1, blob filter, checked out source",
+    "files": {
+      "README.md": "0df40b723fd5ea51ca91b9e59fa5dac774015dde128a31b6834c3c8efb69a316",
+      "Cargo.toml": "e2fc374386d6ee10854f9c2996a8c3858cbb4f86f549f15c93dacf20cc4db439",
+      "crates/metal2vulkan/src/device/policy.rs": "1e07afdb2952046d13f593922fae6a27b6f26939912b6abf542645c60653a5e6"
+    }
+  },
+  "bridge_patches": [
+    {
+      "path": "bridge/patches/0001-optional-constant-output-members.patch",
+      "sha256": "af8eadbab4c9bc2576b14abea5308abfbc95aafb33a3c53b72117d3b1e535919",
+      "bytes": 2719
+    },
+    {
+      "path": "bridge/patches/0002-resource-wait-storage-dependencies.patch",
+      "sha256": "bd36d4f0b8bf21a7b409bd65e5d6f1a24397fc1fb24113bbf215c68a9a71a29f",
+      "bytes": 3190
+    },
+    {
+      "path": "bridge/patches/0003-cache-device-entry-point-priming.patch",
+      "sha256": "f865084d147f3111d406a91d2d400fc29f75b9b7381250489efe04b1098f8839",
+      "bytes": 11548
+    },
+    {
+      "path": "bridge/patches/0004-fold-constant-global-field-loads.patch",
+      "sha256": "0783ad2223da6b7c5902c3a128b0cb489e2440cb6eec1ed1a196c2a304b3c4a3",
+      "bytes": 16681
+    },
+    {
+      "path": "bridge/patches/0005-skip-draws-without-a-pipeline.patch",
+      "sha256": "d99f4ef5fe5893b16c4d6aa3548ec8bacf8429a49b3395eee4e2b0f4ec6b290b",
+      "bytes": 1003
+    },
+    {
+      "path": "bridge/patches/0006-batch-barriers-and-key-hash-neutral-maps.patch",
+      "sha256": "bba26d2ef307234c4858b9906f5894e167e640d4bb48d68280e505407b3ac211",
+      "bytes": 4689
+    },
+    {
+      "path": "bridge/patches/0007-optional-shader-cache-directory.patch",
+      "sha256": "cd169276534ec265c10a2dd557ce986ab1d31989aa2624f4787e9a3f2082dcf3",
+      "bytes": 2525
+    },
+    {
+      "path": "bridge/patches/0008-llvm-bitreverse.patch",
+      "sha256": "62fe7871d3695277e46bc2020dd5e2dbd3c1f5ec4e631d2ca69f772b19a4d9dc",
+      "bytes": 2030
+    },
+    {
+      "path": "bridge/patches/0009-patch-with-no-control-points.patch",
+      "sha256": "f5d2a9a864064803a0dac4e9f3ada4235b08433edfe0587ebe023aed9f02e82f",
+      "bytes": 946
+    },
+    {
+      "path": "bridge/patches/0010-core-image-kernel-libraries.patch",
+      "sha256": "8ca93e8f6e31ddfb502df5497ea68480dbcb2fdbafd7b0ea5c6f546e60dbe6e2",
+      "bytes": 3433
+    },
+    {
+      "path": "bridge/patches/0011-two-plane-shadow-as-memory-lies.patch",
+      "sha256": "2b7c8449367ab3a78268101d88640a4328be27ae9b96235c9a1dc1d3cdf20e4a",
+      "bytes": 1845
+    },
+    {
+      "path": "bridge/patches/0012-srgb-extended-range-blend-rounded-model.patch",
+      "sha256": "72ceaa0fff8f3e5d5ac62165eb92048ee6e99004d46f9a3fb067545267009e2d",
+      "bytes": 2094
+    },
+    {
+      "path": "bridge/patches/0013-growing-memory-blocks.patch",
+      "sha256": "f1e4b65499f1a65f135a18d23b3dd5ee61453f599f824c0913e5c6f35b2468c1",
+      "bytes": 5622
+    },
+    {
+      "path": "bridge/patches/0014-in-place-written-textures.patch",
+      "sha256": "22c5374e7672fe0eca9554611c9f0e7f6fa4097f4815d29bc9d75b622ba75673",
+      "bytes": 6155
+    },
+    {
+      "path": "bridge/patches/0015-in-place-written-host-page-textures.patch",
+      "sha256": "10aff3b6d9c31d14cc8486622afc7da53de29f359bc4b3edf0b5efcf9be47369",
+      "bytes": 1698
+    },
+    {
+      "path": "bridge/patches/0016-refuse-rebinds.patch",
+      "sha256": "13caa51b08f68622286de41b6e4232ad364114cf8c93b60336d6158706b36709",
+      "bytes": 3244
+    },
+    {
+      "path": "bridge/patches/0017-heap-texture-size-a-multiple-of-its-alignment.patch",
+      "sha256": "30233bfbd397aef5538a1b797ff1521c26c9d32c32c0f607fa35f53eb92058b0",
+      "bytes": 1439
+    },
+    {
+      "path": "bridge/patches/0018-memory-census-bytes.patch",
+      "sha256": "2fca303f0f9564e8debf7476e35733775ef4be542f107fd580813a68fd772612",
+      "bytes": 3802
+    },
+    {
+      "path": "bridge/patches/0019-allocation-sites.patch",
+      "sha256": "88b59f2bbfca27fbec78f846b3e3725acc616f596d5228633751e686adc25cb3",
+      "bytes": 4790
+    },
+    {
+      "path": "bridge/patches/0020-written-host-page-textures-in-place-at-any-size.patch",
+      "sha256": "fd01025c0f40fba6f8670c75f78b10047c08a442edb696130fa30d86f74faa55",
+      "bytes": 2331
+    },
+    {
+      "path": "bridge/patches/0021-spare-image-blocks-and-room-keeper.patch",
+      "sha256": "cbafb85f2f43fc2302d06bfe2c972283802fa50aa257db09e4dfcc3bf6b36b03",
+      "bytes": 16955
+    },
+    {
+      "path": "bridge/patches/0022-command-buffer-stage-trace.patch",
+      "sha256": "38dd5825a5665eada2a33d40d89881405cb88405feaa250a37a9e1c67ea62406",
+      "bytes": 20135
+    },
+    {
+      "path": "bridge/patches/0023-quality-of-service-on-ios.patch",
+      "sha256": "b134e9d5143ceed52a5c89ad4cc40b0f807b16442ea9ac03d95f2079f6ff17d9",
+      "bytes": 2719
+    },
+    {
+      "path": "bridge/patches/0024-diagnostics-switch-and-submit-steps.patch",
+      "sha256": "d04cd3a19ecd2697dfeccd70d4df998489caf7554acb441d030c34b61844672e",
+      "bytes": 6010
+    },
+    {
+      "path": "bridge/patches/0025-specialized-links-shared-constants-and-allocation-size.patch",
+      "sha256": "f0687027086f72849b3f611c1a5f6158d58c46b7cb8992e2bd2efb5a19778a6e",
+      "bytes": 68994
+    },
+    {
+      "path": "bridge/patches/0026-frame-diagnostic-links.patch",
+      "sha256": "8e39f530daa48045e461253acc77cfbc397d8105b46887e6cbed2f05a81ac6a9",
+      "bytes": 2617
+    },
+    {
+      "path": "bridge/patches/0027-bounded-image-reuse-and-retired-release.patch",
+      "sha256": "7b6c6a4adfb911804ff94e9b721ccd34c8eb0173a9a88ed4d508f52347aac75e",
+      "bytes": 31836
+    },
+    {
+      "path": "bridge/patches/0028-guard-memory-release-test-worker.patch",
+      "sha256": "f601a847e7d392ff08f0476e9594bb56bdb9023c5457ca84bf93a4f2a8e9dcb2",
+      "bytes": 835
+    },
+    {
+      "path": "bridge/patches/0029-latency-stage-selection.patch",
+      "sha256": "ccd35ebd58ef453af715cf8dd80e07020cab23cef2e48f9caa94f076e3ca1f4d",
+      "bytes": 649
+    },
+    {
+      "path": "bridge/patches/0030-spare-image-blocks-give-room.patch",
+      "sha256": "9e7a23a20a4d157e133f51c079511600b8a291a58a86d82e1a7f89f5910ade5f",
+      "bytes": 5795
+    }
+  ],
+  "mesa_recipe": {
+    "repository": "https://gitlab.freedesktop.org/mesa/mesa",
+    "mirror": "https://chromium.googlesource.com/external/gitlab.freedesktop.org/mesa/mesa",
+    "commit": "85fda3b36405bcaea8bffc64aa4f2651dc90770d",
+    "tree": "b72ff1eb2138026ed6aba524770899faabf7d7c8",
+    "sparse_directories": [
+      "bin",
+      "include",
+      "build-support",
+      "subprojects",
+      "src/compiler",
+      "src/freedreno",
+      "src/util",
+      "src/c11",
+      "src/getopt",
+      "src/gtest",
+      "src/gallium/include",
+      "src/gallium/auxiliary/util",
+      "src/gallium/auxiliary/nir",
+      "src/gallium/auxiliary/tgsi",
+      "src/loader",
+      "src/mesa/main",
+      "src/android_stub",
+      "src/amd/common",
+      "src/amd/vulkan/bvh",
+      "src/amd/vulkan/tools",
+      "src/tool",
+      "src/virtio/virtio-gpu",
+      "src/gallium/frontends",
+      "src/gallium/drivers/llvmpipe",
+      "src/vulkan/runtime/bvh",
+      "src/mesa/program",
+      "src/vulkan/util",
+      "src/vulkan",
+      "src/gallium/auxiliary",
+      "src/gbm"
+    ]
+  },
+  "mesa_patches": [
+    {
+      "path": "patches/mesa/freedreno-tools-nir.patch",
+      "sha256": "77e966b6e9a725892d10889a4d8deeefb03a32ae3a007904868132e56350191f",
+      "bytes": 254
+    },
+    {
+      "path": "patches/mesa/ir3-darwin-build-id.patch",
+      "sha256": "be3ca7840a16cb7696d8d7e67195c8d097cf0e38a3b5011edc674a5aed9c6975",
+      "bytes": 734
+    },
+    {
+      "path": "patches/mesa/ir3-portable-asm-roundtrip.patch",
+      "sha256": "bfc5552bc2bd6e1668d75773cce7bf62fd19065e6281bf7da49f9ddfc2e79339",
+      "bytes": 1157
+    },
+    {
+      "path": "patches/mesa/offline-adreno-compiler-probe.patch",
+      "sha256": "b7d7a113beb5ef99edea24858d906194d4b4755c987520545ad2f7f3136bb4fb",
+      "bytes": 2115
+    },
+    {
+      "path": "patches/mesa/turnip-darwin-kmd.patch",
+      "sha256": "da264be322fd914ead493fd24f056213d368c49ff800b79d980e68bc686971c6",
+      "bytes": 79582
+    },
+    {
+      "path": "patches/mesa/turnip-graphics-cache-feedback.patch",
+      "sha256": "07f397e38d9acfb0085db4c19567c84fd8a3bcd63d6fd05192857abfbde5aed2",
+      "bytes": 1083
+    },
+    {
+      "path": "patches/mesa/turnip-empty-scissor.patch",
+      "sha256": "dec657626dcd8e8d3f1447e44574f31e4afb8c90b6ebf7d589ba10ee0f8b6461",
+      "bytes": 867
+    },
+    {
+      "path": "patches/mesa/turnip-builtin-shader-pack.patch",
+      "sha256": "3c606dc99643c3ca3e4736c5783348cd85cbff3fbc55161e53226ab459f34473",
+      "bytes": 18651
+    },
+    {
+      "path": "patches/mesa/turnip-host-import-images.patch",
+      "sha256": "8bc141db41848a59b16493b4ca8a359e0f18f1cad5f14147ff18d15f79c0c3c4",
+      "bytes": 1090
+    },
+    {
+      "path": "patches/mesa/turnip-render-mode-for-attachment-memory.patch",
+      "sha256": "853c6f507b542e8e2d3c8314be0b69b485cde68709272cb9a46268c82a28d42a",
+      "bytes": 6819
+    },
+    {
+      "path": "patches/mesa/turnip-gmem-mutable-swap.patch",
+      "sha256": "92fe61c73cad117c5d98040eee4aafe95c3863407688f00a443b67a19706bfd1",
+      "bytes": 41411
+    },
+    {
+      "path": "patches/mesa/turnip-current-queue-priorities.patch",
+      "sha256": "25a64d842b26336b052720ababd5fa00ef4c6507351e5b75f51492b768593588",
+      "bytes": 4822
+    },
+    {
+      "path": "patches/mesa/turnip-frame-diagnostics.patch",
+      "sha256": "5eb8dda6e381f10fa48b62a9a497fb74a8b08c7999dea5468585c9848b2af966",
+      "bytes": 8592
+    },
+    {
+      "path": "patches/mesa/turnip-transient-attachments-in-gmem.patch",
+      "sha256": "afc6a9b2417d4e2ad56f2965971a039c186e37d59fb72352c2de9959edea8f4e",
+      "bytes": 3200
+    },
+    {
+      "path": "patches/mesa/turnip-gmem-swap-trace.patch",
+      "sha256": "4222e164046329634ffb16be5855e57a050f2c4d3e7ee7ec787efec8e342e3c0",
+      "bytes": 11923
+    },
+    {
+      "path": "patches/mesa/turnip-thread-render-mode.patch",
+      "sha256": "5a567d4c136dae860f0be4880d7446b862c2d1cd48e09b618c761034512c597e",
+      "bytes": 1595
+    },
+    {
+      "path": "patches/mesa/turnip-gmem-memory-side-swap.patch",
+      "sha256": "79168ffd251bfd90bc88027c49bc9eaaab93779e69331bb499f874f6e4e2d183",
+      "bytes": 3955
+    }
+  ],
+  "mesa_catalog_discrepancy": {
+    "catalog_commit": "c823a83e8f373a5c36c2b9ed1d7dc98a4f3360ee",
+    "recipe_commit": "85fda3b36405bcaea8bffc64aa4f2651dc90770d",
+    "selection": "Actual build-turnip-darwin.py reads adreno-compiler-inputs.json; use recipe pin."
+  },
+  "rust": {
+    "toolchain": "1.98.0",
+    "target": "aarch64-apple-ios",
+    "deployment_target": "16.0",
+    "crate_type": "staticlib",
+    "lockfile_qualified": false
+  },
+  "licenses": {
+    "frontend_bridge": "MIT",
+    "metal2vulkan": "GPL-2.0-or-later OR LGPL-3.0-or-later",
+    "mesa": "Preserve per-file licenses and upstream COPYRIGHT; no Mesa source vendored here."
+  },
+  "hardware_qualified": false
+}

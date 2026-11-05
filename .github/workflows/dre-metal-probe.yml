@@ -6,6 +6,7 @@ on:
     branches: [dre-metal-build]
     paths:
       - 'devices/dre/gpu/**'
+      - 'tools/check-dre-gpu-host.py'
       - '.github/workflows/dre-metal-probe.yml'
 
 concurrency:
@@ -27,14 +28,32 @@ jobs:
         run: |
           bash devices/dre/gpu/build_metal_probe.sh out/dre-metal-probe
           SDK=$(xcrun --sdk iphoneos --show-sdk-path)
-          for SOURCE in devices/dre/gpu/a619_*.c; do
+          for SOURCE in devices/dre/gpu/a619_*.c devices/dre/gpu/platform/*.c; do
+            case $(basename "$SOURCE") in test_*) continue ;; esac
             NAME=$(basename "$SOURCE" .c)
             xcrun --sdk iphoneos clang -target arm64-apple-ios16.0 -isysroot "$SDK" \
-              -ffreestanding -O2 -Wall -Wextra -Werror -c "$SOURCE" \
+              -ffreestanding -fno-builtin -mgeneral-regs-only -mstrict-align \
+              -O2 -Wall -Wextra -Werror -c "$SOURCE" \
               -o "out/dre-metal-probe/$NAME.o"
           done
+          xcrun --sdk iphoneos clang -target arm64-apple-ios16.0 -isysroot "$SDK" \
+            -std=c11 -O2 -Wall -Wextra -Werror -c devices/dre/gpu/runtime/compiler_request.c \
+            -o out/dre-metal-probe/compiler_request.o
+      - name: Run production host fixtures
+        run: python3 tools/check-dre-gpu-host.py --cc clang --out out/gpu-host-tests
+      - name: Link read-only factory observer against official iPhoneOS SDK
+        run: bash devices/dre/gpu/runtime/build_factory_probe.sh out/dre-metal-factory
+      - name: Compile adapted Metal306 frontend translation units
+        run: python3 devices/dre/gpu/runtime/build_frontend.py --out out/metal306-frontend
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: dre-metal-probe
-          path: out/dre-metal-probe/
+          path: |
+            out/dre-metal-probe/
+            out/dre-metal-factory/
+            out/gpu-host-tests/
+            out/metal306-frontend/*.json
+            out/metal306-frontend/*.log
+            out/metal306-frontend/objects/
           if-no-files-found: error

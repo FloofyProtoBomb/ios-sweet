@@ -3,6 +3,21 @@
 ## DE2118 handoff, 2026-11-05
 
 ACTIVE INSTALL PREPARATION, UPDATED2026-11-05 (USER AUTHORIZED SUBAGENTS).
+LATEST USER STEERING: finalize Metal before the first full iOS PHONE boot.
+Hold full iOS phone installation/boot proposals. Root explained that Metal is
+still substantial unfinished work and real validation requires GPU diagnostic
+boots before calling it complete; existing QEMU CPU rendering is not Metal.
+No new phone write/test consent exists. Local simulator work may continue.
+Team now prioritizes native GPU/Metal. Completed CP/SQE, RBBM and larger
+owned BO mapping helpers are host-tested, not kernel-staged or phone-proven.
+gpu_metal now owns gpu/android_probe/** to prepare actual translated project
+shader execution through existing Lineage Vulkan; root must review the exact
+inputs/invocation before execution. No root/reboot/flash is permitted there.
+ios_install_image finished gpu/compiler/** and owns gpu/platform/** RPM and
+GDSC/clock work. install_readiness owns gpu/runtime/** and is preparing actual
+official-SDK frontend compilation. All UI VMs stopped; no more UI iterations
+while this Metal priority holds. Root owns CI, integration and publishing.
+Do not promise finalized Metal from compilation, primitives or a fake device.
 User wants native UFS timeout fixed and iOS install prerequisites including
 actual GPU/Metal before next phone test. WiFi/BT also requested. No new phone
 write/test approval exists. Phone is verified restored Lineage, NO WATCHER.
@@ -18,7 +33,7 @@ at kernel/kernel.development.dre remains immutable baseline from41972412354.
 That old workflow failure was only an old Metal SDK header error;
 dedicated actual Metal compile CI41972992128 SUCCESS after public CoreVideo fix.
 Metal executable/metallib/MSL installed in immutable root; never run, not driver.
-Remote dre-storage7a56fea treefcf47bed matches local7526af7 kernel sources.
+Prior source publication7a56fea/treefcf47bed is preserved history.
 Combined kernel CI41976101399 built remotef69ff18073e22dc5ca8dd45995212c76ef383170,
 treecb180e7f0f7d2ecece9fcaf9fd24f5b691b0463c byte-identical to local006594b.
 It includes UFS power/timeout guards and the tested IOSurface fix (67patches).
@@ -33,9 +48,13 @@ upperRAM/globals capture SHA530a436f1d2180b1321512eba0f13f0687c38cf445ac9dc1eac9
 Fresh full root/transport/boot/backup audit67 PASSES host_prepared=true;
 installation_hardware_ready/requested_scope_ready false, exact report
 outputs/ios-root-preparation/install-readiness-67.json and combined-67-status.json.
-All short VMs stopped. Readiness agent NOW runs fresh900s observation
-qemu-ios-combined-67-long session71802 from immutable8ba root/current2d
-kernel and c015installboot, same QEMU-only timing controls and final snapshot.
+The long observation qemu-ios-combined-67-long reached actual exec Setup
+at600.356856s, then panicked around620s on a SpringBoard waitq lock timeout.
+Almost all wait time was interrupt time in QEMU; no physical diagnosis follows.
+No Hello/activation completion or interactive UI was captured. Its complete
+private RAM SHAe16775ed485de0541a0eab84856a63634fd65ea27bb037d86243a54662f1edcd
+and logs/frame are preserved (0519b53). All VMs are now stopped. Do not add
+further timing overrides or rerun UI under the current Metal-first priority.
 GPU agent's read-only stack walk found128processes, backboardd29threads,
 SpringBoard10; proc_struct_size1920 confirmed compiled layout. SpringBoard
 waits _LSContextInitCommon, lsd waits database seeding and GetEligiblePersonaForBundle
@@ -52,9 +71,10 @@ files/50 critical hashes/hardlinks/owners verified;41844289536B free.
 Windows raw hash independently verified. Full Android sparse12143414180B,
 SHAd9d288bb90c29363b91b42138b446ae10be67a5d7f19cba4b77dbc4eabc08f0e,
 27442chunks, complete expansion SHA/CRC audited, no DONT_CARE. Reports under
-reports/ and outputs/ios-root-preparation. Offline host_prepared=true for
-old install boot1131f930; physical storage/UI/Metal proof false. New v2 boot
-d8f4d111 must replace old boot in final audit after VM iteration stabilizes.
+reports/ and outputs/ios-root-preparation. Physical storage/UI/Metal proof
+remains false; the fresh67 host audit uses current c015 install boot.
+Current c015 install boot and all transport/root/backup checks passed fresh
+install-readiness-67 audit; obsolete v1/v2 statuses below are historical.
 Root frozen; mutate only disposable scratch clones. Activation remains pending
 real first-boot MCM container. Do not fabricate container metadata or claim setup.
 
@@ -100,12 +120,55 @@ buffers and requires reset, no unsafe HCI restoration.74 production C
 ownership/read/write/flush/restore checks and13/13 staged ARM64 compiles PASS.
 Opt-in userdata-only WRITE10+SYNCHRONIZE_CACHE, defaultRO, both GPT regions
 excluded; physical native read/write/durability NOT PROVEN. No blind resets
-or SMMU/clock/route changes. Need full new CI + relevant QEMU before packaging.
+or SMMU/clock/route changes. Full67 CI and relevant QEMU checks above passed;
+the physical effect of the corrected DMA mapping still needs a diagnostic.
 
-GPU: guarded queue/SPTPRAC/PAS13/SID0 SMMUv2 primitives64a69c3,249 synthetic
-plus16384 packet checks and ARM64 ELF/Mach-O compile PASS. Native GPU cold
-start/providers/SQE+CP, actual execution, IOSurface GPU coherency/fences/
-presentation and compatible Metal runtime/compiler remain MISSING.
+GPU LATEST SOURCE (not staged into current kernel): f2a2598 real bounded
+Holi CP/SQE initialization with authenticated PAS13 transition and an actual
+marker requirement; 4133bce static144-write RBBM configuration; 6dd90f1 owned
+4-256MiB VM windows, BO generations/leases and verified ASID/TLB retirement.
+996 synthetic cases +16384 independent packet parities PASS, GCC sanitizers
+and ARM64 ELF/Mach-O builds PASS. Two full-stride1125x2436 framebuffers are
+11225088B/2741pages each; dense256MiB tests check65536 leaves. These are host
+models. Real allocator, scheduler, cache/coherency, kernel/user transport,
+IRQ/reset/clock/resource ownership and physical execution remain unfinished.
+The existing queue, PAS13, SPTPRAC and SMMU pieces must not be declared ready
+from synthetic callbacks. Any uncertain hardware completion retains resources.
+
+COMPILER6c97b11: actual project-owned Metal AIR/metallib translated through
+pinned steelbrain/metal2vulkan219f0136 and independently spirv-val validated;
+Mesa26.2.6 Turnip compiled compute AND render pipelines to actual A619 IR3
+offline.18 Linux regressions pass. No GPU submission or Darwin Vulkan runtime
+is supplied by that offline compiler. Private outputs metal-compiler-results/
+final-a619-{compute,render}; curated outputs/ios-root-preparation/metal-compiler.
+Current outputs are SPIR-V1.5/Vulkan1.2 and must NOT be directly submitted
+to Android core1.1/SPIRV1.4; any retarget needs semantic validation, not a
+header-version edit. Native XNU shader/runtime capability remains unproven.
+
+RUNTIMEebafc06/30c6b06: actual20H392 Metal306 factory uses IOAcceleratorES,
+MetalPluginName/MetalPluginClassName and an _MTLDevice subclass; actual base
+instanceSize528. Qualified MTLCompiler306 request13 is fouru32/16B header,
+MSL default3.0, reply archive header104B. Upstream two-u64 subset is compatible
+when metadata/flags zero and lengths fit32bits (do NOT falsely flag its layout).
+Bounded real codecs +read-only factory observer tested/cross-compiled; no
+native factory run or complete frontend SDK build yet. Pinned MIT AdrenoMetal
+e82788dd reference adapted to528/MSL3.0 and strict unknown-method failure;
+its A740 feature/core waivers remain unqualified. No plugin/device publication.
+
+PLATFORMa1a1c24: actual vendor RPM-SMD codec, GLINK TOC/circular FIFO dualOPEN
+and IPCC SEND_ID transport with matched firmware ACK requirement.6806 synthetic
+cases, ASan/UBSan, ARM64 ELF/Mach-O PASS. Live resources rwcx/rwmx/rwgx IDs0,
+vlvl+swen holds only; no off/decrease. Native IRQ366/reset/FIFO ownership and
+qualified aggregate rail/rate policy remain missing; no physical RPM ACK.
+Actual live CX/MX init384 +proxy[384,512], GX init64. DT values are level enums,
+not physical microvolts. Work on a bounded GDSC/branch slice is continuing.
+
+READ-ONLY ANDROID REFERENCE: exact connected serial matched privately. Existing
+Lineage Vulkan reports Adreno619v1/chip06010900, Vulkan1.1.128, subgroup64,
+frequencies650/565/430/355/253MHz. Current253MHz is not a voltage-policy proof.
+ROM modelpropsDE2117/OnePlusN200 are unified ROM labels, not reidentification.
+Queries left ADB UID2000, no reboot/flash/partition changes. Private reference
+under android-gpu-reference/; curated output android-gpu-reference.json.
 IOSurface7a139c0 fixes actual retained result refs, raced cached lookup,
 closed-client race, category counters/state+0x18 and honest unsupported
 accel/events. Actual affected methods13scenarios+8000 concurrent ASan/UBSan
@@ -117,9 +180,8 @@ RADIO39f4680 inventory: captured ICNSS2 Adrastea/SNOC WLAN,12CE IRQs/SID0x80,
 MSA and shared RPM-SMD rails; BT WCN399x power binding and candidate GENI
 UART0x4a84000. Exact silicon/fw/UART association not proven.22 pinned primary
 sources. WiFi/BT drivers absent; no working radio claim. No phone operations.
-Subagents: gpu_metal owns gpu/**; install_readiness owns validator/QEMU root;
-ios_install_image finished frozen image, radio inventory and independent
-native UFS review. Root owns staging/UFS/builder/NOTES/publishing.
+Current subagent scope is recorded at the start of this handoff. The frozen
+image, radio inventory and independent native UFS review are preserved.
 Compiler-cache actual bypass diagnosed: DXB exports CC/CXX, so old guarded
 default-only prefixes never ran (1059 directcompiles,0ccache in old25MB log).
 87dafff wraps selected compilers after guards;10 realGNUmake tests and actual

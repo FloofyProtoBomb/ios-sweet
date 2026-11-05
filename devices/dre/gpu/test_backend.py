@@ -59,11 +59,23 @@ smmu=args.out/('test-a619-smmu.exe' if sys.platform=='win32' else 'test-a619-smm
 subprocess.run([args.zig,'cc','-O2','-Wall','-Wextra','-Werror',str(HERE/'a619_smmu.c'),
     str(HERE/'test_a619_smmu.c'),'-o',str(smmu)],check=True)
 subprocess.run([str(smmu.resolve())],check=True)
+cp=args.out/('test-a619-cp.exe' if sys.platform=='win32' else 'test-a619-cp')
+subprocess.run([args.zig,'cc','-O2','-Wall','-Wextra','-Werror',str(HERE/'a619_backend.c'),
+    str(HERE/'a619_cp.c'),str(HERE/'test_a619_cp.c'),'-o',str(cp)],check=True)
+subprocess.run([str(cp.resolve()),*extra],check=True)
+rbbm=args.out/('test-a619-rbbm.exe' if sys.platform=='win32' else 'test-a619-rbbm')
+subprocess.run([args.zig,'cc','-O2','-Wall','-Wextra','-Werror',str(HERE/'a619_rbbm.c'),
+    str(HERE/'test_a619_rbbm.c'),'-o',str(rbbm)],check=True)
+subprocess.run([str(rbbm.resolve())],check=True)
+vm=args.out/('test-a619-vm.exe' if sys.platform=='win32' else 'test-a619-vm')
+subprocess.run([args.zig,'cc','-O2','-Wall','-Wextra','-Werror',str(HERE/'a619_smmu.c'),
+    str(HERE/'a619_vm.c'),str(HERE/'test_a619_vm.c'),'-o',str(vm)],check=True)
+subprocess.run([str(vm.resolve())],check=True)
 for target,suffix in [('aarch64-linux-musl','o'),('aarch64-macos-none','macho.o')]:
     subprocess.run([args.zig,'cc','-target',target,'-ffreestanding','-fno-builtin',
         '-mgeneral-regs-only','-mstrict-align','-O2','-Wall','-Wextra','-Werror','-c',
         str(HERE/'a619_smmu.c'),'-o',str(args.out/('a619_smmu.'+suffix))],check=True)
-    for source in ['a619_pas13','a619_smc64']:
+    for source in ['a619_pas13','a619_smc64','a619_cp','a619_rbbm','a619_vm']:
         subprocess.run([args.zig,'cc','-target',target,'-ffreestanding','-fno-builtin',
             '-mgeneral-regs-only','-mstrict-align','-O2','-Wall','-Wextra','-Werror','-c',
             str(HERE/(source+'.c')),'-o',str(args.out/(source+'.'+suffix))],check=True)

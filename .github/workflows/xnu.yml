@@ -28,6 +28,10 @@ on:
       - "devices/dre/**/*.h"
       - "devices/dre/**/*.S"
       - "devices/dre/**/*.patch"
+      # These host compiler/frontend sources are not staged into XNU.
+      - "!devices/dre/gpu/compiler/**"
+      - "!devices/dre/gpu/runtime/**"
+      - "!devices/dre/gpu/android_probe/**"
       - "devices/dre/stage_xnu.py"
       - "tools/enable-xnu-ccache.py"
       - "tools/test-enable-xnu-ccache.py"

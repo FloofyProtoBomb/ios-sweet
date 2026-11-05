@@ -15,6 +15,7 @@ extern "C" {
 #define DRE_A619_SMMU_READ 1u
 #define DRE_A619_SMMU_WRITE 2u
 #define DRE_A619_SMMU_EXECUTE 4u
+#define DRE_A619_SMMU_MAX_PAGES 65536u /* explicitly sized window: 256MiB */
 struct dre_a619_smmu_page { uint64_t pa; uint32_t permissions; };
 struct dre_a619_smmu_ops {
     int (*guard)(void *cookie);
@@ -30,11 +31,21 @@ struct dre_a619_smmu_ops {
 struct dre_a619_smmu {
     uint32_t chip_id, prerequisites, tick_hz, context_bank, smr_index, asid;
     uint64_t va_base, table_pa;
-    uint64_t *tables; /* three contiguous 4KiB pages, exclusively owned Normal-NC */
+    uint64_t *tables; /* contiguous 4KiB pages, exclusively owned Normal-NC */
     const struct dre_a619_smmu_page *pages;
     uint32_t page_count;
+    /* Both zero preserve the legacy three-table/512-page bound. Larger
+     * windows require explicit metadata capacity and exact table bytes:
+     * (2+ceil(page_count/512))*4096. Window must fit one 1GiB L2 region. */
+    uint32_t page_capacity;
+    size_t table_capacity_bytes;
     uint64_t cb_base, saved_ttbr[2];
     uint32_t owned_context_bank, owned_smr_index, owned_asid;
+    uint64_t owned_table_pa, owned_va_base;
+    uint64_t *owned_tables;
+    const struct dre_a619_smmu_page *owned_pages;
+    uint32_t owned_page_count;
+    size_t owned_table_bytes;
     uint32_t saved32[8], saved_smr, saved_s2cr;
     int active, changed, unsafe;
 };
@@ -50,6 +61,14 @@ struct dre_a619_smmu {
 const char *dre_a619_smmu_activate(struct dre_a619_smmu *state,
     const struct dre_a619_smmu_ops *ops);
 const char *dre_a619_smmu_release(struct dre_a619_smmu *state,
+    const struct dre_a619_smmu_ops *ops);
+/* Active-domain validation and real ASID invalidation+context TLB sync for
+ * serialized, GPU-quiescent BO updates. Failure marks the domain unsafe;
+ * retain all old/new pages until reset. These do not change leaf PTEs or
+ * prove the GPU idle; the VM manager supplies those guards/operations. */
+const char *dre_a619_smmu_check_live(struct dre_a619_smmu *state,
+    const struct dre_a619_smmu_ops *ops);
+const char *dre_a619_smmu_sync_live(struct dre_a619_smmu *state,
     const struct dre_a619_smmu_ops *ops);
 #ifdef __cplusplus
 }

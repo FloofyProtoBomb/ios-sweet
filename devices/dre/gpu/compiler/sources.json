@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "metal2vulkan": {
+    "repository": "https://github.com/steelbrain/metal2vulkan",
+    "commit": "219f01365dc4c8eb346816c405b5b17403793764",
+    "license": "GPL-2.0-or-later OR LGPL-3.0-or-later",
+    "rust_toolchain": "1.98.1",
+    "purpose": "Real metallib/AIR decoder and SPIR-V translation; separate dependency, not vendored"
+  },
+  "mesa": {
+    "url": "https://archive.mesa3d.org/mesa-26.2.6.tar.xz",
+    "sha256": "b9436b3e1a8be76fbd4823dc884f90596ab7c6ac5e1867a305e66ffccfb31a92",
+    "checksum_source": "https://docs.mesa3d.org/relnotes/26.2.6.html",
+    "selected_source_spdx": "MIT",
+    "purpose": "Turnip SPIR-V/NIR/IR3 compiler; no-op DRM CPU-only compiler frontend",
+    "local_patch": "mesa-26.2.6-offline-a619.patch"
+  },
+  "metallib_format_reference": {
+    "url": "https://github.com/YuAo/MetalLibraryArchive",
+    "license": "MIT",
+    "purpose": "Primary reverse-engineering description of container sections; no code copied"
+  },
+  "airnir_reviewed_alternative": {
+    "repository": "https://github.com/UniXNU/AirNir",
+    "commit": "b356371a74cd158c2902f4886f373ebb0f833a36",
+    "license": "MIT",
+    "purpose": "Reviewed strict straight-line vertex/fragment compiler; runtime docs select metal2vulkan/Turnip"
+  }
+}

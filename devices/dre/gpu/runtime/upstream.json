@@ -1,0 +1,16 @@
+{
+  "repository": "https://github.com/UniXNU/AdrenoMetal",
+  "commit": "e82788dd367753802ec2e00476ab27addfb46834",
+  "license": "MIT",
+  "files": {
+    "NativeBridgeMetalFrontend.mm": "7c23b8b05976fc3a944b79fc60c8b0317d7accdf9171978df670ffa0a86a5f42",
+    "NativeBridgeMetalFrontend.h": "666b18fdde902b844ee9504cbf7704713fedc8400fa3e1ceceecc3e44ef8f143",
+    "bridge/NativeMetalObjects.rs": "ffe11416332ac21e6eea7d4a94beb39f0e10ed774f078f9c7b3f7c8483ce6bf7",
+    "bridge/NativeMetalObjects.h": "9013d1ff7cb381d8a3956e87e07bec351191ad7e1ab8e91f1c66bb289e737e43",
+    "SharedShaderCache.h": "3fee1e3196c6b4eb031ecdd78c0df07fb53604d067f3354adb676e9df984cba5",
+    "QueuePriority.h": "1134fb8175b9a61fcbfcec73a18ccf8d693c16513779d86cd97037d5c729e2d2",
+    "NativeGpuTrace.h": "7636d053085adfdc8e15a69241f6f6a3399af2802c4fd93d05eb2a01275d1e65",
+    "NativeGpuLatency.h": "6d090da81c80bf23f0ea875dbf5fd41acb4072c93e9d223172165f95528cf709",
+    "LICENSE": "c51a32dfc2140d3d56f796a3a7010e574f2e3649b97c42e010303ad57f848265"
+  }
+}

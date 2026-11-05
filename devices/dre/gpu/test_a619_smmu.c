@@ -203,4 +203,5 @@ int main(void)
     init(&f); CHECK("SMMU_SID0_ACTIVE"); f.state.smr_index=2; writes=f.writes;
     assert(!strcmp(release(&f),"SMMU_RESET_REQUIRED") && f.writes==writes && f.state.unsafe); checks++;
     printf("PASS %u SID0 SMMUv2 activation/tablewalk/permission/secure-isolation/rollback checks; synthetic hardware only\n",checks);
+    return 0;
 }

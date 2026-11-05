@@ -1,0 +1,138 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/LineageOS/android_kernel_oneplus_sm4350",
+  "commit": "98a38783f42f5588bf00cd933e299aedc589bc10",
+  "implementation_license": "MIT, original protocol implementation; no driver code vendored",
+  "reference_sources": [
+    {
+      "path": "drivers/rpmsg/rpm-smd.c",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/rpmsg/rpm-smd.c",
+      "sha256": "e3c0e256535b98af7124a31775cac4d1309c4a5cc91c86480d563422a96daccd",
+      "bytes": 38970,
+      "role": "Vendor RPM request framing, message IDs, ACK/NACK decoding and version selection"
+    },
+    {
+      "path": "include/soc/qcom/rpm-smd.h",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/include/soc/qcom/rpm-smd.h",
+      "sha256": "8623e8e9b3cc054ff70e0e9e78d1c421d1bcc5de5b126cc29e21abf772a15c8f",
+      "bytes": 9650,
+      "role": "Active/sleep set and request interface semantics"
+    },
+    {
+      "path": "drivers/rpmsg/qcom_glink_rpm.c",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/rpmsg/qcom_glink_rpm.c",
+      "sha256": "40f07d57464967bdf4c6a6c102c5283b0a9f41fa3698a7afe1988c9ad63d8644",
+      "bytes": 8103,
+      "role": "Message RAM TOC, FIFO cursor layout, wrap and alignment"
+    },
+    {
+      "path": "drivers/rpmsg/qcom_glink_native.c",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/rpmsg/qcom_glink_native.c",
+      "sha256": "9ae5b6437b2561420eacc0446e7acefed0af55ea26f2b1c55c3fd99434d197d5",
+      "bytes": 58644,
+      "role": "GLINK version/features negotiation, dual OPEN, intentless TX_DATA and channel IDs"
+    },
+    {
+      "path": "drivers/regulator/rpm-smd-regulator.c",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/regulator/rpm-smd-regulator.c",
+      "sha256": "09dbb7cc0c30fd48b1fbce81db892eb6b4f72de748999f15f074c9709b94ae08",
+      "bytes": 55815,
+      "role": "swen/vlvl keys, level selector and resource-property semantics"
+    },
+    {
+      "path": "drivers/soc/qcom/qcom_ipcc.c",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/soc/qcom/qcom_ipcc.c",
+      "sha256": "fb57929c8c36470189faba51402875a337ef6436c6185d1cd0c6f61ad9430c2f",
+      "bytes": 12241,
+      "role": "SEND_ID offset and client/signal packing"
+    },
+    {
+      "path": "include/dt-bindings/soc/qcom,ipcc.h",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/include/dt-bindings/soc/qcom,ipcc.h",
+      "sha256": "62930c5ca220dfefd64fe1ef9ef212b90453c39edcbb299d15eab1143f48eb51",
+      "bytes": 1151,
+      "role": "AOP client0 and GLINK_QMP signal0"
+    },
+    {
+      "path": "include/dt-bindings/regulator/qcom,rpm-smd-regulator.h",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/include/dt-bindings/regulator/qcom,rpm-smd-regulator.h",
+      "sha256": "572c316e632ac24a4cc9fb3f184a913306fe57809dcbcaed1f2d770c8f9635c9",
+      "bytes": 935,
+      "role": "Discrete RPM SMD levels"
+    },
+    {
+      "path": "arch/arm64/boot/dts/vendor/qcom/holi.dtsi",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/arch/arm64/boot/dts/vendor/qcom/holi.dtsi",
+      "sha256": "f461bb7cf600b3f1017c5762415d18626eca2f3fcd09a835f0f85c5120e76741",
+      "bytes": 86554,
+      "role": "GPU supplies and RPM message RAM/IPCC FDT references"
+    },
+    {
+      "path": "arch/arm64/boot/dts/vendor/qcom/holi-regulators-pm6350.dtsi",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/arch/arm64/boot/dts/vendor/qcom/holi-regulators-pm6350.dtsi",
+      "sha256": "588aef3564f3c35ccb2a0043fc34d547c533b393b707972e220f7ed47881a4ae",
+      "bytes": 13853,
+      "role": "Overridden rwcx/rwmx/rwgx resources and level children"
+    },
+    {
+      "path": "arch/arm64/boot/dts/vendor/qcom/holi-gpu.dtsi",
+      "url": "https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/arch/arm64/boot/dts/vendor/qcom/holi-gpu.dtsi",
+      "sha256": "f07a8fbc87fd49908d3e1228428ca80a6e5195351e7c0e9aa81c556833c56fb0",
+      "bytes": 7736,
+      "role": "GPU parent retention dependency; not a platform-wide rail floor"
+    }
+  ],
+  "live_fdt_selection": {
+    "message_ram": [
+      73334784,
+      28672
+    ],
+    "ipcc": [
+      2129920,
+      4096
+    ],
+    "rpm_channel": "rpm_requests",
+    "rpm_channel_type": 15,
+    "rpm_version_register_present": false,
+    "expected_rpm_wire_version": 0,
+    "version_inferred_from_no_reg_and_vendor_default_not_actual_ack": true,
+    "resources": [
+      {
+        "rail": "cx",
+        "type": "rwcx",
+        "id": 0,
+        "level_range": [
+          16,
+          512
+        ],
+        "use_voltage_level": true,
+        "voltage_offset_present": false
+      },
+      {
+        "rail": "mx",
+        "type": "rwmx",
+        "id": 0,
+        "level_range": [
+          16,
+          512
+        ],
+        "use_voltage_level": true,
+        "voltage_offset_present": false
+      },
+      {
+        "rail": "gx",
+        "type": "rwgx",
+        "id": 0,
+        "level_range": [
+          0,
+          512
+        ],
+        "use_voltage_level": true,
+        "voltage_offset_present": false
+      }
+    ],
+    "raw_fdt_graph_retained_privately": true
+  },
+  "physical_rpm_ack_observed": false,
+  "voltage_policy_qualified": false
+}

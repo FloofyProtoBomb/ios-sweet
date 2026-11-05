@@ -15,6 +15,7 @@
 static const uint32_t offsets[]={0,4,0x10,0x30,0x38,0x3c};
 static const uint32_t impl_offsets[]={0x6000,0x6060,0x678c,0x6794,0x6800,0x6900,0x6924,0x6928,0x6930,0x6960,0x6b64,0x6b68};
 static const uint32_t impl_values[]={0x2378,0x1055,8,0x28,6,0x3ff,0x204,0x11000,0x800,0xffffffff,0x1a5551,0x9a82a382};
+static int immutable_owned(const struct dre_a619_smmu *s);
 static int valid(const struct dre_a619_smmu *s,const struct dre_a619_smmu_ops *o)
 { return s && o && o->guard && o->owns_ram && o->read32 && o->write32 &&
     o->read64 && o->write64 && o->barrier && o->now; }
@@ -52,19 +53,30 @@ static int tlb(struct dre_a619_smmu *s,const struct dre_a619_smmu_ops *o)
     }
     return 0;
 }
+static size_t table_bytes(const struct dre_a619_smmu *s)
+{
+    if (!s->page_count || s->page_count>DRE_A619_SMMU_MAX_PAGES)return 0;
+    if (!s->page_capacity && !s->table_capacity_bytes)
+        return s->page_count<=512?TABLE_BYTES:0;
+    size_t bytes=(2u+(s->page_count+511u)/512u)*4096u;
+    return s->page_capacity>=s->page_count && s->page_capacity<=DRE_A619_SMMU_MAX_PAGES &&
+        s->table_capacity_bytes==bytes?bytes:0;
+}
 static const char *memory_check(struct dre_a619_smmu *s,const struct dre_a619_smmu_ops *o)
 {
-    if (!cpu_range(s->tables,TABLE_BYTES) || ((uintptr_t)s->tables&4095) ||
-        !s->table_pa || (s->table_pa&4095) || s->table_pa>(UINT64_C(1)<<40)-TABLE_BYTES ||
-        !s->page_count || s->page_count>512 ||
+    size_t bytes=table_bytes(s);
+    uint64_t map_bytes=(uint64_t)s->page_count*4096;
+    if (!bytes || !cpu_range(s->tables,bytes) || ((uintptr_t)s->tables&4095) ||
+        !s->table_pa || (s->table_pa&4095) || s->table_pa>(UINT64_C(1)<<40)-bytes ||
         !cpu_range(s->pages,(size_t)s->page_count*sizeof(*s->pages)) ||
         (s->va_base&0x1fffff) || s->va_base>=(UINT64_C(1)<<39) ||
+        map_bytes>(UINT64_C(1)<<30)-(s->va_base&0x3fffffff) ||
         !s->asid || s->asid>255) return "SMMU_INVALID_MEMORY";
     size_t page_bytes=(size_t)s->page_count*sizeof(*s->pages);
-    if (overlap((uintptr_t)s->tables,TABLE_BYTES,(uintptr_t)s,sizeof(*s)) ||
-        overlap((uintptr_t)s->tables,TABLE_BYTES,(uintptr_t)o,sizeof(*o)) ||
-        overlap((uintptr_t)s->tables,TABLE_BYTES,(uintptr_t)s->pages,page_bytes) ||
-        !o->owns_ram(o->cookie,s->table_pa,TABLE_BYTES)) return "SMMU_UNOWNED_MEMORY";
+    if (overlap((uintptr_t)s->tables,bytes,(uintptr_t)s,sizeof(*s)) ||
+        overlap((uintptr_t)s->tables,bytes,(uintptr_t)o,sizeof(*o)) ||
+        overlap((uintptr_t)s->tables,bytes,(uintptr_t)s->pages,page_bytes) ||
+        !o->owns_ram(o->cookie,s->table_pa,bytes)) return "SMMU_UNOWNED_MEMORY";
     unsigned mapped=0;
     for (unsigned i=0;i<s->page_count;i++) {
         const struct dre_a619_smmu_page *p=&s->pages[i];
@@ -72,18 +84,47 @@ static const char *memory_check(struct dre_a619_smmu *s,const struct dre_a619_sm
         if (!p->pa || (p->pa&4095) || p->pa>=(UINT64_C(1)<<40) ||
             !(p->permissions&DRE_A619_SMMU_READ) || (p->permissions&~7u) ||
             (p->permissions&6u)==6u ||
-            overlap(p->pa,4096,s->table_pa,TABLE_BYTES) ||
+            overlap(p->pa,4096,s->table_pa,bytes) ||
             !o->owns_ram(o->cookie,p->pa,4096)) return "SMMU_INVALID_PAGE";
-        for (unsigned j=0;j<i;j++) if (p->pa==s->pages[j].pa) return "SMMU_PHYSICAL_ALIAS";
+        if (s->page_count<=512)
+            for (unsigned j=0;j<i;j++)if (p->pa==s->pages[j].pa)return "SMMU_PHYSICAL_ALIAS";
         mapped++;
     }
     return mapped ? 0 : "SMMU_EMPTY_MAP";
 }
+static void sift(uint64_t *a,unsigned root,unsigned count)
+{
+    while (root<count/2) {
+        unsigned child=root*2+1;
+        if (child+1<count && a[child]<a[child+1])child++;
+        if (a[root]>=a[child])break;
+        uint64_t tmp=a[root];a[root]=a[child];a[child]=tmp;root=child;
+    }
+}
+static int large_unique(struct dre_a619_smmu *s)
+{
+    if (s->page_count<=512)return 1;
+    /* Exclusively owned, unpublished table pages provide bounded scratch.
+     * Validate page ownership/geometry and the disabled CB before this write.
+     * Tables are then rebuilt from immutable metadata, not these sorted PAs. */
+    unsigned count=0;
+    for (unsigned i=0;i<s->page_count;i++)if (s->pages[i].pa)s->tables[count++]=s->pages[i].pa;
+    for (unsigned i=count/2;i;i--)sift(s->tables,i-1,count);
+    for (unsigned end=count;end>1;end--) {
+        uint64_t tmp=s->tables[0];s->tables[0]=s->tables[end-1];s->tables[end-1]=tmp;
+        sift(s->tables,0,end-1);
+    }
+    for (unsigned i=1;i<count;i++)if (s->tables[i-1]==s->tables[i])return 0;
+    return 1;
+}
 static void tables(struct dre_a619_smmu *s,const struct dre_a619_smmu_ops *o)
 {
-    for (unsigned i=0;i<TABLE_BYTES/8;i++) s->tables[i]=0;
+    size_t bytes=table_bytes(s);
+    for (size_t i=0;i<bytes/8;i++) s->tables[i]=0;
     s->tables[(s->va_base>>30)&511]=(s->table_pa+4096)|UINT64_C(0x8000000000000003);
-    s->tables[512+((s->va_base>>21)&511)]=(s->table_pa+8192)|UINT64_C(0x8000000000000003);
+    for (unsigned i=0;i<(s->page_count+511u)/512u;i++)
+        s->tables[512+((s->va_base>>21)&511)+i]=
+            (s->table_pa+8192+(uint64_t)i*4096)|UINT64_C(0x8000000000000003);
     for (unsigned i=0;i<s->page_count;i++) {
         const struct dre_a619_smmu_page *p=&s->pages[i];
         if (!p->pa) continue;
@@ -109,6 +150,8 @@ static const char *hardware_check(struct dre_a619_smmu *s,const struct dre_a619_
         (id2&15)>5 || ((id2>>4)&15)>5 || ((id2>>8)&15)>5)
         return "SMMU_UNSUPPORTED_CAPABILITIES";
     if ((cr0&9) || !(cr0&(1u<<10))) return "SMMU_GLOBAL_POLICY_REQUIRED";
+    if (!rd(o,BASE+0x48,&v))return "SMMU_GLOBAL_STATE_READ_FAILED";
+    if (v)return "SMMU_GLOBAL_FAULT"; /* preserve global fault evidence */
     if (s->context_bank>=cbs || s->context_bank<s2 || s->smr_index>=smrs)
         return "SMMU_INVALID_CONTEXT";
     s->cb_base=BASE+0x8000+(uint64_t)s->context_bank*4096;
@@ -180,10 +223,14 @@ const char *dre_a619_smmu_activate(struct dre_a619_smmu *s,const struct dre_a619
     if (status) return status;
     status=hardware_check(s,o);
     if (status) return status;
+    if (!o->guard(o->cookie))return "SMMU_OWNERSHIP_CHANGED";
+    if (!large_unique(s))return "SMMU_PHYSICAL_ALIAS";
     if (!o->guard(o->cookie)) return "SMMU_OWNERSHIP_CHANGED";
     tables(s,o);
     if (!o->guard(o->cookie)) return "SMMU_OWNERSHIP_CHANGED";
     s->owned_context_bank=s->context_bank; s->owned_smr_index=s->smr_index; s->owned_asid=s->asid;
+    s->owned_table_pa=s->table_pa;s->owned_tables=s->tables;s->owned_va_base=s->va_base;
+    s->owned_pages=s->pages;s->owned_page_count=s->page_count;s->owned_table_bytes=table_bytes(s);
     s->changed=1; /* a failed MMIO write may still reach hardware */
     uint64_t ttbr=s->table_pa|((uint64_t)s->asid<<48);
     int ok=wr(o,S2CR(s->smr_index),FAULT_STREAM) && check32(o,S2CR(s->smr_index),FAULT_STREAM) &&
@@ -217,8 +264,47 @@ const char *dre_a619_smmu_release(struct dre_a619_smmu *s,const struct dre_a619_
         s->owned_context_bank!=s->context_bank || s->owned_smr_index!=s->smr_index ||
         s->owned_asid!=s->asid ||
         s->cb_base!=BASE+0x8000+(uint64_t)s->context_bank*4096 ||
-        !s->asid || s->asid>255 || !restore(s,o)) {
+        !s->asid || s->asid>255 || !immutable_owned(s) || !restore(s,o)) {
         s->unsafe=1; return "SMMU_RESET_REQUIRED";
     }
     return "SMMU_SID0_RESTORED";
+}
+static int immutable_owned(const struct dre_a619_smmu *s)
+{
+    return s->chip_id==DRE_A619_CHIP_ID && s->prerequisites==DRE_A619_SMMU_PREREQUISITES &&
+        s->tick_hz==19200000 && s->context_bank<8 && s->smr_index<128 &&
+        s->owned_context_bank==s->context_bank && s->owned_smr_index==s->smr_index &&
+        s->owned_asid==s->asid && s->asid && s->asid<=255 &&
+        s->cb_base==BASE+0x8000+(uint64_t)s->context_bank*4096 &&
+        s->owned_table_pa==s->table_pa && s->owned_tables==s->tables &&
+        s->owned_va_base==s->va_base && s->owned_pages==s->pages &&
+        s->owned_page_count==s->page_count && s->owned_table_bytes==table_bytes(s);
+}
+const char *dre_a619_smmu_check_live(struct dre_a619_smmu *s,const struct dre_a619_smmu_ops *o)
+{
+    if (!valid(s,o))return "INVALID_ARGUMENT";
+    if (s->unsafe)return "SMMU_RESET_REQUIRED";
+    if (!s->active || !s->changed)return "SMMU_NOT_ACTIVE";
+    uint64_t ttbr=s->table_pa|((uint64_t)s->asid<<48);
+    uint32_t global;
+    int ok=immutable_owned(s) && o->guard(o->cookie) &&
+        rd(o,BASE,&global) && !(global&9) && (global&(1u<<10)) && check32(o,BASE+0x48,0) &&
+        check32(o,SMR(s->smr_index),0x80000000) &&
+        check32(o,S2CR(s->smr_index),0x300|s->context_bank) &&
+        check32(o,s->cb_base,SCTLR_ENABLE) &&
+        check64(o,s->cb_base+0x20,ttbr) && check64(o,s->cb_base+0x28,0) &&
+        check32(o,s->cb_base+0x10,0x38012) && check32(o,s->cb_base+0x30,0x802019) &&
+        check32(o,s->cb_base+0x38,0x44) && check32(o,s->cb_base+0x3c,0) &&
+        check32(o,s->cb_base+4,0x70000000) &&
+        check32(o,CBAR(s->context_bank),0x1f300) && check32(o,CBA2R(s->context_bank),1) &&
+        check32(o,s->cb_base+0x58,0) && check32(o,s->cb_base+0x7f4,0) && o->guard(o->cookie);
+    if (!ok) { s->unsafe=1;return "SMMU_LIVE_STATE_UNSAFE"; }
+    return "SMMU_LIVE_STATE_VERIFIED";
+}
+const char *dre_a619_smmu_sync_live(struct dre_a619_smmu *s,const struct dre_a619_smmu_ops *o)
+{
+    const char *status=dre_a619_smmu_check_live(s,o);
+    if (!valid(s,o) || !s->active || !s->changed || s->unsafe)return status;
+    if (!tlb(s,o)) { s->unsafe=1;return "SMMU_TLB_RETIREMENT_UNSAFE"; }
+    return dre_a619_smmu_check_live(s,o);
 }

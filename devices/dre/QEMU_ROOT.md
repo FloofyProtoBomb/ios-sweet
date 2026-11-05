@@ -159,3 +159,15 @@ successfully. Its subsequent bounded 300-second iOS run produced eight
 observed CLCD swaps without a panic and retained the Apple-logo boot display.
 Setup had not executed. The paused two-GiB runtime capture completed for
 further process/stack analysis; these observations remain QEMU-only.
+
+A fresh 900-second observation of that same frozen image/kernel later logged
+an actual `exec Setup` at 600.36 seconds, after an eighth framebuffer swap at
+536.86 seconds. That demonstrates further startup beyond the earlier
+300-second LaunchServices wait; it does not establish Hello-screen display,
+interactive setup or activation completion. SpringBoard also logged the
+explicitly unsupported IOSurface shared-event selectors 40/41. At about 620
+seconds the run failed with a waitq timeout in a SpringBoard thread: roughly
+12.24 million elapsed ticks against a 12-million-tick threshold, with 12.18
+million ticks attributed to IRQ time. The failure and paused RAM were
+preserved. No further timing override or UI run was made; this remains an
+unresolved simulation failure and must not be described as functional iOS.

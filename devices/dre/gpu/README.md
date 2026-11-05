@@ -72,8 +72,9 @@ The SMMU module never changes global CR0, the global implementation registers,
 other SMRs/CBs, or secure SID2. The platform must supply CX power/memnoc clocks,
 exclusive quiescent GPU ownership, ASID/CB reservations, Normal-NC table RAM
 and a legitimate initialized global state. It refuses unknown global state
-rather than resetting secure mappings. The first window is limited to 2MiB;
-this is a bring-up domain, not a per-process graphics memory manager. Unsafe
+rather than resetting secure mappings. The default bootstrap window is 2MiB;
+the optional owned VM manager below supports larger explicit windows. This
+is not yet a per-process graphics memory manager. Unsafe
 failure retains all pages until reset; release requires the GPU to remain
 quiescent through power-down or reassignment.
 
@@ -91,10 +92,17 @@ python devices/dre/gpu/test_backend.py --zig /path/to/zig --out /tmp/a619-tests 
 This covers 56 queue/firmware cases and 16,384 independently checked packet
 parities. It includes missing prerequisites, ownership changes, ring mismatch,
 stale data, pointer-only/data-only completion, timeout and a stopped timer.
-There are also 38 Holi power/ownership/recovery, 46 ZAP parser/relocation
-35 PAS-13 ABI/authentication/recovery and 74 SMMUv2 activation/table-walk/
-secure-isolation/rollback checks. These are synthetic
-hardware tests, not native handset execution.
+There are also 38 Holi power/ownership/recovery, 46 ZAP parser/relocation,
+35 PAS-13 ABI/authentication/recovery, 74 SMMUv2 activation/table-walk/
+secure-isolation/rollback, 70 CP initialization, 601 RBBM and 76 VM checks:
+996 production-code cases in total. These are synthetic hardware tests,
+not native handset execution. The separate RPM platform transport has its
+own 6,806 synthetic tests described below.
+
+The dedicated `dre-metal-probe` CI also runs these existing portable C
+fixtures with the host compiler via `tools/check-dre-gpu-host.py`, compiles
+native helpers against the official iPhoneOS SDK and builds the frontend
+translation units. Reports keep native execution and acceleration false.
 
 ## IOSurface runtime fixes
 
@@ -108,7 +116,45 @@ evidence and LaunchServices dependency observed in frozen QEMU memory. The
 included configuration-derived, read-only saved-stack inspector verifies
 capture hashes before inspection; it does not attach to or modify the phone.
 
+## Native CP/SQE initialization slice
+
+[NATIVE_CP.md](NATIVE_CP.md) describes `dre_a619_cp_start`, its real Holi
+register-list/SQE/ring initialization, authenticated transition and hardware
+marker requirement. Seventy synthetic cases plus an optional private-firmware
+upload case pass; the CP source also compiles as freestanding ARM64 ELF/Mach-O.
+Physical platform providers and Metal remain missing. No kernel registration
+or phone operation is enabled by adding the helper.
+
+[NATIVE_RBBM.md](NATIVE_RBBM.md) describes the separate static Holi RBBM
+provider: 144 real ordered/register-readback writes and 601 synthetic failure/
+profile/order cases. It still needs actual acquired rail/clock/bus/SPTPRAC
+providers before any physical MMIO access, and is not kernel-registered here.
+The legacy SMMU's 2 MiB default is a bootstrap limit. The optional
+[BO mapping manager](NATIVE_VM.md) adds explicitly owned larger windows,
+generation/lease guards and actual ASID/TLB retirement. Its 76 synthetic cases
+include two actual-stride iOS framebuffer BOs and a densely mapped 256 MiB
+window; this does not establish full native Metal resource capacity.
+
 ## Metal acceptance executable
+
+The [offline compiler path](compiler/README.md) has translated actual
+project-owned Metal AIR/metallib into independently validated SPIR-V, then
+compiled compute and render pipelines to A619 IR3 through pinned Mesa Turnip.
+This proves offline compilation, without a device submission. The generated
+SPIR-V 1.5 requires a qualified runtime; the existing Android vendor driver
+advertises core Vulkan 1.1 and cannot simply receive those binaries unchanged.
+
+The [Metal306 runtime work](runtime/README.md) qualifies the actual 20H392
+factory, `_MTLDevice` layout and compiler envelopes. Its adapted public
+frontend reference still needs the native Darwin GPU transport, truthful
+feature limits, ownership, synchronization and presentation. No device or
+plugin is published by the observer or compiler helpers.
+
+The [RPM platform transport](platform/README.md) implements actual bounded
+GLINK/FIFO/IPCC requests with matching RPM ACKs and a hold-only policy. Host
+protocol tests do not prove physical firmware acceptance or a qualified
+shared-rail voltage and clock plan. Kernel IRQ/reset/resource ownership and
+the remaining platform acquisition hooks are still needed.
 
 `metal_probe.m` calls Apple's real Metal API. `build_metal_probe.sh OUT`
 requires macOS Xcode with the iPhoneOS SDK and builds an arm64 iOS 16

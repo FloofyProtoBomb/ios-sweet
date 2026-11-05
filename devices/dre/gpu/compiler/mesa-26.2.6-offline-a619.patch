@@ -1,0 +1,14 @@
+--- a/src/freedreno/drm-shim/freedreno_noop.c
++++ b/src/freedreno/drm-shim/freedreno_noop.c
+@@ -286,6 +286,11 @@
+       .gpu_id = 618,
+       .chip_id = CHIPID(6, 1, 8, 0xff),
+       .gmem_size = 512 * 1024,
++   },
++   {
++      .gpu_id = 619,
++      .chip_id = CHIPID(6, 1, 9, 0),
++      .gmem_size = 512 * 1024,
+    },
+    {
+       .gpu_id = 660,

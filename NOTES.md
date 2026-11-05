@@ -2,6 +2,29 @@
 
 ## DE2118 handoff, 2026-11-04
 
+CURRENT CANDIDATE GATE: run41950005082 PASSED compilation/link and all66
+patch checks. Kernel b7687a43b45aeeab4021aacc0bf6cb0282f544921d448786d5b2cdfe248c4e6d
+is work/native-storage-kernel/kernel.development.dre (17202464 bytes), ZIP
+571ca2e6c256ebabfdcb5fa398680991fc9f75f9503d7e63e70cbdcfaf3e6fbd.
+The first native candidate f8a4615d (work/build-native-storage,16764928 bytes)
+PASSES QEMU eight-core/PID1/display/empty-ownership-refusal checks, but MUST
+NOT be flashed: exact-image ownership validation rejects low RAM because
+the generic policy intentionally excludes every dynamic alloc-ranges window.
+The live DT uses such windows over all low4G. These are future Linux pool
+allocation candidates, not fixed reservations. New dedicated boot-owned RAM
+policy accepts only validated dynamic shared-dma-pool nodes with size;
+all fixed reg/memreserve exclusions remain enforced. Generic table-walker
+RAM policy is unchanged and remains conservative. The synthetic FDT address
+0x82000000 was inside fixed secure CDSP memory; native model now uses
+unreserved RAM0xa0000000. Host cases now42 PASS including real live-DT
+acceptance and fixed-carveout rejection; all12 nativeC compile/symbol checks
+still pass. Builder now requires the kernel's new boot-owned-policy symbol,
+so it refuses the earlier b768 kernel. A new CI build is required.
+work/build-native-owned-model is HOST-ONLY with corrected shim but old
+kernel, for validating metadata before rebuilding; NEVER PACKAGE/FLASH IT.
+User asked whether iOS can use all RAM: answered current512MiB cap,4GiB
+hardware, expansion pending with firmware/modem reservations preserved.
+
 NATIVE STORAGE DEVELOPMENT (next test, NOT handset-proven): source now adds
 an opt-in native read-only BSD adapter and generated UI patch 0103. Explicit
 64-byte /dre-ufs ownership metadata transfers one 16K-aligned low-DDR arena
@@ -41,6 +64,22 @@ fallback for the identical pinned commit, keeping the rev-parse equality
 check; do not change the crypto version. The local first-run buildtree makes
 an exact selected-file comparison possible. QEMU now checks that an empty
 native ownership slot refuses hardware access while the RAM root stays up.
+Fallback is now implemented and bash syntax checked; mirror commit is exactly
+7bea48e5e850ab4cafbe68d3765cdaba13a86d6f and git fsck passes. All 30 selected
+files match the first CI's staged origin source after its documented kernel
+limits-header adaptation. Run 41950005082 is compiling source
+833a8ba36d714362b365940df2aa8e93dc5a0d1f (local3d43fee,
+tree2b6a413f577aacc935afd214e3e01eeea5a5ee5a). Local native C symbol closure
+also passes against kernel f5c205..., with only the new IOKit bridge expected.
+NEXT: wait for full CI/link/66-patch gate, fetch verified kernel, build to
+work/build-native-storage with --native-ufs and the prior full diagnostic
+flags, run test_bundle --native-ufs (exact handoff metadata checked), private
+GPT fixture and qemu_ui.py (empty ownership refuses hardware). The prepared
+work/package-native-storage.py requires those reports and a clean committed
+tree, then writes a NEW candidate/artifact and pinned restore operator. It
+has not been run. No new boot_b write is authorized; phone still in restored
+LineageOS. No operator/watcher is active. New physical native reads remain
+unproven; all prior tested images are preserved.
 Phone remains VERIFIED RESTORED LINEAGEOS from the 16dd2e95 test below.
 Build branch will be dre-storage (UI profile); keep dre-ui/tested images.
 

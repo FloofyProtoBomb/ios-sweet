@@ -140,8 +140,9 @@ def embed(kernel, out, init_obj, donor=False, identity_path=None,
     if ui and not all(marker in data for marker in
                       (b"IOCoreSurfaceRoot", b"AppleCLCD", b"sweet_secondary_entry")):
         raise ValueError("--ui-services requires a kernel built with the DRE ui profile")
-    if native_ufs and b"_dre_ufs_prepare_device\0" not in data:
-        raise ValueError("--native-ufs requires a kernel with the native DRE storage driver")
+    if native_ufs and not all(marker in data for marker in
+        (b"_dre_ufs_prepare_device\0", b"_dre_dma_boot_owned_ram_allowed\0")):
+        raise ValueError("--native-ufs requires the native driver and explicit boot-owned RAM policy")
     adt_path = out / "dre.adt"
     identity = json.loads(identity_path.read_text()) if identity_path else None
     adt_path.write_bytes(tree(identity, ui=ui, cpus=cpus, product_path=product_path, native_ufs=native_ufs))

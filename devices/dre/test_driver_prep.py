@@ -9,7 +9,7 @@ import subprocess
 
 HERE = Path(__file__).resolve().parent
 
-def fixture(*, reserve=(), dynamic=(), memreserve=(), memory=((0x80000000, 0x100000000),), broken=False, initrd=None):
+def fixture(*, reserve=(), dynamic=(), memreserve=(), memory=((0x80000000, 0x100000000),), broken=False, initrd=None, owned_pools=()):
     strings = bytearray()
     def prop(k, v):
         index = len(strings); strings.extend(k.encode() + b'\0')
@@ -24,6 +24,9 @@ def fixture(*, reserve=(), dynamic=(), memreserve=(), memory=((0x80000000, 0x100
                          prop('linux,initrd-end', struct.pack('>Q', initrd[1])))
     reservations = b''.join(node(f'fixed{i}', prop('reg', ranges([v]))) for i, v in enumerate(reserve))
     reservations += b''.join(node(f'dynamic{i}', prop('alloc-ranges', ranges([v]))) for i, v in enumerate(dynamic))
+    reservations += b''.join(node(f'pool{i}', prop('alloc-ranges', ranges([v])) +
+                                  prop('size', struct.pack('>Q', 0x100000)) +
+                                  prop('compatible', b'shared-dma-pool\0')) for i, v in enumerate(owned_pools))
     if broken: reservations += node('unknown', prop('size', struct.pack('>Q', 4096)))
     children += node('reserved-memory', prop('#address-cells', struct.pack('>I', 2)) +
                      prop('#size-cells', struct.pack('>I', 2)) + prop('ranges', b''), reservations)

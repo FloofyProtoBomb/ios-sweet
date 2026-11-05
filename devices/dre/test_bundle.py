@@ -140,7 +140,9 @@ def run(image, dtb, syms, case, context_probe=False, driver_prep=False, handoff_
     payload = kernel.index(b'SWEETXNU\x01\0\0\0')
     va, entry, _, _, end, base, _ = struct.unpack_from('<7Q', kernel, payload + 16)
     cpu = Uc(UC_ARCH_ARM64, UC_MODE_ARM)
-    tree = 0x82000000
+    # The old synthetic FDT address was inside the live secure CDSP carve-out.
+    # Runtime ownership checks require an unreserved RAM address.
+    tree = 0xa0000000 if native_ufs else 0x82000000
     for address, contents in ((LOAD, kernel), (tree, dtb)):
         cpu.mem_map(address, (len(contents) + 4095) & -4096); cpu.mem_write(address, contents)
     cpu.mem_map(0x85200000, 0xc00000)

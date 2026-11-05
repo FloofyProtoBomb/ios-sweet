@@ -27,6 +27,7 @@ class State(C.Structure):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--zig', default='zig'); ap.add_argument('--out', type=Path, required=True)
+    ap.add_argument('--device-dtb', type=Path, help='optional private live-DT ownership fixture; never printed/copied')
     args = ap.parse_args(); args.out.mkdir(parents=True, exist_ok=True)
     stub = args.out / 'platform.c'
     stub.write_text('''#include <stdint.h>
@@ -84,6 +85,19 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return t += 1000000; }
         w = list(base); w[7] = zlib.crc32(struct.pack('<7Q', *w[:7]))
         assert bool(live(C.create_string_buffer(data), (C.c_uint64 * 8)(*w), len(data))) == expected
         checks += 1
+    pool = fixture(initrd=safe_initrd, owned_pools=[(0, 0xffffffff)])
+    w = list(base); w[7] = zlib.crc32(struct.pack('<7Q', *w[:7]))
+    assert live(C.create_string_buffer(pool), (C.c_uint64 * 8)(*w), len(pool)); checks += 1
+    ram = api.dre_dma_ram_allowed
+    ram.argtypes = [C.c_void_p, C.c_uint64, C.c_uint64]; ram.restype = C.c_int
+    assert not ram(C.create_string_buffer(pool), base[1], base[2]); checks += 1
+    if args.device_dtb:
+        data = args.device_dtb.read_bytes()
+        w = list(base); w[3] = 0xa0000000; w[4] = len(data)
+        w[7] = zlib.crc32(struct.pack('<7Q', *w[:7]))
+        assert live(C.create_string_buffer(data), (C.c_uint64 * 8)(*w), len(data)); checks += 1
+        w[3] = 0x82000000; w[7] = zlib.crc32(struct.pack('<7Q', *w[:7]))
+        assert not live(C.create_string_buffer(data), (C.c_uint64 * 8)(*w), len(data)); checks += 1
     memory = C.create_string_buffer(0x8000)
     va = (C.addressof(memory) + 0x3fff) & ~0x3fff
     pa = 0xa8040000

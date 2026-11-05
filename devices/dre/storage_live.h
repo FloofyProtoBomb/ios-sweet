@@ -20,5 +20,6 @@ static inline int dre_storage_live_valid(const void *dt, const uint64_t w[8])
         !dre_storage_dt_address(dt, "linux,initrd-start", &start) ||
         !dre_storage_dt_address(dt, "linux,initrd-end", &end) || end < start ||
         (start != end && w[5] < end && w[5] + w[6] > start)) return 0;
-    return dre_dma_ram_allowed(dt, w[1], w[2]) && dre_dma_ram_allowed(dt, w[3], w[4]);
+    return dre_dma_boot_owned_ram_allowed(dt, w[1], w[2]) &&
+        dre_dma_boot_owned_ram_allowed(dt, w[3], w[4]);
 }

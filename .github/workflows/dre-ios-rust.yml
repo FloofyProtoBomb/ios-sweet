@@ -17,6 +17,7 @@ permissions:
 # Use its exact toolchain for all three independent runtime build gates.
 env:
   DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+  DRE_RUNTIME_HOST_ARCH: arm64
 
 concurrency:
   group: dre-ios-rust-${{ github.ref }}
@@ -24,9 +25,12 @@ concurrency:
 
 jobs:
   native-sdk-and-metadata:
-    # Independent SDK cross-compile job; no dependency on the ARM64 Rust queue.
-    runs-on: macos-15
+    # Cross-compile the ARM64 iPhoneOS objects on Intel to reserve ARM64
+    # runner capacity for the pinned Rust and Mesa host tools.
+    runs-on: macos-15-intel
     timeout-minutes: 15
+    env:
+      DRE_RUNTIME_HOST_ARCH: x86_64
     steps:
       - uses: actions/checkout@v4
       - &verify_runtime_sdk
@@ -37,7 +41,7 @@ jobs:
           host_arch=$(uname -m)
           host_version=$(sw_vers -productVersion)
           printf '%s\n' "$host_arch" "$host_version" "$DEVELOPER_DIR"
-          test "$host_arch" = arm64
+          test "$host_arch" = "$DRE_RUNTIME_HOST_ARCH"
           [[ "$host_version" == 15 || "$host_version" == 15.* ]]
           test -d "$DEVELOPER_DIR"
           selected_xcode=$(xcodebuild -version)
@@ -189,8 +193,8 @@ jobs:
             sh out/rustup-init.sh -y --profile minimal --default-toolchain none --no-modify-path
           fi
           export PATH="$HOME/.cargo/bin:$PATH"
-          rustup toolchain install 1.98.0 --profile minimal
-          rustup target add --toolchain 1.98.0 aarch64-apple-ios
+          python3 devices/dre/gpu/runtime/install_rust_toolchain.py \
+            --rustup "$(command -v rustup)" --out out/rustup
       - name: Compile matching true iOS Rust archive and check actual frontend import names
         shell: bash
         run: |
@@ -213,6 +217,7 @@ jobs:
             out/metal306-bridge-source/*.log
             out/llvm21/*.json
             out/llvm21/*.log
+            out/rustup/*.log
             out/metal306-bridge-ios/*.json
             out/metal306-bridge-ios/*.log
             out/metal306-bridge-ios/objects/

@@ -73,6 +73,36 @@ static int driver_state_sysctl(__unused struct sysctl_oid *oidp, __unused void *
 SYSCTL_PROC(_kern, OID_AUTO, dre_ufs_state, CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_LOCKED,
     0, 0, driver_state_sysctl, "A", "DRE read-only storage initialization and IO state");
 
+/* Format only the already captured pre-abort values. The validity mask
+ * distinguishes an unread register from a valid zero. No MMIO on this path. */
+static int driver_fault_sysctl(__unused struct sysctl_oid *oidp, __unused void *arg1,
+                               __unused int arg2, struct sysctl_req *req)
+{
+    struct dre_ufs_read_state fault;
+    uint64_t arena_pa;
+    lck_mtx_lock(&dre_ufs_lock);
+    fault = media;
+    arena_pa = dre_kernel_ufs_arena_pa;
+    lck_mtx_unlock(&dre_ufs_lock);
+    if (!(fault.fault_valid & DRE_UFS_FAULT_CAPTURED)) return ENOENT;
+
+    /* The engine constructs single-block READ(10) and WRITE(10) CDBs. */
+    unsigned blocks = (fault.last_opcode == 0x28 || fault.last_opcode == 0x2a) ? 1 : 0;
+    char snapshot[256];
+    int length = snprintf(snapshot, sizeof(snapshot),
+        "NATIVE_F1=LBA=%x/BLK=%u/TICKS=%llu/VALID=%x\n"
+        "NATIVE_F2=HCS=%x/UEC=%x/%x/%x/%x/%x\n"
+        "NATIVE_F3=PWR=%x/ARENA=%llx/UTRL=%x:%08x\n",
+        fault.command_lba, blocks, (unsigned long long)fault.command_ticks, fault.fault_valid,
+        fault.fault_hcs, fault.fault_uec[0], fault.fault_uec[1], fault.fault_uec[2],
+        fault.fault_uec[3], fault.fault_uec[4], fault.fault_power,
+        (unsigned long long)arena_pa, fault.fault_utrl_hi, fault.fault_utrl_lo);
+    if (length < 0 || (size_t)length >= sizeof(snapshot)) return EOVERFLOW;
+    return SYSCTL_OUT(req, snapshot, (size_t)length + 1);
+}
+SYSCTL_PROC(_kern, OID_AUTO, dre_ufs_fault, CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_LOCKED,
+    0, 0, driver_fault_sysctl, "A", "DRE captured UFS timeout diagnostics");
+
 int dre_read32(uintptr_t address, uint32_t *out)
 {
     if (address & 3) return 0;

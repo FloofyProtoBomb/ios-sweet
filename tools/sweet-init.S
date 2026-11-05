@@ -83,6 +83,9 @@ tick:
 #if defined(DRE_CHECK_NATIVE_UFS) && !defined(DRE_BOARD_TESTS)
 	bl	Ldre_check_native
 #endif
+#ifdef DRE_CHECK_NATIVE_UFS
+	bl	Lnative_fault_status
+#endif
 #if defined(DRE_EXPECT_RAM_MIB) && !defined(DRE_BOARD_TESTS)
 	bl	Ldre_check_memory
 #endif
@@ -138,6 +141,88 @@ alive_end:
 #endif
 #ifdef DRE_CHECK_NATIVE_UFS
 #include "../devices/dre/native-check.inc"
+
+/* Print the three typed snapshot rows if this kernel has a captured fault.
+ * Old kernels and successful storage probes have no rows to report. */
+	.p2align 2
+Lnative_fault_status:
+	stp	x29, x30, [sp, #-16]!
+	sub	sp, sp, #272
+	mov	x8, #256
+	str	x8, [sp]
+	adr	x0, Lnative_fault_key
+	mov	x1, #(Lnative_fault_key_end - Lnative_fault_key)
+	add	x2, sp, #16
+	mov	x3, sp
+	mov	x4, #0
+	mov	x5, #0
+	mov	x16, #274		/* sysctlbyname, read only */
+	svc	#0x80
+	b.cs	Lnative_fault_done
+	ldr	x2, [sp]
+	cmp	x2, #2
+	b.lo	Lnative_fault_done
+	cmp	x2, #256
+	b.hi	Lnative_fault_done
+	sub	x2, x2, #1		/* Exclude the required terminator. */
+	add	x1, sp, #16
+	ldrb	w8, [x1, x2]
+	cbnz	w8, Lnative_fault_done
+	adr	x13, Lnative_fault_prefix
+	mov	x9, #0
+	mov	w10, #'1'
+Lnative_fault_row:
+	sub	x8, x2, x9
+	cmp	x8, #12		/* Prefix, digit, '=', data byte, newline. */
+	b.lo	Lnative_fault_done
+	mov	x12, #0
+Lnative_fault_check_prefix:
+	ldrb	w8, [x1, x9]
+	ldrb	w11, [x13, x12]
+	cmp	w8, w11
+	b.ne	Lnative_fault_done
+	add	x9, x9, #1
+	add	x12, x12, #1
+	cmp	x12, #8
+	b.lo	Lnative_fault_check_prefix
+	ldrb	w8, [x1, x9]
+	cmp	w8, w10
+	b.ne	Lnative_fault_done
+	add	x9, x9, #1
+	ldrb	w8, [x1, x9]
+	cmp	w8, #'='
+	b.ne	Lnative_fault_done
+	add	x9, x9, #1
+	mov	x11, x9
+Lnative_fault_body:
+	ldrb	w8, [x1, x9]
+	cmp	w8, #10
+	b.eq	Lnative_fault_end_row
+	cmp	w8, #32
+	b.lo	Lnative_fault_done
+	cmp	w8, #126
+	b.hi	Lnative_fault_done
+	add	x9, x9, #1
+	cmp	x9, x2
+	b.lo	Lnative_fault_body
+	b	Lnative_fault_done
+Lnative_fault_end_row:
+	cmp	x9, x11
+	b.eq	Lnative_fault_done
+	add	x9, x9, #1
+	add	w10, w10, #1
+	cmp	w10, #'4'
+	b.lo	Lnative_fault_row
+	cmp	x9, x2
+	b.ne	Lnative_fault_done
+	bl	write_console
+Lnative_fault_done:
+	add	sp, sp, #272
+	ldp	x29, x30, [sp], #16
+	ret
+Lnative_fault_key: .ascii "kern.dre_ufs_fault"
+Lnative_fault_key_end:
+Lnative_fault_prefix: .ascii "NATIVE_F"
 #endif
 #ifdef DRE_EXPECT_RAM_MIB
 #include "../devices/dre/memory-check.inc"

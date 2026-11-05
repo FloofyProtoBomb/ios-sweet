@@ -168,6 +168,11 @@ const char *dre_gpu_scm_probe_early(const void *dt,size_t bytes,struct dre_scm_p
         out->status=DRE_SCM_PROBE_ALREADY_RUN;out->boot_must_stop=1;
         return dre_gpu_scm_probe_status_name(DRE_SCM_PROBE_ALREADY_RUN);
     }
+#if defined(__APPLE__)
+    /* Let the compiler emit Mach-O relocations for the callback addresses.
+     * Mach-O cannot encode the shim's symbol-based ADR fixups. */
+    const struct dre_scm_probe_io io={0,actual_context,actual_info};
+#else
     /* The shim links at0 and is physically relocated by ABL without applying
      * ELF data relocations. A constant callback table would contain origin0
      * addresses. ADR materializes each actual runtime PC-relative address. */
@@ -177,6 +182,7 @@ const char *dre_gpu_scm_probe_early(const void *dt,size_t bytes,struct dre_scm_p
     const struct dre_scm_probe_io io={0,
         (int (*)(void *,struct dre_scm_probe_context *))read_pc,
         (int (*)(void *,struct dre_a619_smc_regs *))info_pc};
+#endif
     enum dre_scm_probe_status status=dre_gpu_scm_probe_with_io(dt,bytes,&io,out);
     recorded=*out;__atomic_store_n(&entered,2,__ATOMIC_RELEASE);
     return dre_gpu_scm_probe_status_name(status);

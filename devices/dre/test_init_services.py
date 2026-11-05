@@ -20,9 +20,13 @@ import mkpayload
 
 SURFACE = b'DRE SURF: IOCoreSurfaceRoot registered\n'
 FRAMEBUFFER = b'DRE FB: AppleCLCD 1080x2400 stride 4320\n'
+FAULT_ROWS = (b'NATIVE_F1=LBA=2/BLK=1/TICKS=9600321/VALID=800007ff\n'
+              b'NATIVE_F2=HCS=10f/UEC=0/80000002/0/0/0\n'
+              b'NATIVE_F3=PWR=80000000/ARENA=a8040000/UTRL=0:a8040000\n')
 
 
-def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3, native=None, ram_mib=None, ram_actual=None, status_mode=None):
+def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3,
+        native=None, ram_mib=None, ram_actual=None, status_mode=None, fault_mode=None):
     image = mkinit.build(obj)
     macho = mkpayload.parse_macho(image)
     cpu = Uc(UC_ARCH_ARM64, UC_MODE_ARM)
@@ -35,6 +39,7 @@ def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3, native
     cpu.reg_write(A.UC_ARM64_REG_SP, stack + stack_size - 15)  # crt0 must align it.
     output, ticks, opens = bytearray(), 0, 0
     native_reads = 0
+    fault_reads = 0
     gpt = bytearray(4096)
     struct.pack_into('<8sIIIIQQ', gpt, 0, b'EFI PART', 0x10000, 92, 0, 0, 1, 0xffffff)
     struct.pack_into('<I', gpt, 16, zlib.crc32(gpt[:92]))
@@ -53,7 +58,7 @@ def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3, native
         flags = cpu.reg_read(A.UC_ARM64_REG_NZCV) & ~(1 << 29)
         cpu.reg_write(A.UC_ARM64_REG_NZCV, flags | ((1 << 29) if error else 0))
     def syscall(uc, number, _):
-        nonlocal ticks, opens, native_reads
+        nonlocal ticks, opens, native_reads, fault_reads
         call = reg(16)
         if call == 5:
             path = bytes(cpu.mem_read(reg(0), 32)).split(b'\0')[0]
@@ -120,6 +125,31 @@ def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3, native
             cpu.mem_write(reg(0), uuid.uuid5(uuid.NAMESPACE_URL, 'urn:oneplus:dre:SYNTHETIC').bytes); finish(0)
         elif call == 274:
             key = bytes(cpu.mem_read(reg(0), reg(1))).decode()
+            if key == 'kern.dre_ufs_fault':
+                assert native is not None and reg(4) == reg(5) == 0
+                available, = struct.unpack('<Q', cpu.mem_read(reg(3), 8))
+                assert available == 256
+                fault_reads += 1
+                if fault_mode in (None, 'missing'):
+                    finish(2, True)
+                    return
+                if fault_mode == 'oversize':
+                    cpu.mem_write(reg(3), struct.pack('<Q', 257))
+                    finish(0)
+                    return
+                value = {
+                    'valid': FAULT_ROWS + b'\0',
+                    'unterminated': FAULT_ROWS,
+                    'control': FAULT_ROWS.replace(b'LBA=2', b'LBA=\x1bFAKE-PRIVATE-IDENTIFIER') + b'\0',
+                    'wrong_row': FAULT_ROWS.replace(b'NATIVE_F1=', b'NATIVE_F2=') + b'\0',
+                    'extra_row': FAULT_ROWS + b'FAKE-PRIVATE-IDENTIFIER\n\0',
+                    'truncated': FAULT_ROWS[:-1] + b'\0',
+                }[fault_mode]
+                assert len(value) <= available
+                cpu.mem_write(reg(2), value)
+                cpu.mem_write(reg(3), struct.pack('<Q', len(value)))
+                finish(0)
+                return
             assert key in keys, key
             value = keys[key]
             if key == 'kern.dre_ufs_state':
@@ -144,6 +174,12 @@ def run(obj, name, chunks, expected, active=8, accessible=True, cycles=3, native
     assert 'DRE identity checks PASS' in text, text
     assert expected in text, text
     assert 'FAKE-PRIVATE-IDENTIFIER' not in text, 'raw kernel log leaked to console'
+    if fault_mode is not None:
+        assert fault_reads == cycles, 'expected one read-only fault query per card'
+    if fault_mode == 'valid':
+        assert text.count(FAULT_ROWS.decode()) == cycles, text
+    else:
+        assert 'NATIVE_F' not in text, 'unexpected or malformed fault snapshot was printed'
     if native is not None:
         result = 'BSD_RAW+BLOCK+GPT_PASS + WRITE_OPEN_REJECTED' if native == 'pass' else 'UNAVAILABLE_OR_FAILED'
         assert text.count('NATIVE_UFS=' + result) == cycles, text
@@ -173,8 +209,11 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('object', type=Path, help='Mach-O object assembled with CPU/UI/board flags')
     ap.add_argument('--native-ufs', action='store_true')
+    ap.add_argument('--ufs-fault-snapshot', action='store_true', help='also verify the new bounded fault rows')
     ap.add_argument('--ram-mib', type=int, choices=(512, 1024, 2048))
     args = ap.parse_args()
+    if args.ufs_fault_snapshot and not args.native_ufs:
+        ap.error('--ufs-fault-snapshot requires --native-ufs')
     obj = args.object.read_bytes()
     if args.native_ufs:
         for mode in ('pass', 'missing', 'bad_crc', 'short_read', 'ioctl_error', 'writable',
@@ -189,6 +228,11 @@ if __name__ == '__main__':
         for mode in ('missing', 'oversize', 'unterminated', 'control'):
             run(obj, 'driver status ' + mode, [SURFACE + FRAMEBUFFER], 'UI_DRIVER_LOGS=SURFACE+FRAMEBUFFER',
                 native='pass', ram_mib=args.ram_mib, status_mode=mode)
+        if args.ufs_fault_snapshot:
+            for mode in ('missing', 'valid', 'oversize', 'unterminated', 'control',
+                         'wrong_row', 'extra_row', 'truncated'):
+                run(obj, 'fault snapshot ' + mode, [SURFACE + FRAMEBUFFER], 'UI_DRIVER_LOGS=SURFACE+FRAMEBUFFER',
+                    native='missing', ram_mib=args.ram_mib, fault_mode=mode)
         sys.exit(0)
     run(obj, 'both', [b'FAKE-PRIVATE-IDENTIFIER\n' + SURFACE + FRAMEBUFFER], 'UI_DRIVER_LOGS=SURFACE+FRAMEBUFFER')
     run(obj, 'separate reads', [SURFACE, FRAMEBUFFER], 'UI_DRIVER_LOGS=SURFACE+FRAMEBUFFER')

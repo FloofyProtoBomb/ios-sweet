@@ -125,11 +125,18 @@ if __name__ == '__main__':
             assert 'DRE SURF: IOCoreSurfaceRoot registered' in log
             assert 'DRE FB: AppleCLCD 1080x2400 stride 4320' in log
             assert f"DRE CPU: {info['cpus']}/{info['cpus']} CPUs initialized, SGI1 verified" in log
+            if info.get('native_ufs'):
+                # The virtual ADT has an empty ownership slot: the driver
+                # must refuse it before accessing any Qualcomm hardware.
+                assert 'NATIVE_UFS=UNAVAILABLE_OR_FAILED' in screen
+                assert 'DRE UFS: native disk unavailable (6)' in log
             result = {'status': 'PASS', 'kernel_sha256': info['kernel_sha256'],
                       'physical_image_sha256': info['image_sha256'], 'cpus_active': info['cpus'],
                       'pid1_identity_checks': 'PASS', 'surface_and_framebuffer_start': 'PASS',
                       'kernel_bytes_modified': False, 'hardware_report': 'simulated',
                       'qemu': version, 'ios_user_interface_rendered': False, 'phone_tested': False}
+            if info.get('native_ufs'):
+                result['native_ufs_missing_ownership_refused'] = True
             (out / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
             print(f"PASS QEMU {info['cpus']} active CPUs, SGIs, PID 1, identity and display services", flush=True)
         finally:

@@ -7,15 +7,21 @@ bearssl_sha=7bea48e5e850ab4cafbe68d3765cdaba13a86d6f
 bearssl_tmp=$(mktemp -d)
 trap 'rm -rf "$bearssl_tmp"' EXIT
 git init -q "$bearssl_tmp"
+bearssl_fetched=0
 for attempt in 1 2 3; do
-    if git -C "$bearssl_tmp" fetch -q --depth 1 \
-        https://www.bearssl.org/git/BearSSL "$bearssl_sha"; then
-        break
-    fi
-    [[ "$attempt" != 3 ]] || exit 1
+    # Both locations must yield the exact immutable upstream commit below.
+    # The mirror avoids a hard dependency on the origin's occasional 502s.
+    for source in https://www.bearssl.org/git/BearSSL https://repo.or.cz/BearSSL.mirror.git; do
+        if git -C "$bearssl_tmp" fetch -q --depth 1 "$source" "$bearssl_sha"; then
+            bearssl_fetched=1
+            break 2
+        fi
+    done
+    [[ "$attempt" != 3 ]] || break
     echo "BearSSL fetch failed; retrying pinned commit (attempt $attempt)" >&2
     sleep 5
 done
+[[ "$bearssl_fetched" == 1 ]] || exit 1
 git -C "$bearssl_tmp" checkout -q FETCH_HEAD
 [[ "$(git -C "$bearssl_tmp" rev-parse HEAD)" == "$bearssl_sha" ]]
 python3 - "$bearssl_tmp" <<'PY'

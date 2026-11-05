@@ -34,6 +34,13 @@ so this is not the final Apple-clang/link gate). Logs/objects are
 work/native-local-*.log and work/native-local-objects; failed CI buildtree is
 work/native-buildtree, a junction to D:/CodexWork/dre-native-build. No new
 image/test is approved and no phone write occurred. Retry CI is the next gate.
+Retry run 41949533768 (8d67363e55c7ce47ef764c0141565edcf76b4225,
+local29b1caa/treef922cdeacddf69a10850d68cd7ad0322a278527c) FAILED BEFORE
+COMPILATION: all three origin BearSSL fetches returned HTTP502. Add a mirror
+fallback for the identical pinned commit, keeping the rev-parse equality
+check; do not change the crypto version. The local first-run buildtree makes
+an exact selected-file comparison possible. QEMU now checks that an empty
+native ownership slot refuses hardware access while the RAM root stays up.
 Phone remains VERIFIED RESTORED LINEAGEOS from the 16dd2e95 test below.
 Build branch will be dre-storage (UI profile); keep dre-ui/tested images.
 

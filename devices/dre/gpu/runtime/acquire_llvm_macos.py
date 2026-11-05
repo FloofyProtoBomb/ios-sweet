@@ -67,9 +67,11 @@ def acquire(args, out: Path) -> dict:
     validate_host(platform.system(), platform.machine(), version, pin)
     brew = str(args.brew)
     validate_formula(json.loads(run([brew, "info", "--json=v2", pin["formula"]], "formula-before")), pin)
-    run([brew, "fetch", "--force-bottle", "--bottle-tag=" + pin["bottle_tag"], pin["formula"]],
+    # --bottle-tag already selects a bottle and is mutually exclusive with
+    # --force-bottle in the real Homebrew CLI. Never drop the exact tag/hash.
+    run([brew, "fetch", "--bottle-tag=" + pin["bottle_tag"], pin["formula"]],
         "fetch-bottle", timeout=600)
-    cache = Path(run([brew, "--cache", "--force-bottle", "--bottle-tag=" + pin["bottle_tag"],
+    cache = Path(run([brew, "--cache", "--bottle-tag=" + pin["bottle_tag"],
         pin["formula"]], "bottle-cache"))
     if not cache.is_file() or digest(cache) != pin["sha256"]:
         raise ValueError("actual cached bottle SHA256 differs; installation refused")

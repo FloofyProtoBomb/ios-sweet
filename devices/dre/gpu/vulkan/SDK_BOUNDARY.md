@@ -52,3 +52,17 @@ base tables, real Rust iOS ABI linking, task protection, raw PM4 validation,
 persistent/cache/IOSurface synchronization and physical A619 compute/render
 acceptance remain separate. No capability, physical-device publication or Metal
 acceptance state is enabled by loading IOKitUser.
+# Actual SDK retry boundaries
+
+The first real native SDK build compiled the IOKit transport but stopped at
+`IOSurface/IOSurface.h`, an umbrella not present in that iPhoneOS SDK. The
+wrapper now selects the genuine `IOSurfaceRef.h` where present; otherwise its
+two C declarations are taken from Apple's public IOSurface documentation.
+It still strictly links the real IOSurface framework and cannot supply the
+missing symbol itself. This change awaits the next actual SDK build.
+
+The first real ARM64 macOS 15 Rust job compiled all four frontend objects and
+the metadata observer, then Homebrew rejected the mutually exclusive fetch
+options `--force-bottle` and `--bottle-tag`. Fetch/cache now use only the exact
+bottle tag. Formula, SHA-256, actual host, receipt and tool-version checks
+remain required. No Rust target archive was produced by that failed job.

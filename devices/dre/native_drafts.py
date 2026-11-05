@@ -276,6 +276,9 @@ def stage_native_drafts(here, out, features, gpu_nc_proof=False,
             for name in ('boot_binding.c', 'boot_binding.h', 'native_provider.h'):
                 add('gpu/platform/' + name)
             add('gpu/platform/native_provider.cpp', 'gpu/platform/DRENativeGPUPlatform.cpp')
+            add('gpu/platform/scm_native.h')
+            add('gpu/platform/scm_native.c', 'gpu/platform/dre_gpu_scm_native.c')
+            add('gpu/platform/scm_native_xnu.cpp', 'gpu/platform/DRENativeSCM.cpp')
     if 'touch' in features:
         for name in TOUCH_NATIVE:
             add('touch_native/' + name + '.c', 'touch_native/dre_touch_' + name + '.c')

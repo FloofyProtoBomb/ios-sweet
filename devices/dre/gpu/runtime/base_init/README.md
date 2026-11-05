@@ -120,6 +120,16 @@ Even a qualified base construction will not supply the missing RAW command
 admission, protected GPU VM, persistent cache-transfer/IOSurface contract or
 actual A619 Metal compute/render execution.
 
+The selected private `initLimits`, `initFeatureQueries`, `initGPUFamilySupport`
+and `initWorkarounds` callbacks explicitly raise the typed unsupported-selector
+exception. A previous draft checked the real facts object but returned from
+these void methods without implementing their table postconditions. That was
+insufficient: returning normally could let the original registration path use
+uninitialized private tables. The callbacks now refuse rather than turn
+queried Vulkan facts into a successful private initialization claim. Their
+real table/ownership implementation and construction-failure cleanup remain
+requirements before a functioning device can be returned.
+
 ## Read-only executable for later exact-image observation
 
 `metadata_probe.mm` links the same metadata implementation against the official
@@ -133,3 +143,11 @@ The separate iOS Rust workflow builds and ad-hoc signs this observer but never
 executes it. A later isolated exact20H392 QEMU overlay can exercise the real
 loaded metadata parser without modifying the frozen OS image or using a phone.
 Successful compilation alone does not establish that its runtime guards pass.
+
+The first isolated actual observer experiment reached the kernel exec log but
+timed out without a status or heartbeat record. It established neither C main
+entry nor a matching metadata result. A subsequent source version emits
+`METAL306_OBSERVER_MAIN_ENTERED` using a raw POSIX console write before the
+autorelease pool or inspector. That checkpoint separates main entry from a
+later inspection stall if it is observed; absence remains inconclusive when
+the console operation itself is unproven. No automatic VM retry is performed.

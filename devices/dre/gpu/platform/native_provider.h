@@ -11,7 +11,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define DRE_GPU_PLATFORM_PROVIDER_CONFIG_VERSION 1u
+#define DRE_GPU_PLATFORM_PROVIDER_CONFIG_VERSION 2u
+struct dre_gpu_scm_request_policy;
 struct dre_gpu_platform_provider;
 struct dre_gpu_platform_provider_config {
     uint32_t version,struct_bytes;
@@ -49,6 +50,12 @@ struct dre_gpu_platform_provider_config {
         struct dre_gpu_boot_domain_ops *);
     uint32_t window_pages,reserved; /* explicit power-of-two1024..65536 */
     uint64_t rpm_budget_ticks,cp_budget_ticks; /* checked19.2MHz, nonzero<=1s */
+    /* Exclusive alternative to firmware_policy above. Metadata factory only;
+     * supplies genuine AP PAS13 request exclusion, PIL interconnect/security
+     * and loan lifetime references. Configure then performs actual serialized
+     * SCM64 discovery and builds observed firmware ops. No future EL3 grant
+     * or authentication may be asserted by this factory. No default policy. */
+    int (*scm_request_policy)(void *,uint64_t lease,struct dre_gpu_scm_request_policy *);
 };
 /* Read-only original board observation and resident source table creation.
  * Does NOT publish an IOService, bind a mutex, acquire hardware or call SCM.

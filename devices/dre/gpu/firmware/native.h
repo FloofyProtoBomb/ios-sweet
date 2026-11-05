@@ -8,6 +8,11 @@
 extern "C" {
 #endif
 struct dre_gpu_fw_native;
+struct dre_gpu_fw_relocation_view {
+    struct dre_gpu_fw_region original_identity;
+    struct dre_gpu_fw_relocation plan;
+    uint64_t image_pa,image_bytes;
+};
 struct dre_gpu_fw_native_ops {
     void *cookie;
     uint64_t lease;
@@ -18,9 +23,11 @@ struct dre_gpu_fw_native_ops {
     int (*normal_nc)(void *,const void *,uint64_t,size_t);
     int (*consumers_retired)(void *,uint64_t);
     struct dre_a619_pas13_ops scm; /* actual serialized SCM transport */
-    /* V2 only, EXACT1: genuinely held PAS13/XPU/security/clock/reset/source
-     * authority for the signed relocation to this independently owned boot
-     * image slice. The original DT GPU/IPA region is identity only; no
+    /* V2 only, EXACT1: genuine pre-call PAS13 request exclusion, security
+     * references, clock/reset/source lifetime and independently owned boot
+     * image slice. It does NOT assert a future EL3/XPU grant or authenticate
+     * the signed image; only actual PAS setup/auth replies establish that.
+     * The original DT GPU/IPA region is identity only; no
      * ownership, alias or permission over its neighbors is implied. Must
      * retain actual security references and this boot image through PAS
      * shutdown +all consumers/cache/DMA retirement. Absent callback refuses.
@@ -36,6 +43,15 @@ int dre_gpu_fw_native_source(struct dre_gpu_fw_native *,enum dre_gpu_fw_kind,
 /* Exact SQE full-file identity callback suitable for real CP binding. */
 int dre_gpu_fw_native_sqe_verified(struct dre_gpu_fw_native *,const void *,size_t);
 const struct dre_gpu_fw_region *dre_gpu_fw_native_region(struct dre_gpu_fw_native *);
+/* Kernel-only copy of the actual verified v2 source/handoff. Metadata only;
+ * does not acquire PAS13, expose firmware bytes or prove authentication. */
+int dre_gpu_fw_native_relocation_snapshot(struct dre_gpu_fw_native *,
+    struct dre_gpu_fw_relocation_view *);
+/* Real opaque-source lifetime holds, SAME owner mutex as every native API.
+ * Release of the object refuses outstanding holds. A hold is not device/cache
+ * retirement; each consumer must independently retire before dropping it. */
+int dre_gpu_fw_native_source_hold(struct dre_gpu_fw_native *);
+int dre_gpu_fw_native_source_drop(struct dre_gpu_fw_native *);
 /* Prepare all actual metadata/destination mappings BEFORE cold CP starts.
  * V1 shared GPU/IPA granule still refuses. V2 uses only the separate checked
  * boot-held slice and mandatory real relocated-PAS authority above. */

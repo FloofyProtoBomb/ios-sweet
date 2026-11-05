@@ -8,6 +8,11 @@
 #include <unistd.h>
 int main(void)
 {
+    /* An independent POSIX checkpoint precedes autorelease-pool and metadata
+     * operations. Its presence proves only C main entry, not parser success.
+     * Absence is inconclusive if the console write itself cannot complete. */
+    static const char entered[]="METAL306_OBSERVER_MAIN_ENTERED\n";
+    (void)write(STDOUT_FILENO,entered,sizeof(entered)-1);
     int result=1;
     @autoreleasepool {
         struct dre_metal306_base_metadata observed={};

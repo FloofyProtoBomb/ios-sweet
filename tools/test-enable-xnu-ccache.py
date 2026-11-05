@@ -58,7 +58,7 @@ class CompilerCacheHook(unittest.TestCase):
 
     def run_make(self, environment=None, arguments=()):
         env = dict(os.environ)
-        for name in ('CC','CXX','DRE_CCACHE','MAKEFLAGS','MFLAGS','MAKEOVERRIDES'):
+        for name in ('CC','CXX','MIGCC','DRE_CCACHE','MAKEFLAGS','MFLAGS','MAKEOVERRIDES'):
             env.pop(name, None)
         env.update(environment or {})
         result = subprocess.run([self.make, '--no-print-directory', '-f', 'Makefile', *arguments],
@@ -134,6 +134,36 @@ class CompilerCacheHook(unittest.TestCase):
         self.assertEqual(once.replace(hook.BLOCK.encode(), b''), original)
         hook.enable(self.path)
         self.assertEqual(self.path.read_bytes(), once)
+
+    def test_mig_executes_selected_preprocessor_as_one_path(self):
+        compiler = self.root / 'selected-preprocessor'
+        compiler.write_text('#!/usr/bin/env python3\nimport json,sys\n'
+            'open("mig-received.json","w").write(json.dumps(sys.argv[1:]))\n')
+        compiler.chmod(0o755)
+        cache = self.root / 'cache-wrapper'
+        cache.write_text('#!/bin/sh\nprintf "wrong\\n" >> mig-cache-calls\nexec "$@"\n')
+        cache.chmod(0o755)
+        mig = '''ifeq ($(origin MIGCC),undefined)
+export MIGCC := $(CC)
+endif
+all:
+\t@"$(MIGCC)" --mode='MIG preprocessing' -E input.defs
+'''
+        for selected in (str(compiler), str(cache)+' '+str(compiler)):
+            with self.subTest(selected=selected):
+                self.path.write_bytes(('XCRUN := $(CURDIR)/fake-xcrun\nSDKROOT := fixture\n'+
+                    DEFINITIONS+mig).encode())
+                hook.enable(self.path)
+                self.run_make({'CC':selected,'DRE_CCACHE':str(cache)})
+                self.assertEqual(json.loads((self.root/'mig-received.json').read_text()),
+                    ['--mode=MIG preprocessing','-E','input.defs'])
+                self.assertFalse((self.root/'mig-cache-calls').exists())
+
+    def test_mig_explicit_preprocessor_override_is_preserved(self):
+        self.path.write_bytes((FIXTURE+'\nshow-mig:\n\t@printf "%s\\n" "$(MIGCC)"\n').encode())
+        hook.enable(self.path)
+        self.assertEqual(self.run_make({'CC':'/chosen/clang','DRE_CCACHE':'/cache/ccache',
+            'MIGCC':'/explicit/preprocessor'}, ('show-mig',)), '/explicit/preprocessor\n')
 
     def test_crlf_bytes_are_preserved(self):
         original = FIXTURE.replace('\n','\r\n').encode()

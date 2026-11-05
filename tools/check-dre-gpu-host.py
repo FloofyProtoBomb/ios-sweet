@@ -26,6 +26,9 @@ FIXTURES = {
     'startup': ['a619_startup.c', 'test_a619_startup.c'],
     'firmware-relocation': ['a619_zap.c', 'a619_pas13.c', 'firmware/relocation.c',
                             '../storage_abi.c', 'firmware/test_relocation.c'],
+    'scm-channel': ['platform/scm_native.c', 'a619_zap.c', 'a619_pas13.c',
+                    '../libfdt/fdt.c', '../libfdt/fdt_ro.c', '../libfdt/fdt_check.c',
+                    'platform/test_scm_native.c'],
     'factory': ['runtime/factory_probe.c', 'runtime/test_factory_probe.c'],
     'compiler-envelope': ['runtime/compiler_request.c', 'runtime/test_compiler_request.c'],
 }
@@ -60,6 +63,8 @@ def main():
             command = [args.cc, '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror']
             if name == 'factory':
                 command.append('-DDRE_FACTORY_LIBRARY_ONLY')
+            if name == 'scm-channel':
+                command.extend(['-D_POSIX_C_SOURCE=200809L', '-I', str(GPU.parent / 'libfdt')])
             run([*command, *(str(GPU / source) for source in sources),
                  '-o', str(binary)], name + '-build.log')
             run([str(binary)], name + '-run.log')

@@ -535,6 +535,14 @@ static const struct tu_knl functions = {
 
 VkResult tu_knl_darwin_load(struct tu_instance *instance)
 {
+   /* The reference A740 trace uses private selector0x7102 and render-server
+    * boot overrides, neither of which exists in DRE ABI1. Refuse a requested
+    * trace instead of manufacturing a successful diagnostic submission. The
+    * DRE source profile compiles out that reference-only diagnostic branch;
+    * ordinary compute/render work still goes through real Turnip submits. */
+   if (getenv("SHENG_GPU_TRACE") != NULL)
+      return vk_startup_errorf(instance, VK_ERROR_FEATURE_NOT_PRESENT,
+                               "DRE has no legacy A740 frame-trace transport");
    struct dre_darwin *native = NULL;
    enum dre_darwin_result r = dre_darwin_open(DRE_GPU_VULKAN_REQUIRED_CAPS, &native);
    if (r == DRE_DARWIN_NO_PROVIDER || r == DRE_DARWIN_UNSUPPORTED)

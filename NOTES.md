@@ -2,6 +2,39 @@
 
 ## DE2118 handoff, 2026-11-05
 
+LATEST DAYTIME STATE (Nov5): corrected tree c52bc99/2e953bf3 published exactly
+as80fb5d8c; XNU retry42086019796 applied ALL patches +native post-hook PASS,
+then failed during MIG header generation: MIG treated cache+clang CC as one
+quoted pathname. Root now captures real selected MIGCC before cache wrapping;
+12actualGNU-make regression cases PASS including the reproduced quoted-path
+boundary and explicit preprocessor override. Common native_board.c also needs
+explicit vm/memory_types.h; exact proposed fix compiles against selected XNU.
+SCM source39d91b4 is wired into explicit firmware selection:57nativeTUs, actual
+no-clock SCM profile/SMC64 availability query/channel, private platform_config2
+and retained firmware/transaction state.44sanitized composition cases and real
+selected-header objects pass; genuine PAS13/PIL/security request owner remains
+mandatory, not provided by availability. No SMC was issued from tools.
+Runtime45042fd/f9b3a494 published exactlyasa55e69e8. Run42086577257 BOTH jobs
+ran: all four SDK objects +new metadata observer linked; true Rust stopped at
+Homebrew mutually-exclusive --force-bottle/--bottle-tag fetch CLI. Native SDK
+job linked/signed/verified observer then failed missing IOSurface/IOSurface.h.
+Actual fixesd9591b6 remove CLI conflict and use genuine IOSurface ABI boundary;
+986f0b2 excludes unsupported A740 trace code from DRE and rejects requested
+SHENG_GPU_TRACE. e031f29 adds separately qualified full MesaSDK job with pinned
+venv dependencies.3819efd makes missing private Metal initialization explicit
+unsupported exceptions, not no-op table setup.20b525a instruments raw C-main
+entry before Foundation/inspection. Those sources need the next official run.
+Readonly observer artifact13442582697/run42086577257/sourcea55e69e8: ZIP
+SHA9a751af43cfc9ad113a814500500f894dbc540958a91af9518af298aa00be806;
+executable SHA dc33f5a843a91df5d41c0f89e2aefc637b0f3cd9051a89fa5bd234bc391563a0.
+Its 180s isolated PID1 metadata VM TIMEOUT: kernel exec/shared-cache mappings
+observed, no C-main/metadata records, no panic. NOT a metadata/Metal pass. Own VM
+stopped; original54GBroot/kernel/build/Apple launchd unchanged. Curated report
+../../outputs/metal306-metadata-observation.json; raw localDlogs only. A normal
+launchd child experiment is prepared on that named sparse RAWclone, with cache
+entry preserving all original530jobs, but remains held for NEW SDKcheckpoint
+artifact/SHA and root launch coordination. No phone operation or full flash.
+
 DAYTIME CI/HANDOFF UPDATE: source snapshot e0063cbb /treea23d32f8 was published
 tree-identically as d7a2a01d on FloofyProtoBomb/ios-sweet:dre-native-validation.
 OfficialSDK run42082304882 SUCCESS: four frontend objects, factory observer,

@@ -79,6 +79,7 @@ def build(out: Path) -> dict:
                     HERE / "base_init/base_metadata.h", HERE / "base_init/metadata_probe.mm",
                     vulkan / "dre_darwin.c", vulkan / "dre_darwin.h", vulkan / "dre_iokit_loader.h",
                     vulkan / "dre_surface_iosurface.c", vulkan / "dre_surface_iosurface.h",
+                    vulkan / "dre_iosurface_abi.h",
                     kernel / "dre_gpu_uapi.h"]
     return {"status": "OFFICIAL_IOS_NATIVE_BOUNDARY_COMPILED_LINKED_ONLY",
         "target": "arm64-apple-ios16.0", "official_iphoneos_sdk_used": True, "sdk_path": sdk,

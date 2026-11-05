@@ -134,7 +134,7 @@ preemption and ray tracing. Other inherited Mesa feature claims remain
 
 ## Source/build recipes for deferred validation
 
-`prepare_turnip_dre.py` is an unrun recipe that creates a new checkout of
+`prepare_turnip_dre.py` creates a new checkout of
 Mesa85fda3b3/tree b72ff1eb, applies all17 SHA-pinned reference patches from the
 matching32446c8f orchestrator recipe, and overlays this transport/UAPI/policy.
 It routes `tu_bo_sync_cache` through the native cache call and removes the
@@ -143,6 +143,14 @@ sources and earlier tested artifacts are not modified. All17 patch behaviors
 still require individual A619 audit; merely applying them proves no runtime
 correctness. The separately tested compiler219f0136/Mesa26.2.6 path is a
 different source stack and supplies no binary compatibility proof here.
+
+Actual source preparation has now applied all17 pinned patches successfully.
+The DRE profile disables the reference-only Apple frame diagnostic branch
+(private selector `0x7102`) and `sheng-tum` boot rendering overrides. A requested
+`SHENG_GPU_TRACE`, including an empty environment value, is explicitly refused
+with `VK_ERROR_FEATURE_NOT_PRESENT`; no fake diagnostic symbol is provided.
+The ordinary Turnip rendering path remains the selected path. This preparation
+result still proves neither its SDK compile/link nor native execution.
 
 `build_turnip_dre.py` is an unrun recipe for a real macOS/Xcode
 `arm64-apple-ios16.0` dylib. It requires existing Meson, Ninja and
@@ -153,6 +161,15 @@ qualified tomorrow. A builtin pack is optional; when provided it must match
 the exact source/compiler profile and chip619/06010900. An A740 or
 Mesa26.2.6/offline probe pack must never be relabeled. No A619 pack for this new
 profile has been generated.
+
+The separate `matching-turnip-sdk` CI job now prepares that exact source stack
+and attempts the real SDK build only after the native C boundary job passes.
+Its CPython3.12 ARM64 source generators use exact PyPI wheel hashes; ordinary
+Homebrew Ninja/glslang/Bison/Flex installations retain their actual receipts
+and version/configuration logs. This job has not run yet. Its result is
+separate from both the four Metal frontend objects and the native C helper
+dylib. A successful compile would still leave all native execution and Metal
+acceptance gates false.
 
 The runtime draft `package_dre_metal.py` requires actual iPhoneOS frontend
 objects, a true iOS Rust archive and this exact Turnip dylib, checks their

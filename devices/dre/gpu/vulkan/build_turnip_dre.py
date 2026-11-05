@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""UNVALIDATED source-only draft for a future real iPhoneOS Turnip build.
+"""Attempt a real iPhoneOS Turnip build; native execution remains unqualified.
 
-Not run overnight. Requires an actual macOS/Xcode SDK plus working Meson,
+Requires an actual macOS/Xcode SDK plus working Meson,
 Ninja and glslangValidator. No dependency installer, source fallback, GPU,
 simulated physical device, image modification or publication is performed.
 """
@@ -26,7 +26,11 @@ def command(argv, out: Path, name: str, env: dict, timeout=180) -> str:
         result = subprocess.run([str(x) for x in argv], env=env, stdout=stream,
             stderr=subprocess.STDOUT, timeout=timeout, check=False)
     text = log.read_text(encoding="utf-8", errors="replace")
-    if result.returncode: raise ValueError(f"{name} failed ({result.returncode}); see {log.name}")
+    if result.returncode:
+        lines = text.splitlines()
+        errors = [line for line in lines if "error" in line.lower()]
+        print("\n".join((errors or lines[-30:])[:45])[:8000], file=sys.stderr)
+        raise ValueError(f"{name} failed ({result.returncode}); see {log.name}")
     return "\n".join(text.splitlines()[1:]).strip()
 
 
@@ -83,7 +87,7 @@ def build(args, out: Path) -> dict:
          ("ar", tools["ar"]), ("strip", tools["strip"]), ("pkg-config", "/usr/bin/false"))) +
         "\n[host_machine]\nsystem = 'darwin'\ncpu_family = 'aarch64'\ncpu = 'arm64'\nendian = 'little'\n"
         "[properties]\nneeds_exe_wrapper = true\n[built-in options]\n" + "".join(
-            k + " = " + repr(flags) + "\n" for k in
+            k + " = " + repr(flags + (["-Wl,-undefined,error"] if "link" in k else [])) + "\n" for k in
             ("c_args", "cpp_args", "objc_args", "c_link_args", "cpp_link_args", "objc_link_args")), encoding="utf-8")
     options = ["-Dgallium-drivers=", "-Dvulkan-drivers=freedreno", "-Dfreedreno-kmds=darwin",
         "-Dtu-darwin-abi-dir=" + str(source / "src/freedreno/vulkan"), "-Dplatforms=[]", "-Dglx=disabled",
@@ -133,6 +137,7 @@ def build(args, out: Path) -> dict:
         "target": "arm64-apple-ios16.0", "source": profile, "source_id": source_id,
         "dylib": {"file": copied.name, "bytes": copied.stat().st_size, "sha256": sha(copied)},
         "official_iphoneos_sdk": sdk, "dependencies": dependencies,
+        "strict_undefined_link": True, "unresolved_import_waiver": False,
         "builtin_pack_sha256": pack_sha, "native_provider_exercised": False,
         "physical_device_enumerated": False, "runtime_executed": False,
         "publication_ready": False, "metal_acceleration_pass": False}

@@ -46,6 +46,72 @@ jobs:
             out/native-sdk/SHA256SUMS
             out/native-sdk/objects/
           if-no-files-found: error
+  matching-turnip-sdk:
+    # Distinct full Mesa C/C++ gate, after the independent native C boundary.
+    # Never treat a successful helper compile as a successful Turnip link.
+    needs: native-sdk-and-metadata
+    runs-on: macos-14
+    timeout-minutes: 70
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: arm64
+      - name: Install explicit real host source-generation tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          mkdir -p out/mesa-tools
+          python3 -m venv out/mesa-tools/venv
+          out/mesa-tools/venv/bin/python -m pip install --only-binary=:all: --require-hashes \
+            -r devices/dre/gpu/vulkan/mesa-tools-macos-arm64-py312.txt \
+            > out/mesa-tools/pip-install.log 2>&1
+          out/mesa-tools/venv/bin/python -m pip freeze --all > out/mesa-tools/pip-installed.log
+          brew install --force-bottle glslang ninja bison flex > out/mesa-tools/brew-install.log 2>&1
+          brew info --json=v2 glslang ninja bison flex > out/mesa-tools/brew-installed.json
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix flex)/bin" >> "$GITHUB_PATH"
+          echo "$PWD/out/mesa-tools/venv/bin" >> "$GITHUB_PATH"
+      - name: Prepare fresh matching public frontend and Mesa sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 devices/dre/gpu/runtime/build_frontend.py --prepare-only \
+            --dre-compiler-service --dre-device-policy --out out/turnip-frontend-inputs
+          python3 devices/dre/gpu/runtime/prepare_bridge_source.py \
+            --frontend-build out/turnip-frontend-inputs --out out/turnip-bridge-inputs
+          python3 devices/dre/gpu/vulkan/prepare_turnip_dre.py \
+            --bridge-source out/turnip-bridge-inputs --out out/turnip-prepared
+      - name: Compile and strictly link actual iPhoneOS Mesa Turnip
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 devices/dre/gpu/vulkan/build_turnip_dre.py \
+            --prepared out/turnip-prepared --out out/turnip-sdk \
+            --meson "$PWD/out/mesa-tools/venv/bin/meson" --ninja "$(command -v ninja)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dre-turnip-sdk
+          path: |
+            out/mesa-tools/*.json
+            out/mesa-tools/*.log
+            out/turnip-frontend-inputs/*.json
+            out/turnip-frontend-inputs/*.log
+            out/turnip-bridge-inputs/*.json
+            out/turnip-bridge-inputs/*.log
+            out/turnip-prepared/*.json
+            out/turnip-prepared/*.log
+            out/turnip-sdk/*.json
+            out/turnip-sdk/*.log
+            out/turnip-sdk/objects/
+            out/turnip-sdk/build/meson-logs/
+          if-no-files-found: error
   matching-ios-objects:
     # Standard macos-15 is ARM64; the acquisition helper also verifies the
     # actual architecture/OS before accepting the pinned Sequoia LLVM bottle.

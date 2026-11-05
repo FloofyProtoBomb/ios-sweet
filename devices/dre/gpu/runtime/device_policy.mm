@@ -84,9 +84,12 @@ static BOOL queriedFlagArg(id self,SEL command,NSUInteger argument)
 }
 static void registration(id self,SEL command)
 {
-    /* This checks our real facts/refusal state. It neither runs inherited
-     * Apple-table writers nor claims to initialize their private storage. */
+    /* These void callbacks are real private initialization operations, not
+     * capability queries. Checking a few Vulkan facts cannot satisfy their
+     * table/ownership postconditions. Never return as though initialization
+     * succeeded while leaving inherited consumers with empty private state. */
     (void)required(self,command);
+    refuse(self,command);
 }
 static bool sameType(const char *actual,const char *expected)
 {return actual&&expected&&!strcmp(actual,expected);}

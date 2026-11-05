@@ -2,7 +2,7 @@
 #pragma once
 #include "dre_darwin.h"
 #if defined(__APPLE__)
-#include <IOSurface/IOSurface.h>
+#include "dre_iosurface_abi.h"
 #ifdef __cplusplus
 extern "C" {
 #endif

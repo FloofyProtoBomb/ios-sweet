@@ -81,8 +81,11 @@ as whole Normal-NC CPU granules, verifies each PA and actual PTE/cache proof,
 and retains them on uncertainty. It does not map the original GPU reserved PA.
 
 The appended kernel-private `owns_relocated_pas13` callback must return exactly
-1 for actual held PAS13/XPU/security/reset/source/clock authority over this
-exact plan and original image. Zero, negative, a missing callback, a DT node,
+1 for actual held PAS13 request exclusion, security references, reset/source/
+clock lifetime and memory-loan ownership over this exact plan and original
+image. It must not assert a future EL3/XPU grant or authenticate firmware;
+those outcomes follow only from actual PAS setup/authentication replies.
+Zero, negative, a missing callback, a DT node,
 signed relocation bit, format pass or supported-query result cannot substitute
 for that authority. Existing SCM discovery, clock, transport guard, counter
 and consumer-retirement proofs remain mandatory. No default policy is supplied.

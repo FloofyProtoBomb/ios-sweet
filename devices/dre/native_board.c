@@ -7,6 +7,7 @@
 #include <kern/kalloc.h>
 #include <libkern/libkern.h>
 #include <vm/pmap.h>
+#include <vm/memory_types.h>
 #include "native_board.h"
 #include "storage_abi.h"
 #include "storage_live.h"

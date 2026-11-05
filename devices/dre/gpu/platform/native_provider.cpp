@@ -10,6 +10,7 @@
 #include "../../native_board.h"
 #include "boot_memory.h"
 #include "io_router.h"
+#include "scm_native.h"
 
 /* CPU table/VM/CP control lives INSIDE one actual allocator-owned Normal-NC
  * object, not an exempt arbitrary IOMalloc range posing as owned bookkeeping. */
@@ -28,6 +29,7 @@ struct dre_gpu_platform_control {
     dre_holi_gcc_policy gccPolicy;
     dre_holi_gcc_hold gcc;
     dre_gpu_fw_native_ops firmwareOps;
+    dre_gpu_scm_request_policy scmPolicy;
 };
 struct dre_gpu_platform_provider {
     dre_gpu_platform_provider_config config;
@@ -41,6 +43,7 @@ struct dre_gpu_platform_provider {
     dre_gpu_native_owner *owner;
     dre_rpm_native *rpm;
     dre_gpu_fw_native *firmware;
+    dre_gpu_scm_native *scm;
     dre_gpu_native_allocator allocator;
     dre_gpu_native_io raw;
     dre_gpu_native_allocation *controlAllocation;
@@ -80,7 +83,8 @@ static bool brokerComplete(const dre_gpu_native_broker *g,const dre_rpm_native_b
 static bool configComplete(const dre_gpu_platform_provider_config *c)
 {
     return c&&c->version==DRE_GPU_PLATFORM_PROVIDER_CONFIG_VERSION&&c->struct_bytes==sizeof(*c)&&
-        !c->reserved&&c->bind_common_lock&&c->gic_policy&&c->firmware_policy&&
+        !c->reserved&&c->bind_common_lock&&c->gic_policy&&
+        (!!c->firmware_policy!=!!c->scm_request_policy)&&
         c->aggregate_policy&&c->gcc_policy&&c->domain_reservation&&brokerComplete(&c->gpu,&c->rpm)&&
         c->window_pages>=1024&&c->window_pages<=DRE_A619_SMMU_MAX_PAGES&&
         !(c->window_pages&(c->window_pages-1))&&c->rpm_budget_ticks&&
@@ -233,7 +237,15 @@ static int configure(void *cookie,uint64_t lease,const dre_gpu_native_io *raw,
 
     const char *result=dre_gpu_fw_native_load(&p->firmware);
     if(!equal(result,"FW_NATIVE_PRIVATE_SOURCE_VERIFIED"))return fail(p,result,DRE_GPU_NOT_READY);
-    status=p->config.firmware_policy(p->config.cookie,lease,&c->firmwareOps);
+    if(p->config.scm_request_policy) {
+        status=p->config.scm_request_policy(p->config.cookie,lease,&c->scmPolicy);
+        if(status)return fail(p,"NATIVE_PLATFORM_REAL_PAS_REQUEST_POLICY_REQUIRED",status);
+        status=dre_gpu_scm_native_create(&p->serialization,lease,p->firmware,&c->scmPolicy,&p->scm);
+        if(status)return fail(p,"NATIVE_PLATFORM_SCM_SOURCE_OR_REQUEST_BINDING_REQUIRED",status);
+        result=dre_gpu_scm_native_acquire(p->scm);
+        if(!equal(result,"SCM64_PAS13_CALLS_OBSERVED_ONLY"))return fail(p,result,DRE_GPU_NOT_READY);
+        status=dre_gpu_scm_native_firmware_ops(p->scm,&c->firmwareOps);
+    } else status=p->config.firmware_policy(p->config.cookie,lease,&c->firmwareOps);
     if(status||!firmwareTable(&c->firmwareOps,lease))
         return fail(p,"NATIVE_PLATFORM_REAL_SCM_FIRMWARE_POLICY_REQUIRED",status?status:DRE_GPU_NOT_READY);
     /* The actual binding owns the ONE call to native PAS buffer preparation.

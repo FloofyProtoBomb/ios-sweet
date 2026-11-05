@@ -36,6 +36,7 @@ struct dre_gpu_fw_native {
     dre_gpu_fw_native_ops ops;
     dre_a619_pas13 pas;
     vm_offset_t metadataMap,reservedMap;
+    uint32_t sourceHolds;
     bool verified,prepared,unsafe,relocated;
 };
 static int same(const uint8_t *a,const uint8_t *b,size_t n)
@@ -140,6 +141,25 @@ extern "C" int dre_gpu_fw_native_sqe_verified(dre_gpu_fw_native *c,const void *p
 }
 extern "C" const dre_gpu_fw_region *dre_gpu_fw_native_region(dre_gpu_fw_native *c)
 { return c&&c->verified?&c->region:NULL; }
+extern "C" int dre_gpu_fw_native_relocation_snapshot(dre_gpu_fw_native *c,
+    dre_gpu_fw_relocation_view *out)
+{
+    dre_gpu_fw_view source={};
+    if(!c||!out||!c->relocated||c->unsafe||!handoffValid(c)||
+       dre_gpu_fw_native_source(c,DRE_GPU_FW_ZAP,&source)!=1)return 0;
+    dre_gpu_fw_relocation plan={};
+    if(strcmp(dre_gpu_fw_relocation_plan(source.bytes,source.size,c->handoff[7],c->handoff[8],
+       c->handoff[4],c->handoff[5],&plan),"FW_RELOCATION_STRUCTURE_ONLY"))return 0;
+    *out={c->region,plan,c->storage[5],c->storage[6]};return 1;
+}
+extern "C" int dre_gpu_fw_native_source_hold(dre_gpu_fw_native *c)
+{
+    dre_gpu_fw_view source={};
+    if(!c||c->sourceHolds==UINT32_MAX||dre_gpu_fw_native_source(c,DRE_GPU_FW_ZAP,&source)!=1)return 0;
+    ++c->sourceHolds;return 1;
+}
+extern "C" int dre_gpu_fw_native_source_drop(dre_gpu_fw_native *c)
+{if(!c||!c->sourceHolds)return 0;--c->sourceHolds;return 1;}
 static int aliasProof(dre_gpu_fw_native *c,vm_offset_t cpu,uint64_t pa,size_t bytes)
 {
     for(size_t off=0;off<bytes;off+=4096)if(kvtophys(cpu+off)!=pa+off)return 0;
@@ -239,7 +259,7 @@ extern "C" const char *dre_gpu_fw_native_shutdown(dre_gpu_fw_native *c)
 }
 extern "C" const char *dre_gpu_fw_native_release(dre_gpu_fw_native *c)
 {
-    if(!c||!c->ops.lease||c->unsafe||c->pas.unsafe||c->pas.initialized||c->pas.authenticated||
+    if(!c||c->sourceHolds||!c->ops.lease||c->unsafe||c->pas.unsafe||c->pas.initialized||c->pas.authenticated||
        !c->ops.consumers_retired||c->ops.consumers_retired(c->ops.cookie,c->ops.lease)!=1)
         return "FW_NATIVE_FIRMWARE_CONSUMERS_NOT_RETIRED";
     unmapTemporary(c->reservedMap,c->relocated?c->relocation.load_bytes:c->region.bytes);

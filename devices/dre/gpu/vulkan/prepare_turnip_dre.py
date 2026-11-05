@@ -97,6 +97,16 @@ def prepare(args, out: Path) -> dict:
     replace_once(meson,
         "  tu_deps += dependency('appleframeworks', modules : ['IOKit', 'CoreGraphics', 'Foundation', 'QuartzCore'])",
         "  tu_deps += dependency('appleframeworks', modules : ['CoreFoundation', 'CoreGraphics', 'Foundation', 'QuartzCore'])")
+    # This profile replaces the reference KMD, so its optional A740 diagnostic
+    # selector and sheng-tum boot rendering override cannot remain active.
+    # Preserve the reference's existing ordinary-rendering branch; do not add
+    # a fake tu_darwin_frame_diagnostic symbol to satisfy a strict link.
+    diagnostics = vulkan / "tu_frame_diagnostic.h"
+    diagnostic_before = sha(diagnostics)
+    replace_once(diagnostics, "#ifdef __APPLE__\n",
+        "/* DRE profile: no reference A740 diagnostic transport/boot override. */\n"
+        "#define TU_DRE_NO_LEGACY_DIAGNOSTICS 1\n"
+        "#if defined(__APPLE__) && !defined(TU_DRE_NO_LEGACY_DIAGNOSTICS)\n")
     header = vulkan / "tu_device.h"
     replace_once(header, "struct tu_physical_device\n{\n",
         "struct tu_physical_device\n{\n   uint64_t dre_reset_generation; /* DRE native epoch, never a fabricated ID */\n")
@@ -136,6 +146,10 @@ def prepare(args, out: Path) -> dict:
         "matching_reference_patches": applied, "dre_overlay_sha256": overlays,
         "prepared_index_tree": tree, "required_build_platforms": [],
         "reference_a740_transport_replaced": True, "weak_undefined_link_waiver_removed": True,
+        "reference_a740_diagnostics": {"input_sha256": diagnostic_before,
+            "prepared_sha256": sha(diagnostics), "legacy_selector_0x7102_active": False,
+            "legacy_render_bootarg_override_active": False,
+            "requested_trace_policy": "VK_ERROR_FEATURE_NOT_PRESENT"},
         "raw_pm4_validator_present": False, "persistent_native_mappings_qualified": False,
         "compiled": False, "linked": False, "runtime_executed": False,
         "physical_device_enumerated": False, "publication_ready": False, "metal_acceleration_pass": False}

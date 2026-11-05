@@ -17,6 +17,16 @@ END = '# END DRE optional target compiler cache'
 BLOCK = '''
 # BEGIN DRE optional target compiler cache
 ifneq ($(strip $(DRE_CCACHE)),)
+# MIG executes its preprocessor as one quoted pathname. Preserve the actual
+# selected compiler before CC becomes a cache+compiler command, including
+# recursive makes that already inherited a cache prefix. Explicit MIGCC wins.
+ifeq ($(origin MIGCC),undefined)
+ifneq ($(notdir $(firstword $(CC))),$(notdir $(firstword $(DRE_CCACHE))))
+export MIGCC := $(firstword $(CC))
+else
+export MIGCC := $(word 2,$(CC))
+endif
+endif
 ifneq ($(notdir $(firstword $(CC))),$(notdir $(firstword $(DRE_CCACHE))))
 override CC := $(strip $(DRE_CCACHE)) $(CC)
 endif

@@ -19,6 +19,8 @@ The driver now uses XNU's removable mapping API for that temporary copy.
 `qemu_ui.py --native-map-test` exercises this positive ownership path across
 a 16 KiB page boundary, then returns before Qualcomm MMIO. Both this test
 and the empty-ownership refusal test must pass before another handset test.
+The corrected kernel now passes both QEMU cases with eight CPUs and the
+2 GiB RAM window. A new handset test is still required for native disk reads.
 
 The validated diagnostic boots XNU 8796 with all eight CPUs and a small Mach-O as PID 1
 on a mockfs RAM disk. The eventual userland target is iPhone X

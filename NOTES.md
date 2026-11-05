@@ -2,6 +2,31 @@
 
 ## DE2118 handoff, 2026-11-04
 
+MAPPING-FIX CANDIDATE READY, NOT FLASHED: work/build-native-mapfix-2g,
+image SHA cc1c0764c78f18ba3361fb1b6886c4c925842864774c414d4a6b7c96ea03af62,
+16764928 bytes. CI41955000734 PASSED full compile/link/all66 UI patches,
+source36e70cfbf55be6abba5bb5c73e2a5994c9e69c7b, tree4cb5d1ad4ac79465911a966c9745159c365de74a.
+Kernel work/native-mapfix-kernel/kernel.development.dre SHA
+9daa2513cc0db7907a51a6c3c67de745a552844ef9cdebfd2af0ae38479e7cf2,
+17202536 bytes; ZIP SHA ae10058d136032381f0858767dd19e57bd47ccc94f5637656a2717ce7cc628b9.
+POSITIVE QEMU REGRESSION PASSES: work/qemu-native-mapfix-positive/result.json
+native_fdt_mapping_lifetime_test=true. Actual kernel logs
+"DRE UFS: transient FDT mapping lifetime PASS" after map/copy/unmap and
+valid board/RAM checks, then returns before Qualcomm MMIO; PID1,8CPU,
+RAM_MIB2047MiB and display heartbeat pass. Negative empty-ownership QEMU
+also PASSES at work/qemu-native-mapfix-2g. Both retain unmodified kernel.
+All6 exact-image cases PASS (native-mapfix-model-reports.json), private
+real GPT fixture5 commands/correct userdata also PASS
+(native-mapfix-real-gpt-report.json).47 C engine/ownership cases PASS;
+candidate init object still equals tested7-case SHA0db36f944f0391e35cdfabd4bee924adc7b487e7e35da5bb7ef23e83a377e67b.
+All test processes have exited. Phone is VERIFIED RESTORED LINEAGEOS as
+below; no watcher is active. Fresh approval is required for cc1c0764.
+Prepare new outputs with work/package-native-mapfix.py after committing
+these source notes. Preserve failed ec927dc0 artifacts and their report.
+Native storage and2047MiB RAM remain UNPROVEN ON HANDSET. This fixes and
+virtually exercises the mapping-lifetime bug; no iOS base system/Setup.app
+or iTunes restore is implemented by it.
+
 LATEST PHYSICAL RESULT: ec927dc0 FAILED before PID1/native storage IO.
 User photo20261104_211540.jpg shows vm_map_delete panic: Attempting to
 remove permanent VM map entry @vm_map.c:7940. Symbolication against exact
@@ -32,6 +57,27 @@ normal/native hardware clock checks remain strict. Positive test must find
 "DRE UFS: transient FDT mapping lifetime PASS", plus PID1,8CPU,RAM2047MiB
 and display heartbeat. Also retain empty-ownership refusal QEMU separately.
 New CI build and new image are required; no new flash is authorized.
+FIX BUILD: run41955000734 is compiling commit
+36e70cfbf55be6abba5bb5c73e2a5994c9e69c7b on dre-storage; tree
+4cb5d1ad4ac79465911a966c9745159c365de74a equals local62b14df. All12 native C
+files compile locally, symbol closure passes,47 host engine/ownership cases
+still pass. Positive QEMU synthetic fixture passes production live-memory
+validation and spans two16K pages. Builder capability check now additionally
+requires the new mapping-lifetime PASS string, so broken kernels are refused
+(this builder-only change is not part of the kernel CI input).
+NEXT once CI passes: download verified kernel to work/native-mapfix-kernel;
+build --native-ufs --ram-mib2048 with full previous diagnostic flags to
+work/build-native-mapfix-2g. Run QEMU twice SEQUENTIALLY because each writes
+the build's virtual ADT: outwork/qemu-native-mapfix-2g default empty-owner,
+then outwork/qemu-native-mapfix-positive with --native-map-test. Positive
+must record native_fdt_mapping_lifetime_test=true and RAM2047MiB/PID1/8CPU.
+Use new exact-image reports work/native-mapfix-model-reports.json (6cases)
+and work/test-mapfix-real-gpt.py -> native-mapfix-real-gpt-report.json.
+work/package-native-mapfix.py is prepared, NOT RUN; it requires both QEMU
+cases and rejects QEMU arguments in the physical cmdline. NEW output names
+de2118-native-mapfix-test.img / native-mapfix-test-manifest.json /
+ios-dre-native-mapfix-source.zip / work/native-mapfix-operator.py preserve
+all failed ec927dc0 artifacts. New flash still needs fresh explicit approval.
 
 USER NOW SPECIFICALLY APPROVED "Run combined test and restore" for ec927dc0
 (2GiB/native BSD reads). Fresh preflight PASSED local candidate ec927dc0 and

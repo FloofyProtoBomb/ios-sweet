@@ -24,6 +24,8 @@ FIXTURES = {
     'rbbm': ['a619_rbbm.c', 'test_a619_rbbm.c'],
     'vm': ['a619_smmu.c', 'a619_vm.c', 'test_a619_vm.c'],
     'startup': ['a619_startup.c', 'test_a619_startup.c'],
+    'firmware-relocation': ['a619_zap.c', 'a619_pas13.c', 'firmware/relocation.c',
+                            '../storage_abi.c', 'firmware/test_relocation.c'],
     'factory': ['runtime/factory_probe.c', 'runtime/test_factory_probe.c'],
     'compiler-envelope': ['runtime/compiler_request.c', 'runtime/test_compiler_request.c'],
 }

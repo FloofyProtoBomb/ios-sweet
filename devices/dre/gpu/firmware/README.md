@@ -1,9 +1,11 @@
 # Private A619 firmware provisioning draft
 
-**UNVALIDATED. Do not run recipes during the overnight validation hold.** No
-provisioning, build, test, compile, CI, image mutation, phone operation or SCM
-call has been performed for this source. Firmware, private pins, images and
-per-phone data stay outside git. This does not finalize native GPU or Metal.
+Native execution remains unverified. Local validation resumed November 5:
+selected-XNU-header objects and freestanding shim objects compile; relocation
+and retained PAS-failure fixtures pass on the host with sanitizers. No actual
+SCM call or physical native GPU execution follows from those results. Firmware,
+private pins, images and per-phone data stay outside git. This does not finalize
+native GPU or Metal.
 
 ## Concrete platform constraints
 
@@ -20,11 +22,15 @@ The pinned full Holi source describes GPU microcode at `0x8b71a000 + 0x2000`.
 The 16 KiB CPU granule covering it begins at `0x8b718000`; its lower 8 KiB
 belongs to the separate IPA GSI reservation ending at `0x8b71a000`. This source
 derives the actual region and neighbors from the original live FDT and
-**refuses the subpage/shared-granule mapping**. It neither resets IPA nor
+**refuses the legacy subpage/shared-granule mapping**. It neither resets IPA nor
 widens GPU ownership. DT presence cannot prove neighboring cache/alias or
 controller ownership. A future bounded byte-slice mapping would need genuine
 whole-granule/adjacent-owner evidence or another fully qualified mechanism;
-none is supplied here.
+none is supplied here. The separately opted-in v2 path instead uses an actual
+boot-held aligned load arena because the exact signed image is relocatable;
+it never maps this original shared granule. See [RELOCATION.md](RELOCATION.md)
+for primary-source evidence, exact handoff, remaining PAS/XPU authority and
+validation limits.
 
 This refusal must be handled during native configuration **before cold CP
 startup/ME_INIT**. Correct firmware bytes do not resolve the reserved mapping
@@ -62,8 +68,8 @@ Only genuine Qualcomm PAS13 authentication can authenticate the signed ZAP.
 
 ## Optional shim and image source path
 
-`build.py --gpu-firmware-provisioning <private-directory>` is the only new
-switch. It requires a native UI/UFS XNU, an exact matching private anchor in
+`build.py --gpu-firmware-provisioning <private-directory>` requires a native
+UI/UFS XNU, an exact matching private anchor in
 the actual kernel, and a fresh `--out` outside the repository. It rejects a
 kernel missing the actual optional firmware-source symbols. The switch does
 not enable `dre_gpu_native`, SCM, GPU register access, installation or flashing.
@@ -71,10 +77,13 @@ not enable `dre_gpu_native`, SCM, GPU register access, installation or flashing.
 The package is linked into a new retained section before the ordinary XNU
 payload. The original payload remains last; the Linux Image size, normal RAM
 and reservation guards continue covering the whole linked image. A unique
-`/dre-gpu-firmware` ADT node has a fixed64-byte `dre,firmware-handoff` slot. This
+`/dre-gpu-firmware` ADT node has a fixed64-byte legacy `dre,firmware-handoff` slot. This
 distinct property avoids the existing UFS handoff fixup's namespace.
 `shim_handoff.c` validates package structure and boot ownership, then fills the
 CRC-covered slot. It writes neither GPU reserved RAM nor hardware registers.
+The separate explicit `--gpu-firmware-relocated` selection enables the new
+96-byte v2 record, initialized boot-held storage and mandatory relocated-PAS
+policy. Without that selection the legacy record and source path remain.
 
 Default build arguments/profile paths remain unchanged. Without the switch,
 no firmware object, metadata arena, ADT node or firmware macro is added. The

@@ -64,6 +64,8 @@ def main():
     ap.add_argument("--product-adt", type=Path, help="optional private D22AP Apple ADT for /product metadata")
     ap.add_argument("--gpu-firmware-provisioning", type=Path,
                     help="UNVALIDATED opt-in private SQE/ZAP provisioning directory; matching kernel anchor and fresh external --out required")
+    ap.add_argument("--gpu-firmware-relocated", action="store_true",
+                    help="opt-in v2 boot-held aligned PAS13 load arena; requires private firmware provisioning and real relocated-PAS policy")
     args = ap.parse_args()
     if args.install_root:
         if not args.xnu or not args.product_adt:
@@ -99,6 +101,8 @@ def main():
         ap.error("expanded RAM requires --ui-services")
     out = args.out.resolve()
     gpu_firmware = None
+    if args.gpu_firmware_relocated and not args.gpu_firmware_provisioning:
+        ap.error("--gpu-firmware-relocated requires --gpu-firmware-provisioning")
     if args.gpu_firmware_provisioning:
         if not args.xnu or not args.native_ufs or not args.ui_services:
             ap.error("--gpu-firmware-provisioning requires --xnu --native-ufs --ui-services")
@@ -181,7 +185,8 @@ def main():
         embed(kernel, out, init_obj, donor=args.upstream_0027 is not None, identity_path=args.identity,
               ui=args.ui_services, cpus=args.cpus, product_path=args.product_adt,
               native_ufs=args.native_ufs, ram_mib=args.ram_mib, install_root=args.install_root,
-              gpu_firmware=gpu_firmware is not None)
+              gpu_firmware=gpu_firmware is not None,
+              gpu_firmware_relocated=args.gpu_firmware_relocated)
         if gpu_firmware is not None:
             # Private output only. The kernel anchor was matched before any
             # compilation. No default image, source digest or boot argument
@@ -196,6 +201,9 @@ def main():
                 '.global _dre_gpu_firmware_end\n_dre_gpu_firmware_end:\n', encoding="ascii")
             sources += [fw_source, HERE / "gpu/firmware/package.c", HERE / "gpu/firmware/shim_handoff.c"]
             cc += ["-DDRE_GPU_FIRMWARE"]
+            if args.gpu_firmware_relocated:
+                sources += [HERE / "gpu/firmware/relocation.c", HERE / "gpu/a619_zap.c"]
+                cc += ["-DDRE_GPU_FW_RELOCATED=1"]
         source = out / "embedded.S"
         payload = (out / "payload.bin").read_bytes()
         # Zig's assembly cache does not track the file named by .incbin.
@@ -238,6 +246,8 @@ def main():
             'kernel_sha256': hashlib.sha256(kernel.read_bytes()).hexdigest() if kernel else None}
     if gpu_firmware is not None:
         info.update(private_gpu_firmware_provisioned=True, gpu_firmware_source="UNVALIDATED_OPT_IN",
+                    gpu_firmware_handoff_version=2 if args.gpu_firmware_relocated else 1,
+                    gpu_firmware_relocated_source=args.gpu_firmware_relocated,
                     native_gpu_validated=False, metal_ready=False)
     (out / 'build-info.json').write_text(json.dumps(info, indent=2) + '\n')
     print(output)

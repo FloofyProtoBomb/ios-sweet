@@ -2,6 +2,40 @@
 
 ## DE2118 handoff, 2026-11-05
 
+DAYTIME CI/HANDOFF UPDATE: source snapshot e0063cbb /treea23d32f8 was published
+tree-identically as d7a2a01d on FloofyProtoBomb/ios-sweet:dre-native-validation.
+OfficialSDK run42082304882 SUCCESS: four frontend objects, factory observer,
+portable GPU and sanitized native touch checks pass. Artifact13441446456 ZIP
+SHA6e01c1dfeb62d2be70e906a16e051550d29e81bcd5f87054e24a556447f725c4
+downloaded/digest-verified under native-validation-v3-20261105/sdk-artifacts.
+Actual4-object hashes/plain ARM64 MH_OBJECTs/source digests verified;157 actual
+nmb imports have names-only coverage by repaired HOST Rust archive (170exports).
+This is not true iOS ABI linking or native Metal. True iOS Rust run42082304936
+is still QUEUED awaiting macos15 runner; official docs confirms correct ARM label.
+Kernel run42082305118 FAILED BEFORE COMPILATION: pinned build.sh runs *.sh
+before *.patch, so0106 targeted SweetHID before0058 existed. Root now removes
+native0106 from early glob and installs exact post-patch call into pinned663906
+build script. Real isolated patch-loop fixture (early script ->realgitapply ->
+late script) and duplicate/unknown-layout no-mutation refusals PASS. No compiler
+cache was exercised by failed run; its later failures are cascading, not code
+compiler diagnostics. Corrected official retry is being prepared separately.
+fae9d5e adds source-supported relocatable PAS13 loading into a separate checked
+boot-image slice, leaving originalGPU/IPA memory untouched.109sanitized format/
+handoff/PAS-failure cases and updated local objects pass. Root wires explicit
+--gpu-firmware-relocated,96B/v2 ADT, actual helper marker and compile macro;
+legacy64B/v1 stays default. Seven Python protocol/CLI tests pass; native55TU
+recipe includes relocation source. No real PAS/security ownership or hardware
+authentication is claimed. Actual SCM-channel composition is in progress.
+Preserved storage67 local qualification is PASS:74current host checks,6exact
+shim cases,27exact init cases,5-command privateGPT replay, fresh8CPU/2047MiB
+full-kernel BSD QEMU with raw+block+GPT and write-open rejection. Kernel2d388d12
+and diagnostic766a0a8f hashes match their priorCI artifact. Physical native
+timeout correction remains UNPROVEN. Frozenimages/backups/proofs stay intact.
+Runtime agent owns standalone native Darwin/factory SDK boundary fixes and
+independent macos14metadata observer job. Touch/storage agent prepares a NEW
+sparse RAW clone for a bounded metadata-only QEMU process, no base modification
+or VM launch until root supplies the actual new SDK artifact. No phone actions.
+
 FIRST DAYTIME VALIDATION SNAPSHOT: v3 source staging54TUs/hooks/default-UI
 isolation/repeat refusal passed. Three validation workflows/25bash blocks parse.
 40nativeGPU/IRQ source objects, four actual source hooks and the enabled pmap

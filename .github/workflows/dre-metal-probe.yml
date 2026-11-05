@@ -41,7 +41,9 @@ jobs:
             -std=c11 -O2 -Wall -Wextra -Werror -c devices/dre/gpu/runtime/compiler_request.c \
             -o out/dre-metal-probe/compiler_request.o
       - name: Run production host fixtures
-        run: python3 tools/check-dre-gpu-host.py --cc clang --out out/gpu-host-tests
+        run: |
+          python3 tools/check-dre-gpu-host.py --cc clang --out out/gpu-host-tests
+          python3 devices/dre/test_firmware_handoff.py
       - name: Run native touch protocol and lifetime fixtures
         if: ${{ !cancelled() }}
         run: |

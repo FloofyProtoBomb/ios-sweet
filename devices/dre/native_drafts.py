@@ -266,6 +266,7 @@ def stage_native_drafts(here, out, features, gpu_nc_proof=False,
             add('gpu/task_vm/' + name + '.c', 'gpu/task_vm/dre_gpu_taskvm_' + name + '.c')
         if gpu_firmware:
             for name in ('package.c', 'package.h', 'region.c', 'region.h',
+                         'relocation.c', 'relocation.h',
                          'trust_anchor.c', 'native.cpp', 'native.h'):
                 target = ('DRENativeGPUFirmware.cpp' if name == 'native.cpp' else
                           'dre_gpu_firmware_' + name if name.endswith('.c') else name)

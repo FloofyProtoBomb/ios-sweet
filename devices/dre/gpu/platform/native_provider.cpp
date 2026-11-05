@@ -185,7 +185,7 @@ static int describe(void *cookie,uint64_t lease,dre_gpu_info_reply *out)
 }
 static bool firmwareTable(const dre_gpu_fw_native_ops *f,uint64_t lease)
 {
-    return f&&f->lease==lease&&f->owns_pas13&&f->scm64_discovered&&f->scm_clocks_held&&
+    return f&&f->lease==lease&&(f->owns_pas13||f->owns_relocated_pas13)&&f->scm64_discovered&&f->scm_clocks_held&&
         f->consumers_retired&&f->scm.guard&&f->scm.smc64&&f->scm.barrier&&f->scm.now;
 }
 static int aggregate(dre_gpu_platform_provider *p)
@@ -237,9 +237,11 @@ static int configure(void *cookie,uint64_t lease,const dre_gpu_native_io *raw,
     if(status||!firmwareTable(&c->firmwareOps,lease))
         return fail(p,"NATIVE_PLATFORM_REAL_SCM_FIRMWARE_POLICY_REQUIRED",status?status:DRE_GPU_NOT_READY);
     /* The actual binding owns the ONE call to native PAS buffer preparation.
-     * Current GPU8KiB/IPA shared16KiB granule refuses HERE, before any RPM
+     * Legacy GPU8KiB/IPA shared16KiB granule refuses HERE; relocated V2 uses
+     * only its independently boot-owned destination and mandatory actual
+     * relocated-PAS authority. Both paths precede any RPM
      * map/endpoint request, rail vote, GPU power/clock write or cold CP store.
-     * No alternate mapper, widening, IPA reset or shared-page retag exists. */
+     * No widening, IPA reset or shared-page retag exists. */
     result=dre_gpu_boot_binding_firmware_prepare(&c->binding,p->firmware,&c->firmwareOps);
     if(!equal(result,"FW_NATIVE_PAS_BUFFERS_PREPARED_ONLY"))return fail(p,result,DRE_GPU_NOT_READY);
     status=aggregate(p);

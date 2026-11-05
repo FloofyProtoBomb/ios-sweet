@@ -19,7 +19,9 @@ SPLASH = 0x85200000
 
 
 def tree(identity=None, ui=False, cpus=1, product_path=None, native_ufs=False, ram_mib=512,
-         gpu_firmware=False):
+         gpu_firmware=False, gpu_firmware_relocated=False):
+    if gpu_firmware_relocated and not gpu_firmware:
+        raise ValueError("relocated GPU firmware requires the explicit private firmware handoff")
     if not 1 <= cpus <= 8 or (cpus != 1 and not ui):
         raise ValueError("secondary CPUs require the UI/SMP kernel profile")
     if ram_mib not in (512, 1024, 2048) or (ram_mib != 512 and not ui):
@@ -45,8 +47,8 @@ def tree(identity=None, ui=False, cpus=1, product_path=None, native_ufs=False, r
         if not native_ufs or not ui:
             raise ValueError("private GPU firmware handoff requires the native owned-image/UI profile")
         root.children.append(mkadt.node("dre-gpu-firmware", [
-            ("compatible", b"oneplus,dre-gpu-firmware-v1\0"),
-            ("dre,firmware-handoff", bytes(64))]))
+            ("compatible", b"oneplus,dre-gpu-firmware-v2\0" if gpu_firmware_relocated else b"oneplus,dre-gpu-firmware-v1\0"),
+            ("dre,firmware-handoff", bytes(96 if gpu_firmware_relocated else 64))]))
     chosen = child(root, "chosen")
     # 0027 predates the SHA-1 provider. Publishing these optional identity
     # values invokes SHA1Init in IOPlatformExpertDevice::generatePlatformUUID.
@@ -139,7 +141,7 @@ def tree(identity=None, ui=False, cpus=1, product_path=None, native_ufs=False, r
 
 def embed(kernel, out, init_obj, donor=False, identity_path=None,
           ui=False, cpus=1, product_path=None, native_ufs=False, ram_mib=512, install_root=False,
-          gpu_firmware=False):
+          gpu_firmware=False, gpu_firmware_relocated=False):
     data = kernel.read_bytes()
     if donor:
         data = retarget(data)
@@ -161,10 +163,14 @@ def embed(kernel, out, init_obj, donor=False, identity_path=None,
     if gpu_firmware and (not native_ufs or not ui or donor or not all(marker in data for marker in
         (b'_dre_gpu_fw_native_load\0', b'_dre_gpu_fw_trusted_anchor\0'))):
         raise ValueError('private GPU firmware requires actual optional native firmware sources in the target kernel')
+    if gpu_firmware_relocated and (not gpu_firmware or
+        b'_dre_gpu_fw_relocation_plan\0' not in data):
+        raise ValueError('relocated firmware requires the actual optional v2 relocation code in the target kernel')
     adt_path = out / "dre.adt"
     identity = json.loads(identity_path.read_text()) if identity_path else None
     adt_path.write_bytes(tree(identity, ui=ui, cpus=cpus, product_path=product_path,
-        native_ufs=native_ufs, ram_mib=ram_mib, gpu_firmware=gpu_firmware))
+        native_ufs=native_ufs, ram_mib=ram_mib, gpu_firmware=gpu_firmware,
+        gpu_firmware_relocated=gpu_firmware_relocated))
     ramdisk = None
     if not install_root:
         ramdisk = out / "dre-init.macho"

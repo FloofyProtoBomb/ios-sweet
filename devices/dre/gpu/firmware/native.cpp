@@ -28,14 +28,15 @@ struct dre_gpu_fw_native {
     const dre_gpu_fw_trust *trust;
     const void *fdt;
     size_t fdtBytes;
-    uint64_t handoff[8],storage[8];
+    uint64_t handoff[12],storage[8];
     void *copy;
     dre_gpu_fw_package package;
     dre_gpu_fw_region region;
+    dre_gpu_fw_relocation relocation;
     dre_gpu_fw_native_ops ops;
     dre_a619_pas13 pas;
     vm_offset_t metadataMap,reservedMap;
-    bool verified,prepared,unsafe;
+    bool verified,prepared,unsafe,relocated;
 };
 static int same(const uint8_t *a,const uint8_t *b,size_t n)
 { unsigned difference=0;while(n--)difference|=*a++^*b++;return difference==0; }
@@ -48,17 +49,29 @@ static int hashMatches(void *,const void *p,size_t n,const uint8_t expected[32])
 }
 static void unmapTemporary(vm_offset_t p,size_t n)
 { if(p)ml_io_unmap(trunc_page(p),round_page(n+(p&PAGE_MASK))); }
-static bool getHandoff(uint64_t words[8])
+static bool getHandoff(uint64_t words[12])
 {
     IORegistryEntry *entry=IORegistryEntry::fromPath("/dre-gpu-firmware",gIODTPlane);
     if(!entry)return false;
     OSData *compatible=OSDynamicCast(OSData,entry->getProperty("compatible"));
     OSData *handoff=OSDynamicCast(OSData,entry->getProperty("dre,firmware-handoff"));
-    const char want[]="oneplus,dre-gpu-firmware-v1";
-    bool ok=compatible&&compatible->getLength()==sizeof(want)&&
-        !memcmp(compatible->getBytesNoCopy(),want,sizeof(want))&&handoff&&handoff->getLength()==64;
-    if(ok)bcopy(handoff->getBytesNoCopy(),words,64);
+    const char v1[]="oneplus,dre-gpu-firmware-v1",v2[]="oneplus,dre-gpu-firmware-v2";
+    bool legacy=compatible&&compatible->getLength()==sizeof(v1)&&
+        !memcmp(compatible->getBytesNoCopy(),v1,sizeof(v1))&&handoff&&handoff->getLength()==64;
+    bool relocated=compatible&&compatible->getLength()==sizeof(v2)&&
+        !memcmp(compatible->getBytesNoCopy(),v2,sizeof(v2))&&handoff&&handoff->getLength()==96;
+    bool ok=legacy||relocated;
+    if(ok) {
+        bzero(words,96);bcopy(handoff->getBytesNoCopy(),words,legacy?64:96);
+        ok=words[1]==((uint64_t)(legacy?64:96)<<32|(legacy?1u:2u));
+    }
     entry->release();return ok;
+}
+static bool handoffValid(dre_gpu_fw_native *c)
+{
+    return c->handoff[1]==(UINT64_C(96)<<32|2)?
+        dre_gpu_fw_relocation_handoff_valid(c->handoff,c->storage)==1:
+        dre_gpu_fw_handoff_valid(c->handoff,c->storage)==1;
 }
 extern "C" const char *dre_gpu_fw_native_load(dre_gpu_fw_native **out)
 {
@@ -70,10 +83,12 @@ extern "C" const char *dre_gpu_fw_native_load(dre_gpu_fw_native **out)
     c->trust=trust;
     if(dre_native_board_snapshot(&c->fdt,&c->fdtBytes)||!dre_ufs_get_handoff(c->storage)||
        !getHandoff(c->handoff)||!dre_storage_live_valid(c->fdt,c->storage)||
-       !dre_gpu_fw_handoff_valid(c->handoff,c->storage)||
+       !handoffValid(c)||
        !dre_dma_boot_owned_ram_allowed(c->fdt,c->handoff[2],c->handoff[3])||
        !dre_dma_boot_owned_ram_allowed(c->fdt,c->handoff[4],c->handoff[5])||
-       c->handoff[3]!=trust->package_bytes) {
+       c->handoff[3]!=trust->package_bytes||
+       (c->handoff[1]==(UINT64_C(96)<<32|2)&&
+        !dre_dma_boot_owned_ram_allowed(c->fdt,c->handoff[7],c->handoff[8]))) {
         IOFree(c,sizeof(*c));return "FW_NATIVE_BOOT_OWNERSHIP_REJECTED";
     }
     vm_offset_t mapping=ml_io_map_unmappable(c->handoff[2],c->handoff[3],VM_WIMG_IO);
@@ -93,13 +108,19 @@ extern "C" const char *dre_gpu_fw_native_load(dre_gpu_fw_native **out)
     if(strcmp(status,"FW_PRIVATE_DIGESTS_VERIFIED")) {
         bzero(c->copy,c->handoff[3]);IOFree(c->copy,c->handoff[3]);IOFree(c,sizeof(*c));return status;
     }
+    c->relocated=c->handoff[1]==(UINT64_C(96)<<32|2);
     status=dre_gpu_fw_reserved_region(c->fdt,&c->region);
     dre_a619_sqe sqe={};struct dre_a619_zap_plan plan={};
     if(strcmp(status,"FW_REGION_GEOMETRY_ONLY")||
-       strcmp(dre_a619_sqe_view(DRE_GPU_FW_CHIP_ID,c->package.sqe.bytes,c->package.sqe.size,&sqe),"SQE_VIEW_READY")||
-       strcmp(dre_a619_zap_plan(c->package.zap.bytes,c->package.zap.size,c->region.pa,c->region.bytes,&plan),"ZAP_PLAN_OK")) {
+       strcmp(dre_a619_sqe_view(DRE_GPU_FW_CHIP_ID,c->package.sqe.bytes,c->package.sqe.size,&sqe),"SQE_VIEW_READY")) {
         bzero(c->copy,c->handoff[3]);IOFree(c->copy,c->handoff[3]);IOFree(c,sizeof(*c));
         return "FW_NATIVE_PARSER_OR_RESERVED_REGION_REJECTED";
+    }
+    status=c->relocated?dre_gpu_fw_relocation_plan(c->package.zap.bytes,c->package.zap.size,
+        c->handoff[7],c->handoff[8],c->handoff[4],c->handoff[5],&c->relocation):
+        dre_a619_zap_plan(c->package.zap.bytes,c->package.zap.size,c->region.pa,c->region.bytes,&plan);
+    if(strcmp(status,c->relocated?"FW_RELOCATION_STRUCTURE_ONLY":"ZAP_PLAN_OK")) {
+        bzero(c->copy,c->handoff[3]);IOFree(c->copy,c->handoff[3]);IOFree(c,sizeof(*c));return status;
     }
     c->verified=true;*out=c;return "FW_NATIVE_PRIVATE_SOURCE_VERIFIED";
 }
@@ -132,13 +153,22 @@ static int aliasProof(dre_gpu_fw_native *c,vm_offset_t cpu,uint64_t pa,size_t by
 static int nativeGuard(void *cookie)
 {
     dre_gpu_fw_native *c=(dre_gpu_fw_native *)cookie;
-    return c&&!c->unsafe&&c->verified&&c->ops.lease&&c->ops.owns_pas13&&
-        c->ops.owns_pas13(c->ops.cookie,c->ops.lease,&c->region)==1&&
+    if(!c||c->unsafe||!c->verified||!c->ops.lease||!handoffValid(c))return 0;
+    if(c->relocated&&(c->relocation.load_pa!=c->handoff[7]||
+       c->relocation.load_bytes!=c->handoff[8]||c->relocation.metadata_pa!=c->handoff[4]||
+       c->relocation.metadata_bytes!=c->handoff[5]||c->relocation.reserved))return 0;
+    bool owned=c->relocated?c->ops.owns_relocated_pas13&&
+        c->ops.owns_relocated_pas13(c->ops.cookie,c->ops.lease,&c->region,&c->relocation,
+            c->storage[5],c->storage[6])==1:
+        c->ops.owns_pas13&&c->ops.owns_pas13(c->ops.cookie,c->ops.lease,&c->region)==1;
+    uint64_t target=c->relocated?c->relocation.load_pa:c->region.pa;
+    size_t bytes=c->relocated?c->relocation.load_bytes:c->region.bytes;
+    return owned&&
         c->ops.scm64_discovered&&c->ops.scm64_discovered(c->ops.cookie)==1&&
         c->ops.scm_clocks_held&&c->ops.scm_clocks_held(c->ops.cookie,c->ops.lease)==1&&
         c->ops.scm.guard&&c->ops.scm.guard(c->ops.scm.cookie)==1&&
         (!c->prepared||(aliasProof(c,c->metadataMap,c->handoff[4],c->handoff[5])&&
-                       aliasProof(c,c->reservedMap,c->region.pa,c->region.bytes)));
+                       aliasProof(c,c->reservedMap,target,bytes)));
 }
 static int smc(void *cookie,dre_a619_smc_regs *regs)
 {
@@ -161,19 +191,21 @@ extern "C" const char *dre_gpu_fw_native_prepare_pas13(dre_gpu_fw_native *c,
     /* Keep the real source-consumer retirement proof available even when a
      * source-only geometry refusal stops us before any mapping/SCM access. */
     c->ops=*ops;
-    if(c->region.limitations&DRE_GPU_FW_REGION_ADJACENT_RESERVED)
+    if(!c->relocated&&(c->region.limitations&DRE_GPU_FW_REGION_ADJACENT_RESERVED))
         return "FW_NATIVE_GPU_GRANULE_SHARES_OTHER_RESERVED_OWNER";
-    if(c->region.limitations&DRE_GPU_FW_REGION_SUBPAGE)
+    if(!c->relocated&&(c->region.limitations&DRE_GPU_FW_REGION_SUBPAGE))
         return "FW_NATIVE_GPU_RESERVED_SUBPAGE_UNSUPPORTED";
     if(!ops->scm.smc64||!ops->scm.barrier||!ops->scm.now||!ops->consumers_retired)
         return "FW_NATIVE_SCM_OR_RETIREMENT_PROVIDER_MISSING";
     uint64_t hz=0;__asm__ volatile("mrs %0,cntfrq_el0":"=r"(hz));
     if(hz!=19200000||page_size!=16384||!nativeGuard(c))return "FW_NATIVE_PAS_POLICY_UNQUALIFIED";
+    uint64_t target=c->relocated?c->relocation.load_pa:c->region.pa;
+    size_t targetBytes=c->relocated?c->relocation.load_bytes:c->region.bytes;
     c->metadataMap=ml_io_map_unmappable(c->handoff[4],c->handoff[5],VM_WIMG_WCOMB);
-    c->reservedMap=ml_io_map_unmappable(c->region.pa,c->region.bytes,VM_WIMG_WCOMB);
+    c->reservedMap=ml_io_map_unmappable(target,targetBytes,VM_WIMG_WCOMB);
     if(!c->metadataMap||!c->reservedMap||
        !aliasProof(c,c->metadataMap,c->handoff[4],c->handoff[5])||
-       !aliasProof(c,c->reservedMap,c->region.pa,c->region.bytes)) {
+       !aliasProof(c,c->reservedMap,target,targetBytes)) {
         c->unsafe=true;return "FW_NATIVE_PAS_MAPPING_UNCERTAIN_RETAINED";
     }
     dre_gpu_fw_view zap={};if(!dre_gpu_fw_native_source(c,DRE_GPU_FW_ZAP,&zap)) {
@@ -183,7 +215,7 @@ extern "C" const char *dre_gpu_fw_native_prepare_pas13(dre_gpu_fw_native *c,
     c->pas.firmware=zap.bytes;c->pas.firmware_bytes=zap.size;
     c->pas.metadata_cpu=(void *)c->metadataMap;c->pas.metadata_pa=c->handoff[4];
     c->pas.metadata_capacity=c->handoff[5];
-    c->pas.reserved_cpu=(void *)c->reservedMap;c->pas.reserved_pa=c->region.pa;c->pas.reserved_bytes=c->region.bytes;
+    c->pas.reserved_cpu=(void *)c->reservedMap;c->pas.reserved_pa=target;c->pas.reserved_bytes=targetBytes;
     /* These follow actual qualified provider/mapping/hash checks above.
      * No caller readiness mask or FDT identity alone reaches this point. */
     c->pas.prerequisites=DRE_A619_PAS13_PREREQUISITES;c->prepared=true;
@@ -210,7 +242,7 @@ extern "C" const char *dre_gpu_fw_native_release(dre_gpu_fw_native *c)
     if(!c||!c->ops.lease||c->unsafe||c->pas.unsafe||c->pas.initialized||c->pas.authenticated||
        !c->ops.consumers_retired||c->ops.consumers_retired(c->ops.cookie,c->ops.lease)!=1)
         return "FW_NATIVE_FIRMWARE_CONSUMERS_NOT_RETIRED";
-    unmapTemporary(c->reservedMap,c->region.bytes);
+    unmapTemporary(c->reservedMap,c->relocated?c->relocation.load_bytes:c->region.bytes);
     unmapTemporary(c->metadataMap,c->handoff[5]);
     bzero(c->copy,c->handoff[3]);IOFree(c->copy,c->handoff[3]);bzero(c,sizeof(*c));IOFree(c,sizeof(*c));
     return "FW_NATIVE_PRIVATE_COPY_RETIRED";

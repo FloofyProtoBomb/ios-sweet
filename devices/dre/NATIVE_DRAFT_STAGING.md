@@ -1,5 +1,14 @@
 # Opt-in native source staging draft
 
+Daytime validation on November5 generated/applied the actual selected XNU
+source hooks and compiled the native units locally. The first official SDK
+workflow passed; official kernel linking and hardware acceptance are separate.
+The pinned build tool runs shell scripts BEFORE patches: native0106 must be
+moved outside that early glob and invoked after patch application. The XNU
+workflow now installs an exact checked post-patch call and tests its real
+ordering with an isolated `git apply` fixture; it never relies on filename
+sorting to make a shell script late. Unknown build-loop layouts refuse.
+
 **UNVALIDATED source recipe.** Written overnight at the user's request without
 running staging, patch application, compilation, tests, CI, QEMU or phone
 operations. Existing prepared images are unchanged. This is not a ready image.

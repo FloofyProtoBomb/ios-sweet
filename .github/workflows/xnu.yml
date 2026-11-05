@@ -31,17 +31,24 @@ on:
       - "devices/dre/**/*.c"
       - "devices/dre/**/*.cpp"
       - "devices/dre/**/*.h"
+      - "devices/dre/**/*.inc"
       - "devices/dre/**/*.S"
       - "devices/dre/**/*.patch"
       # These host compiler/frontend sources are not staged into XNU.
       - "!devices/dre/gpu/compiler/**"
       - "!devices/dre/gpu/runtime/**"
       - "!devices/dre/gpu/android_probe/**"
+      - "!devices/dre/gpu/vulkan/dre_darwin.*"
+      - "!devices/dre/gpu/vulkan/dre_iokit_loader.h"
+      - "!devices/dre/gpu/vulkan/dre_mesa_policy.h"
+      - "!devices/dre/gpu/vulkan/dre_surface_iosurface.*"
       - "devices/dre/stage_xnu.py"
       - "devices/dre/native_drafts.py"
       - "devices/dre/irq/source_hooks.py"
       - "tools/enable-xnu-ccache.py"
       - "tools/test-enable-xnu-ccache.py"
+      - "tools/enable-dre-native-postpatch.py"
+      - "tools/test-dre-native-postpatch.py"
       - ".github/workflows/xnu.yml"
 
 concurrency:
@@ -79,6 +86,11 @@ jobs:
               NATIVE_ARGS=(--native-draft gpu --native-draft touch --native-gpu-nc-proof --native-gpu-firmware-draft --native-gpu-fw-nc-proof)
             fi
             python3 devices/dre/stage_xnu.py dxb/patches --profile "$DRE_PROFILE" "${NATIVE_ARGS[@]}"
+            if [ "$DRE_NATIVE_DRAFTS" = true ]; then
+              python3 tools/test-dre-native-postpatch.py dxb/build.sh --out "${RUNNER_TEMP}/dre-postpatch-check"
+              mv dxb/patches/0106-dre-native-draft-bindings.sh dxb/dre-native-post-patches.sh
+              python3 tools/enable-dre-native-postpatch.py dxb/build.sh
+            fi
             cp tools/enable-xnu-ccache.py dxb/enable-xnu-ccache.py
             # build.sh invokes patch scripts from dxb/xnu before compiling.
             printf 'python3 ../enable-xnu-ccache.py makedefs/MakeInc.cmd\n' > dxb/patches/9999-compiler-cache.sh

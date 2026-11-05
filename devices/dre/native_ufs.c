@@ -146,7 +146,7 @@ static int disk_open(dev_t dev, int flags, __unused int type, __unused struct pr
 }
 static int disk_close(__unused dev_t dev, __unused int flags, __unused int type,
                       __unused struct proc *p) { return 0; }
-static void disk_strategy(buf_t bp)
+static void disk_strategy_common(buf_t bp, int user_buffer)
 {
     int error = 0;
     uint32_t count = buf_count(bp), done = 0;
@@ -163,7 +163,12 @@ static void disk_strategy(buf_t bp)
     if (offset > bytes || (count % DEV_BSIZE)) { error = EINVAL; goto finish; }
     if (count > bytes - offset) count = (uint32_t)(bytes - offset);
     if (!count) goto finish;
-    if ((error = buf_map(bp, &mapped))) goto finish;
+    /* physio wires user pages but leaves b_datap as a user VA. buf_map
+     * returns it unchanged for non-cluster buffers; memcpy would fault
+     * with PAN enabled. Raw user reads use copyout in the same thread.
+     * Kernel/block buffers retain the normal buf_map mapping lifetime. */
+    if (user_buffer) mapped = (caddr_t)buf_dataptr(bp);
+    else if ((error = buf_map(bp, &mapped))) goto finish;
     lck_mtx_lock(&dre_ufs_lock);
     while (done < count) {
         if (dead) { error = EIO; break; }
@@ -181,17 +186,21 @@ static void disk_strategy(buf_t bp)
                 native_guard, &dma, (uint32_t)block, bounce), "READ_PASS");
         }
         if (error) break;
+        if (user_buffer) error = copyout(bounce + skip, (user_addr_t)(uintptr_t)mapped + done, take);
+        else memcpy(mapped + done, bounce + skip, take);
+        if (error) { set_state("READ", "COPYOUT_FAILED"); break; }
         set_state(virtual_disk ? "VIRTUAL_TEST" : "READ", virtual_disk ? "READ_PASS" : "PASS");
-        memcpy(mapped + done, bounce + skip, take);
         done += take;
         buf_setresid(bp, buf_count(bp) - done);
     }
     lck_mtx_unlock(&dre_ufs_lock);
-    buf_unmap(bp);
+    if (!user_buffer) buf_unmap(bp);
 finish:
     if (error) buf_seterror(bp, error);
     buf_biodone(bp);
 }
+static void disk_strategy(buf_t bp) { disk_strategy_common(bp, 0); }
+static void disk_user_strategy(buf_t bp) { disk_strategy_common(bp, 1); }
 static int disk_ioctl(dev_t dev, u_long cmd, caddr_t data, __unused int flag,
                       __unused struct proc *p)
 {
@@ -213,7 +222,10 @@ static int disk_psize(dev_t dev)
 }
 static int disk_read(dev_t dev, struct uio *uio, __unused int flags)
 {
-    return physio(disk_strategy, NULL, dev, B_READ, minphys, uio, DEV_BSIZE);
+    /* Select before physio hides the uio's address-space type in a buf.
+     * Its synchronous call wires user pages before entering our lock. */
+    return physio(uio_isuserspace(uio) ? disk_user_strategy : disk_strategy,
+                  NULL, dev, B_READ, minphys, uio, DEV_BSIZE);
 }
 static int disk_write(__unused dev_t dev, __unused struct uio *uio, __unused int flags)
 { return EROFS; }

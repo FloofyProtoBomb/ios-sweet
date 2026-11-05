@@ -49,6 +49,7 @@ def main():
     ap.add_argument("--dma-probe", action="store_true", help="read UFS/USB SMMU stream routes")
     ap.add_argument("--dma-context", action="store_true", help="read translated UFS/USB context metadata; no SMMU writes")
     ap.add_argument("--driver-prep", action="store_true", help="inspect bounded DMA tables, GPI channels and unowned SPI/USB descriptor plans")
+    ap.add_argument("--ufs-handoff-read", action="store_true", help="opt-in read-only UFS test in stable stage-1-disabled/stage-2-bypass handoff mode")
     ap.add_argument("--ufs-read-test", action="store_true",
                     help="read capacity/GPT on LUN 0 only if physical DMA is verified")
     ap.add_argument("--touch-preflight", action="store_true",
@@ -69,6 +70,8 @@ def main():
         ap.error("--dma-context requires --dma-probe")
     if args.driver_prep and not (args.dma_context and args.ufs_read_test and args.touch_preflight):
         ap.error("--driver-prep requires --dma-context --ufs-read-test --touch-preflight")
+    if args.ufs_handoff_read and not args.driver_prep:
+        ap.error("--ufs-handoff-read requires --driver-prep")
     if (args.ui_services or args.product_adt) and not args.xnu:
         ap.error("--ui-services/--product-adt require a native UI/SMP kernel via --xnu")
     if (args.cpus != 1 or args.product_adt) and not args.ui_services:
@@ -121,6 +124,9 @@ def main():
                 cc += ["-DDRE_DRIVER_PREP"]
                 sources += [HERE / name for name in ("dma_walk.c", "dma_memory.c", "dma_proof.c", "gpi_preflight.c",
                                                       "touch/spi_plan.c", "usb/transport.c", "usb/prepare.c")]
+            if args.ufs_handoff_read:
+                cc += ["-DDRE_UFS_HANDOFF_READ"]
+                sources += [HERE / "ufs_handoff_dma.c"]
         serial = json.loads(args.identity.read_text()).get("serial") if args.identity else None
         if serial is not None:
             if not re.fullmatch(r"[A-Za-z0-9-]{1,63}", serial):
@@ -168,6 +174,7 @@ def main():
     info = {'device': 'DE2118', 'ui_services': args.ui_services, 'cpus': args.cpus,
             'board_tests': args.board_tests, 'dma_context': args.dma_context,
             'driver_prep': args.driver_prep,
+            'ufs_handoff_read': args.ufs_handoff_read,
             'private_identity_provisioned': args.identity is not None,
             'product_metadata_imported': args.product_adt is not None,
             'image_sha256': hashlib.sha256(output.read_bytes()).hexdigest(),

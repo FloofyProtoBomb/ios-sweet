@@ -309,6 +309,26 @@ cases covering the new paths. Hardware facts come from the pinned Holi
 [GPI driver](https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/dma/qcom/gpi.c),
 and [DWC3 definitions](https://github.com/LineageOS/android_kernel_oneplus_sm4350/blob/98a38783f42f5588bf00cd933e299aedc589bc10/drivers/usb/dwc3/core.h).
 
+`--ufs-handoff-read` is a separate opt-in on top of `--driver-prep`.
+It recognizes the phone's observed stage-1-disabled / stage-2-bypass
+configuration, without modifying SMMU registers. This is different from
+an enabled translation context: the latter stays blocked even if its
+page tables contain identity mappings. A private arena below 4 GiB,
+known attribute behavior, stable route/context snapshots and no active
+context faults are required. The guard runs before/after every storage
+command and before allowing kernel handoff. A lost guard or failed host
+restore stops handoff until reset. Only the existing NOP, TEST UNIT READY,
+READ CAPACITY(16) and single-block READ(10) allowlist is used; LUN is fixed
+to 0 and no media write is implemented. See
+[Arm SMMUv2 sections 2.3 and 16.5](https://documentation-service.arm.com/static/5f900d34f86e16515cdc08fb).
+
+The physical `ce4ffafd` survey found UFS/USB context MMUs disabled, GPI
+idle mask `1f`, SPI descriptor preparation OK and GPI's SID in unmatched
+fault mode. It also found a 64-bit DWC3 bus address width, which the
+initial checker rejected. The corrected USB builder accepts widths up
+to 64 with checked end addresses and no shift-by-64. No USB function or
+GPI DMA mapping is configured by these follow-up changes.
+
 The final filesystem will be sized against its verified target partition;
 the root-image script's default 16 GiB is not intended to limit usable space.
 Any later partition/layout write needs separate confirmation. No Android

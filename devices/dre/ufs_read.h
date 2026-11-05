@@ -1,12 +1,16 @@
 /* SPDX-License-Identifier: MIT */
 #pragma once
 #include "dma_route.h"
+typedef int (*dre_ufs_dma_guard)(void *cookie);
 
 struct dre_ufs_read_state {
     uint32_t capabilities, block_size, ocs, response, status;
     uint64_t last_lba, userdata_first, userdata_blocks;
     unsigned commands;
     int safe_to_handoff;
+    dre_ufs_dma_guard guard;
+    void *guard_cookie;
+    int guard_lost;
 };
 
 /* Polled, LUN-0-only read test with a private, below-4G-capable DMA arena.
@@ -16,3 +20,7 @@ struct dre_ufs_read_state {
 const char *dre_ufs_read_test(const struct dre_dma_route *route,
                             struct dre_ufs_read_state *out);
 uintptr_t dre_ufs_probe_arena(void);
+/* Optional opt-in handoff guard; rechecked before/after every command. */
+const char *dre_ufs_read_guarded(const struct dre_dma_route *route,
+                               struct dre_ufs_read_state *out,
+                               dre_ufs_dma_guard guard, void *cookie);

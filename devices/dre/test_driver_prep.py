@@ -94,8 +94,14 @@ if __name__ == '__main__':
         checks += 1
     for kind, address, length, width in ((0, 0x1000, 8, 40), (8, 0x1000, 0, 40), (2, 0x1000, 7, 40),
         (3, 0x1000, 0, 40), (4, 0, 1, 40), (5, 0x1000, 0, 40), (1, 0x1000, 65536, 40),
-        (2, 0, 8, 40), (2, (1 << 32) - 7, 8, 32), (2, 1 << 40, 8, 40), (2, 0x1000, 8, 31), (2, 0x1000, 8, 49)):
+        (2, 0, 8, 40), (2, (1 << 32) - 7, 8, 32), (2, 1 << 40, 8, 40), (2, 0x1000, 8, 31), (2, 0x1000, 8, 65)):
         assert trb(C.byref(t), kind, address, length, width) != b'USB_TRB_OK' and not any(t.words); checks += 1
+    for address, width in ((1 << 48, 64), (1 << 60, 64), ((1 << 64) - 8, 64), ((1 << 32) - 8, 32)):
+        assert trb(C.byref(t), 2, address, 8, width) == b'USB_TRB_OK'
+        assert list(t.words) == [address & 0xffffffff, address >> 32, 8, 0x822]
+        checks += 1
+    for address in ((1 << 64) - 7, (1 << 64) - 1):
+        assert trb(C.byref(t), 2, address, 8, 64) == b'USB_BUFFER' and not any(t.words); checks += 1
     decode = api.dre_usb_event; decode.argtypes = [C.c_void_p, C.c_uint, C.c_uint, C.c_uint, C.POINTER(Event)]; decode.restype = C.c_char_p
     for ep in range(32):
         for kind in (1, 2, 3, 7):

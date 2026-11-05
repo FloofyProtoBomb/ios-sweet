@@ -30,6 +30,7 @@ VOTE = 0x0147900c
 MASK = 0x4c0
 LOAD = 0xa8000000
 LAST_LBA = 0x1000000
+BLOCK_SIZE = 4096
 CLOCKS = (0x01445098, 0x01445014, 0x01445010, 0x01445040)
 
 
@@ -114,7 +115,7 @@ def disk(case):
     return {1: bytes(header), **{2 + i: bytes(entries[i * 4096:(i + 1) * 4096]) for i in range(4)}}
 
 
-def run(image, dtb, syms, case, context_probe=False, driver_prep=False):
+def run(image, dtb, syms, case, context_probe=False, driver_prep=False, handoff_read=False):
     if case == 'dt_mismatch':
         dtb = dtb.replace(b'qcom,holi-gcc\0', b'qcom,xoli-gcc\0')
     elif case == 'touch_dt_mismatch':
@@ -174,7 +175,7 @@ def run(image, dtb, syms, case, context_probe=False, driver_prep=False):
             for off in (0x20000, 0x20080, 0x21000): regs[0x049f0000 + off + i * 0x4000] = 0
     route, io = 'BYPASS', 'GPT_PASS'
     touch, fw, usb = 'SPI_PIO_READY', 'LAYOUT_OK', 'HALTED'
-    unsafe = case in ('restore_failed', 'touch_restore_failed', 'abort_stuck', 'host_lost')
+    unsafe = case in ('restore_failed', 'touch_restore_failed', 'abort_stuck', 'host_lost', 'handoff_guard_mid', 'handoff_restore_failed')
     fault_reads = set()
     if case == 'translated':
         regs[SMMU + 0xc00] = 7; route, io = 'TRANSLATED', 'DMA_BLOCKED'
@@ -277,6 +278,13 @@ def run(image, dtb, syms, case, context_probe=False, driver_prep=False):
     elif case == 'usb_caps_fault': fault_reads.add(0x04e0c140)
     elif case == 'usb_caps_unsupported': regs[0x04e0c140] = 16 << 24 | 2
     elif case == 'usb_resources_busy': regs[0x04e0c720] = 3
+    elif case == 'usb_caps_64':
+        regs[0x04e0c140] = 64 << 24 | 2; regs[0x04e0c144] = 4 << 15; regs[0x04e0c14c] = 32 << 12 | 16 << 18
+    elif case.startswith('handoff_'):
+        regs[SMMU + 0xc00] = 2; route = 'TRANSLATED'
+        io = {'handoff_m0':'GPT_PASS', 'handoff_guard_before':'DMA_GUARD_BLOCKED',
+              'handoff_guard_mid':'DMA_GUARD_CHANGED', 'handoff_ocs_error':'BAD_RESPONSE',
+              'handoff_timeout':'COMMAND_TIMEOUT', 'handoff_restore_failed':'RESTORE_FAILED'}.get(case, 'DMA_BLOCKED')
     elif case == 'dt_mismatch':
         route, io, touch, usb = 'NOT_READY', 'NOT_READY', 'DT_MISMATCH', 'DT_MISMATCH'
     expectations = {'ocs_error': 'BAD_RESPONSE', 'wrong_tag': 'BAD_RESPONSE',
@@ -298,7 +306,7 @@ def run(image, dtb, syms, case, context_probe=False, driver_prep=False):
             regs[global_base + bank * 4] = 1 << 16
             regs[global_base + 0x800 + bank * 4] = 1
             context_registers.update((global_base + bank * 4, global_base + 0x800 + bank * 4))
-            for off, value in ((0, 1), (0x10, 2), (0x20, 0x96000000), (0x24, 0), (0x30, 32)):
+            for off, value in ((0, 1), (0x10, 2), (0x20, 0x96000000), (0x24, 0), (0x30, 32), (0x58, 0)):
                 regs[context_base + off] = value
                 context_registers.add(context_base + off)
         cb = SMMU + context_span + (2 << pgshift)
@@ -331,6 +339,15 @@ def run(image, dtb, syms, case, context_probe=False, driver_prep=False):
             if case == 'walk_bad_granule': regs[cb + 0x30] |= 1 << 14
             if case == 'gpi_translated_missing':
                 table_values[0x110050000 + 8192 + (syms['spi_arena'] >> 12 & 511) * 8] = 0
+            if case.startswith('handoff_'):
+                regs[SMMU + (1 << pgshift) + 8] = 0x1f000
+                regs[cb] = 0
+                if case == 'handoff_attrs': regs[SMMU + (1 << pgshift) + 8] |= 0x100
+                if case == 'handoff_forced_cache': regs[cb] = 1 << 20
+                if case == 'handoff_fault': regs[cb + 0x58] = 2
+                if case == 'handoff_fault_read': fault_reads.add(cb + 0x58)
+                if case == 'handoff_m_on': regs[cb] = 1
+                if case == 'handoff_bad_type': regs[SMMU + (1 << pgshift) + 8] = 3 << 16
     initial = regs.copy()
     pages = {address & -4096 for address in regs}
     for page in pages: cpu.mem_map(page, 4096)
@@ -339,8 +356,10 @@ def run(image, dtb, syms, case, context_probe=False, driver_prep=False):
         for page in {a & -4096 for a in table_values}: cpu.mem_map(page, 4096)
         for address, value in table_values.items(): cpu.mem_write(address, struct.pack('<Q', value))
     reads, writes, commands = set(), [], []
-    context_high_reads = 0
+    context_high_reads, handoff_checks = 0, 0
     blocks = disk(case)
+    entry_count, entry_size = struct.unpack_from('<II', blocks[1], 80)
+    expected_success_commands = 4 + (entry_count * entry_size + BLOCK_SIZE - 1) // BLOCK_SIZE
     old_ring = initial[UFS + 0x50]
 
     def complete():
@@ -382,20 +401,23 @@ def run(image, dtb, syms, case, context_probe=False, driver_prep=False):
             cpu.mem_write(prdt[0], block)
         else:
             assert descriptor[7] == 0
-        ocs = 6 if case == 'ocs_error' else 0
+        ocs = 6 if case in ('ocs_error', 'handoff_ocs_error') else 0
         if case == 'wrong_tag': response[3] ^= 1
         if case == 'short_transfer' and length:
             response[1] = 0x20; response[12:16] = struct.pack('>I', 1)
         cpu.mem_write(ucd + 512, bytes(response)); cpu.mem_write(ring + 8, struct.pack('<I', ocs))
-        if case not in ('command_timeout', 'abort_stuck'): regs[UFS + 0x58] = 0
+        if case not in ('command_timeout', 'abort_stuck', 'handoff_timeout'): regs[UFS + 0x58] = 0
 
     def mmio_read(uc, access, address, size, value, _):
-        nonlocal context_high_reads
+        nonlocal context_high_reads, handoff_checks
         assert size == 4 and address in regs, f'unexpected MMIO read {address:#x}/{size}'
         reads.add(address)
         if case == 'context_changed' and address == cb + 0x24:
             context_high_reads += 1
             regs[address] = context_high_reads
+        if handoff_read and case in ('handoff_guard_before', 'handoff_guard_mid') and address == cb + 0x58:
+            handoff_checks += 1
+            if handoff_checks >= (2 if case == 'handoff_guard_before' else 4): regs[address] = 2
         if address == 0x0141f144:
             regs[address] = 0 if regs[VOTE] & MASK == MASK and case != 'touch_clock_timeout' else OFF
         if address in CLOCKS and regs[address] & 1 and case != 'ufs_clock_timeout':
@@ -415,10 +437,11 @@ def run(image, dtb, syms, case, context_probe=False, driver_prep=False):
         else:
             assert address in {UFS + v for v in (0x24, 0x50, 0x54, 0x58, 0x5c, 0x60, 0x20)}
             if address == UFS + 0x50 and ((case == 'attach_failed' and value != old_ring) or
-                                        (case == 'restore_failed' and value == old_ring)):
+                                        (case in ('restore_failed', 'handoff_restore_failed') and value == old_ring)):
                 return
             if address == UFS + 0x58:
-                assert value == 1 and route in ('BYPASS', 'UNMATCHED_BYPASS')
+                assert value == 1 and (route in ('BYPASS', 'UNMATCHED_BYPASS') or
+                    (handoff_read and case in ('handoff_m0', 'handoff_guard_mid', 'handoff_ocs_error', 'handoff_timeout', 'handoff_restore_failed')))
                 regs[address] = value; complete()
             elif address == UFS + 0x5c:
                 assert value == 0xfffffffe
@@ -482,8 +505,10 @@ def run(image, dtb, syms, case, context_probe=False, driver_prep=False):
     cpu.hook_add(UC_HOOK_CODE, code, begin=syms['dre_handoff'], end=syms['dre_handoff'] + 4096)
     cpu.hook_add(UC_HOOK_INSN, mrs, None, 1, 0, UC_ARM64_INS_MRS)
     cpu.reg_write(UC_ARM64_REG_X0, tree)
-    cpu.emu_start(LOAD, base + entry - va, count=250000000)
+    cpu.emu_start(LOAD, base + entry - va, count=1000000000 if handoff_read else 250000000)
     assert stopped_error == unsafe, ('handoff safety gate', case, stopped_error)
+    if not unsafe:
+        assert cpu.reg_read(UC_ARM64_REG_PC) == base + entry - va, 'instruction budget ended before XNU handoff'
     fields = bytes(cpu.mem_read(syms['report'], syms['report_size'])).split(b'\0')[0].decode().removeprefix('dre_report=').split('|')
     assert any(p.startswith('DMA_UFS=' + route + '/') for p in fields), fields
     assert any(p.startswith('UFS_IO=' + io + '/') for p in fields), fields
@@ -521,6 +546,15 @@ def run(image, dtb, syms, case, context_probe=False, driver_prep=False):
         wanted_usb = {'usb_caps_fault':'CAPS_READ_FAULT', 'usb_caps_unsupported':'CAPS_UNSUPPORTED',
                       'usb_resources_busy':'RESOURCES_IN_USE'}.get(case)
         if wanted_usb: assert any(p.startswith('USB_PLAN=' + wanted_usb + '/') for p in fields), fields
+        if case == 'usb_caps_64': assert 'USB_PLAN=TRB_PLAN_OK/40/20/4' in fields
+    if handoff_read and case.startswith('handoff_'):
+        expected_admit = 'HANDOFF_BYPASS' if case in ('handoff_m0', 'handoff_guard_before', 'handoff_guard_mid', 'handoff_ocs_error', 'handoff_timeout', 'handoff_restore_failed') else {
+            'handoff_attrs':'ATTRIBUTES_UNSUPPORTED', 'handoff_forced_cache':'ATTRIBUTES_UNSUPPORTED',
+            'handoff_fault':'STATE_OR_FAULT_BLOCKED', 'handoff_fault_read':'STATE_OR_FAULT_BLOCKED',
+            'handoff_m_on':'S1_64', 'handoff_bad_type':'COMBINED'}[case]
+        assert 'UFS_ADMIT=' + expected_admit in fields, fields
+        assert len(commands) == (expected_success_commands if case in ('handoff_m0', 'handoff_restore_failed') else
+                                 1 if case in ('handoff_guard_mid', 'handoff_ocs_error', 'handoff_timeout') else 0)
     if context_probe:
         expected_context = {'context_layout': 'LAYOUT', 'context_outside_resource': 'LAYOUT',
             'context_banks_outside_span': 'LAYOUT', 'context_bank_out_of_range': 'LAYOUT', 'context_read_fault': 'FAULT',
@@ -543,7 +577,7 @@ def run(image, dtb, syms, case, context_probe=False, driver_prep=False):
     if case in ('usb_power_off', 'dt_mismatch'):
         assert not any(0x04e00000 <= a < 0x04e0cd00 for a in reads), 'USB read while unavailable'
     assert not any(0x05900000 <= a < 0x05990000 for a in reads), 'GPU register read with power off'
-    if io in ('DMA_BLOCKED', 'NOT_READY', 'HOST_NOT_IDLE', 'RING_OVERLAP', 'HCI_READ_FAULT', 'CACHE_OR_MMU_ON'):
+    if io in ('DMA_BLOCKED', 'DMA_GUARD_BLOCKED', 'NOT_READY', 'HOST_NOT_IDLE', 'RING_OVERLAP', 'HCI_READ_FAULT', 'CACHE_OR_MMU_ON'):
         assert not commands and not any(UFS <= a < UFS + 0x3000 for a, _ in writes)
     if not unsafe:
         assert cpu.reg_read(UC_ARM64_REG_PC) == base + entry - va, 'did not reach XNU'
@@ -563,7 +597,7 @@ def run(image, dtb, syms, case, context_probe=False, driver_prep=False):
     else:
         args = ' '.join(fields)
     if case == 'dt_mismatch': assert not reads and not writes
-    if io == 'GPT_PASS': assert len(commands) == (10 if case == 'unit_attention' else 8)
+    if io == 'GPT_PASS': assert len(commands) == expected_success_commands + (2 if case == 'unit_attention' else 0)
     print(f'PASS {case}: {len(args)}/607 argument bytes, {len(commands)} read-only UFS commands, '
           f'{len(writes)} MMIO writes, XNU {"blocked" if unsafe else "handoff"}', flush=True)
     return fields
@@ -578,6 +612,7 @@ if __name__ == '__main__':
     ap.add_argument('--report-json', type=Path, help='save synthetic model reports (no device identifiers)')
     ap.add_argument('--dma-context', action='store_true')
     ap.add_argument('--driver-prep', action='store_true')
+    ap.add_argument('--ufs-handoff-read', action='store_true')
     args = ap.parse_args()
     cases = args.case or ('ready', 'translated', 'route_fault', 'route_reserved', 'unmatched_fault',
         'unmatched_bypass', 'ambiguous', 'masked', 'extended', 'bad_smmu_id', 'client_disabled',
@@ -601,9 +636,13 @@ if __name__ == '__main__':
                   'spi_clock_unset', 'usb_caps_fault', 'usb_caps_unsupported', 'usb_resources_busy',
                   'walk_self_table', 'walk_route_changed', 'walk_context_changed', 'walk_torn', 'walk_table_changed',
                   'gpi_ee_mismatch', 'gpi_dma_mismatch', 'gpi_translated_identity', 'gpi_translated_missing')
+    if args.ufs_handoff_read and not args.case:
+        cases += ('handoff_m0', 'handoff_attrs', 'handoff_forced_cache', 'handoff_fault', 'handoff_fault_read',
+                  'handoff_m_on', 'handoff_bad_type', 'handoff_guard_before', 'handoff_guard_mid', 'usb_caps_64',
+                  'handoff_ocs_error', 'handoff_timeout', 'handoff_restore_failed')
     image, dtb = args.image.read_bytes(), args.device_dtb.read_bytes()
     kernel = image[4096:4096 + struct.unpack_from('<I', image, 8)[0]]
     syms = symbols(args.elf, kernel)
-    reports = {case: run(image, dtb, syms, case, args.dma_context, args.driver_prep) for case in cases}
+    reports = {case: run(image, dtb, syms, case, args.dma_context, args.driver_prep, args.ufs_handoff_read) for case in cases}
     if args.report_json:
         args.report_json.write_text(json.dumps(reports, indent=2) + '\n')

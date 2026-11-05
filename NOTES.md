@@ -3,7 +3,8 @@
 ## DE2118 handoff, 2026-11-04
 
 LATEST DEVELOPMENT: user said "ok continue" after the verified 8cd8bf6f
-test/restore. Phone stays on LineageOS; no new partition write is approved.
+test/restore. The ce4ffafd test below completed; LineageOS is restored and
+hash-verified. No restore watcher remains and that approval is consumed.
 The opt-in --driver-prep batch now adds a shared inherited-table inspector
 for UFS/USB, read-only AP GPI channel survey plus SPI descriptor preparation,
 and DWC3 capability / unowned setup-data-status TRB preparation and event
@@ -60,9 +61,77 @@ work/driver-prep-operator.py is pinned to image ce4ffafd and restore d12c5d92.
 Its operator helper waits
 up to 15 minutes for fastboot restoration, rather than expiring while the
 user takes a photo. Do not start it until a specifically approved test
-flash/reboot has completed. No new test is authorized yet.
+flash/reboot has completed. The user then approved "Run combined test and
+restore" for ce4ffafd. Pinned operator checked target/hash/slot and
+successfully flashed boot_b and rebooted by 2026-11-05 00:22:51 UTC.
+The supplied photo confirms retained eight-core/PID 1/identity/display
+checks and heartbeat. GPI reads work: IDLE mask1f/state0, all five AP
+instances unallocated. GDMA=UNMATCHED_FAULT/0, so no GPI stream mapping
+exists; GMAP=SKIP. SPI_PLAN_OK, votes restored, selected firmware layout
+OK, GPU off. UFS/USB contexts now read successfully: both M_OFF with
+CBAR=1f000, TTBR0=0 and TCR=0. UFS TCR2=40000060, USB TCR2=14060.
+UMAP/XMAP=M_OFF, UFS_IO=DMA_BLOCKED/N=0. USB reports 64-bit addresses,
+32 physical endpoints, four event interrupts; USB_PLAN=CAPS_UNSUPPORTED
+because our initial code limited controller address width to 48. Raw
+transcription stays outside git: outputs/dma-touch-handset-results.json.
+
+RESTORE VERIFIED after this run: helper 21266 restored boot_b/rebooted,
+then verify-platform-restore.py confirmed boot_completed=1, slot B,
+original boot_b d12c5d92..., artwork 246df6f6..., and uid 2000. No watcher
+remains. outputs/dma-touch-test-manifest.json records verification.
+Further boot-partition tests require new approval.
+
+Follow-up source work: USB controller width now accepts through 64 bits
+without a shift-by-64 or end-address overflow. Its width is independent
+of the SMMU's PA width. No hardware submission is enabled by this fix.
+Investigating an opt-in UFS read path for the observed stage-1 M=0 with
+stage-2 bypass configuration. ARM IHI0062D.c p48/319 states bypass with
+SCTLR.M=0 and that M is not TLB-cacheable; matching Android arm-smmu.c
+uses M=0 for DOMAIN_ATTR_S1_BYPASS. Require stable route/context and no
+active faults, retain read-only command allowlist/private arena/restore,
+and do not admit ordinary translated M=1 page-table proofs as DMA.
+
+FOLLOW-UP READY FOR PACKAGING: --ufs-handoff-read is now implemented as
+a separate opt-in requiring --driver-prep. ufs_handoff_dma.c recognizes
+the observed CBAR stage-1-disabled/stage-2-bypass mode with default/known
+attributes. It uses only the existing private below-4G UFS arena, checks
+stable full route/context snapshots and the active FSR fault mask, and
+never writes SMMU/TLB/table/fault registers. ufs_read_guarded rechecks
+before/after every command and before final kernel handoff. Any lost
+guard after attaching the host keeps safe_to_handoff false even after
+list restoration; failed restoration also stops XNU until reset. Plain
+translated M=1 paths remain blocked. This is not a persistent XNU driver.
+
+The host-only follow-up image at work/build-handoff-read is SHA-256
+16dd2e956ed0659d9c81758693f54ff5edac514d5fd3a40ecedf1ff23ad559ad.
+It retains native f5c205... and unchanged diagnostic init. Twenty targeted
+exact-image synthetic cases PASS across handoff-read-model-reports.json
+(13) and handoff-read-failure-reports.json (7): successful M=0 read,
+unsupported attributes/forced cache/active translation/stage2/faults,
+guard rejection/loss, timeout, OCS errors, failed restoration, ordinary
+bypass regressions, USB width64 and M=1 identity-map refusal. Five changed
+modules pass strict ARM64 compile. USB/RAM/SPI portable checks now total
+233, including 64-bit end-address and overflow cases. QEMU boot PASS:
+work/qemu-handoff-read/result.json (8 active CPUs, SGIs, PID1, identity,
+display services; peripheral fields simulated).
+
+Read-only Android baseline confirmed userdata=/dev/block/sda16, UFS LUN0,
+4096-byte logical blocks. Sysfs metadata is private at
+work/userdata-capacity-readonly.json: disk 120504320 sectors of 512 bytes,
+userdata start 14192960 / count 106311320 (about 50.7 GiB). The first six
+4K blocks were read via ADB root to work/lineage-gpt-lun0.private.bin;
+header/array CRCs verified, 32 entries, last LBA15063039. That private GPT
+also passes the actual C image/model with five read-only commands and
+userdata start/length matching Android (one additional exact-image
+fixture, 21 total follow-up checks). Helper work/test-handoff-real-gpt.py,
+result work/handoff-real-gpt-model-report.json. Never publish this GPT
+(contains device GUIDs). All root batches ended at ADB uid2000. ADB
+exec-out merges dd's stderr, so capture only the verified 24576 data
+bytes before trailing record-count text. No userdata/files were read.
+No host test or restore process remains alive; no new phone test is
+approved for 16dd2e95. Preserve the physically tested ce4ffafd artifacts.
 Keep handset-tested outputs/de2118-ui-smp-test.img and its source archive
-unchanged. No test/restore watcher is alive. Last verified ADB uid 2000.
+unchanged. Phone is now back in verified LineageOS, ADB uid 2000.
 The read-only USB check after host tests confirms the expected phone is
 booted in LineageOS on B, boot_completed=1, uid 2000. No root was needed.
 

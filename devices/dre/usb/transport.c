@@ -5,12 +5,15 @@ const char *dre_usb_trb(struct dre_usb_trb *s, unsigned type, uint64_t buffer,
                        unsigned bytes, unsigned address_bits)
 {
     *s = (struct dre_usb_trb){0};
-    if (address_bits < 32 || address_bits > 48) return "USB_ADDRESS_WIDTH";
+    if (address_bits < 32 || address_bits > 64) return "USB_ADDRESS_WIDTH";
     if (type != 1 && type != 2 && type != 3 && type != 4 && type != 5) return "USB_TRB_TYPE";
     if ((type == 2 && bytes != 8) || ((type == 1 || type == 5) && (!bytes || bytes > 65535)) ||
         ((type == 3 || type == 4) && (bytes || buffer))) return "USB_TRB_LENGTH";
-    uint64_t limit = UINT64_C(1) << address_bits;
-    if ((bytes && !buffer) || buffer >= limit || bytes > limit - buffer) return "USB_BUFFER";
+    if ((bytes && !buffer) || (bytes && bytes - 1 > UINT64_MAX - buffer)) return "USB_BUFFER";
+    if (address_bits < 64) {
+        uint64_t limit = UINT64_C(1) << address_bits;
+        if (buffer >= limit || bytes > limit - buffer) return "USB_BUFFER";
+    }
     s->low = (uint32_t)buffer; s->high = buffer >> 32; s->bytes = bytes;
     s->control = 0x802 | type << 4; /* IOC + LST, never HWO. */
     return "USB_TRB_OK";

@@ -78,6 +78,7 @@ static void clear_arena(void)
 static const char *submit(struct dre_ufs_read_state *s, unsigned op, uint32_t lba)
 {
     s->ocs = UINT32_MAX; s->response = 0; s->status = 0;
+    if (s->guard && !s->guard(s->guard_cookie)) { s->guard_lost = 1; return "DMA_GUARD_CHANGED"; }
     uint32_t len;
     if (op == 0xff || op == 0) len = 0; /* NOP UPIU or SCSI TEST UNIT READY */
     else if (op == 0x9e) len = 32;     /* READ CAPACITY(16) */
@@ -112,6 +113,7 @@ static const char *submit(struct dre_ufs_read_state *s, unsigned op, uint32_t lb
     if (!write_reg(DOORBELL, 1)) return "DOORBELL_FAULT";
     if (!wait_reg(DOORBELL, 1, 0)) return "COMMAND_TIMEOUT";
     fence();
+    if (s->guard && !s->guard(s->guard_cookie)) { s->guard_lost = 1; return "DMA_GUARD_CHANGED"; }
     if (!write_reg(0x20, 1)) return "ACK_FAULT";
     s->ocs = DMA_RING[2] & 255;
     s->response = DMA_RESPONSE[6]; s->status = DMA_RESPONSE[7];
@@ -177,8 +179,15 @@ static const char *read_gpt(struct dre_ufs_read_state *s)
 
 const char *dre_ufs_read_test(const struct dre_dma_route *route, struct dre_ufs_read_state *s)
 {
-    *s = (struct dre_ufs_read_state){.safe_to_handoff = 1};
-    if (!route->physical_dma) return "DMA_BLOCKED";
+    return dre_ufs_read_guarded(route, s, 0, 0);
+}
+
+const char *dre_ufs_read_guarded(const struct dre_dma_route *route, struct dre_ufs_read_state *s,
+                               dre_ufs_dma_guard guard, void *cookie)
+{
+    *s = (struct dre_ufs_read_state){.safe_to_handoff = 1, .guard = guard, .guard_cookie = cookie};
+    if (!route->physical_dma && !guard) return "DMA_BLOCKED";
+    if (guard && !guard(cookie)) return "DMA_GUARD_BLOCKED";
     uint64_t control;
     __asm__ volatile("mrs %0, sctlr_el1" : "=r"(control));
     if (control & 5) return "CACHE_OR_MMU_ON"; /* Arena uses physical, uncached CPU accesses. */
@@ -226,6 +235,7 @@ restore:
         !write_reg(IE, interrupts) || !wait_reg(IE, UINT32_MAX, interrupts)) return "RESTORE_FAILED";
     if (!read_reg(0x34, &enable) || !read_reg(0x30, &status) ||
         !(enable & 1) || (status & 3) != 3) return "RESTORE_FAILED";
+    if (s->guard && (s->guard_lost || !s->guard(s->guard_cookie))) return "DMA_GUARD_CHANGED";
     s->safe_to_handoff = 1;
     clear_arena();
     return error ? error : "GPT_PASS";

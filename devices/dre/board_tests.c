@@ -8,6 +8,9 @@
 #ifdef DRE_DRIVER_PREP
 #include "dma_proof.h"
 #include "usb/prepare.h"
+#ifdef DRE_UFS_HANDOFF_READ
+#include "ufs_handoff_dma.h"
+#endif
 #endif
 #ifdef DRE_DMA_PROBE
 #include "dma_route.h"
@@ -185,8 +188,18 @@ static void check_dma_ufs(const void *dt)
 #endif
 #ifdef DRE_UFS_READ_TEST
     struct dre_ufs_read_state io = {.safe_to_handoff = 1};
+#ifdef DRE_UFS_HANDOFF_READ
+    struct dre_ufs_handoff_dma handoff;
+    const char *admit = route.physical_dma ? "S2CR_BYPASS" : dre_ufs_handoff_begin(dt, &route, &handoff);
+    add("|UFS_ADMIT="); add(admit);
+#endif
     add("|UFS_IO=");
+#ifdef DRE_UFS_HANDOFF_READ
+    add(!ufs_ready ? "NOT_READY" : !strcmp(admit, "HANDOFF_BYPASS") ?
+        dre_ufs_read_guarded(&route, &io, dre_ufs_handoff_valid, &handoff) : dre_ufs_read_test(&route, &io));
+#else
     add(ufs_ready ? dre_ufs_read_test(&route, &io) : "NOT_READY");
+#endif
 #ifndef DRE_DMA_CONTEXT
     add("/"); hex32(io.ocs); add("/"); hex32(io.status);
 #else

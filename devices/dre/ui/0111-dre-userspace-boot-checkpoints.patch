@@ -1,0 +1,149 @@
+--- a/bsd/dev/arm/systemcalls.c
++++ b/bsd/dev/arm/systemcalls.c
+@@ -15,6 +15,10 @@
+ #include <arm/thread.h>
+ #include <arm64/proc_reg.h>
+ #include <pexpert/pexpert.h>
++
++#if defined(ARM64_BOARD_CONFIG_DRE)
++#include <console/dre_boot_progress.h>
++#endif
+ 
+ #include <sys/kernel.h>
+ #include <sys/kern_debug.h>
+@@ -150,6 +154,25 @@
+ #endif
+ 	pid = proc_pid(proc);
+ 
++#if defined(ARM64_BOARD_CONFIG_DRE)
++	bool boot_trace = __improbable(dre_boot_progress_enabled) && dre_boot_trace_syscalls();
++	if (boot_trace) {
++		/* These are running user threads making their own system calls. */
++		if (pid == 1) {
++			dre_boot_checkpoint(DRE_BOOT_PID1_SYSCALL);
++			if (code == SYS_shared_region_map_and_slide_2_np) {
++				dre_boot_checkpoint(DRE_BOOT_PID1_CACHE_BEGIN);
++			}
++		} else if (strcmp(proc->p_comm, "backboardd") == 0) {
++			dre_boot_checkpoint(DRE_BOOT_BACKBOARD_SYSCALL);
++		} else if (strcmp(proc->p_comm, "SpringBoard") == 0) {
++			dre_boot_checkpoint(DRE_BOOT_SPRINGBOARD_SYSCALL);
++		} else if (strcmp(proc->p_comm, "logd_helper") == 0) {
++			dre_boot_checkpoint(DRE_BOOT_LOGD_HELPER_SYSCALL);
++		}
++	}
++#endif
++
+ #ifdef CONFIG_IOCOUNT_TRACE
+ 	uthread->uu_iocount = 0;
+ 	uthread->uu_vpindex = 0;
+@@ -180,6 +203,16 @@
+ 	AUDIT_SYSCALL_ENTER(code, proc, uthread);
+ 	error = (*(callp->sy_call))(proc, &uthread->uu_arg[0], &(uthread->uu_rval[0]));
+ 	AUDIT_SYSCALL_EXIT(code, proc, uthread, error);
++
++#if defined(ARM64_BOARD_CONFIG_DRE)
++	if (boot_trace && pid == 1) {
++		if (code == SYS_shared_region_map_and_slide_2_np) {
++			dre_boot_checkpoint(error == 0 ? DRE_BOOT_PID1_CACHE_OK : DRE_BOOT_PID1_CACHE_ERROR);
++		} else if (code == SYS_posix_spawn && error == 0 && uthread->uu_rval[0] == 0) {
++			dre_boot_checkpoint(DRE_BOOT_PID1_SPAWN_OK);
++		}
++	}
++#endif
+ 
+ #if CONFIG_MACF
+ skip_syscall:
+--- a/osfmk/console/dre_boot_progress.h
++++ b/osfmk/console/dre_boot_progress.h
+@@ -1,10 +1,19 @@
+ /* One-shot checkpoints for the DE2118 quiet boot diagnostic. */
+ #ifndef _CONSOLE_DRE_BOOT_PROGRESS_H_
+ #define _CONSOLE_DRE_BOOT_PROGRESS_H_
++#include <stdbool.h>
+ enum dre_boot_stage {
+ 	DRE_BOOT_FRAMEBUFFER_READY,
+ 	DRE_BOOT_ROOT_MOUNTED,
+ 	DRE_BOOT_PID1_LOADED,
++	DRE_BOOT_PID1_SYSCALL,
++	DRE_BOOT_PID1_CACHE_BEGIN,
++	DRE_BOOT_PID1_CACHE_OK,
++	DRE_BOOT_PID1_CACHE_ERROR,
++	DRE_BOOT_PID1_SPAWN_OK,
++	DRE_BOOT_LOGD_HELPER_SYSCALL,
++	DRE_BOOT_SPRINGBOARD_SYSCALL,
++	DRE_BOOT_BACKBOARD_SYSCALL,
+ 	DRE_BOOT_BACKBOARD_CONNECTED,
+ 	DRE_BOOT_SWAP_QUEUED,
+ 	DRE_BOOT_SWAP_DEQUEUED,
+@@ -18,6 +27,8 @@
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
++extern bool dre_boot_progress_enabled;
++bool dre_boot_trace_syscalls(void);
+ void dre_boot_checkpoint(enum dre_boot_stage stage);
+ #ifdef __cplusplus
+ }
+--- a/osfmk/console/serial_console.c
++++ b/osfmk/console/serial_console.c
+@@ -306,6 +306,15 @@
+ }
+ 
+ #if defined(ARM64_BOARD_CONFIG_DRE)
++static uint32_t dre_boot_seen;
++
++bool
++dre_boot_trace_syscalls(void)
++{
++	return dre_quiet_boot &&
++	       !(os_atomic_load(&dre_boot_seen, relaxed) & (1u << DRE_BOOT_COPY_BEGIN));
++}
++
+ void
+ dre_boot_checkpoint(enum dre_boot_stage stage)
+ {
+@@ -313,6 +322,14 @@
+ 		[DRE_BOOT_FRAMEBUFFER_READY] = "DRE BOOT: framebuffer ready\n",
+ 		[DRE_BOOT_ROOT_MOUNTED] = "DRE BOOT: root mounted\n",
+ 		[DRE_BOOT_PID1_LOADED] = "DRE BOOT: PID 1 loaded\n",
++		[DRE_BOOT_PID1_SYSCALL] = "DRE BOOT: PID 1 entered BSD syscall\n",
++		[DRE_BOOT_PID1_CACHE_BEGIN] = "DRE BOOT: PID 1 dyld cache map entered\n",
++		[DRE_BOOT_PID1_CACHE_OK] = "DRE BOOT: PID 1 dyld cache map succeeded\n",
++		[DRE_BOOT_PID1_CACHE_ERROR] = "DRE BOOT: PID 1 dyld cache map returned error\n",
++		[DRE_BOOT_PID1_SPAWN_OK] = "DRE BOOT: PID 1 spawn succeeded\n",
++		[DRE_BOOT_LOGD_HELPER_SYSCALL] = "DRE BOOT: logd_helper entered BSD syscall\n",
++		[DRE_BOOT_SPRINGBOARD_SYSCALL] = "DRE BOOT: SpringBoard entered BSD syscall\n",
++		[DRE_BOOT_BACKBOARD_SYSCALL] = "DRE BOOT: backboardd entered BSD syscall\n",
+ 		[DRE_BOOT_BACKBOARD_CONNECTED] = "DRE BOOT: backboardd opened display\n",
+ 		[DRE_BOOT_SWAP_QUEUED] = "DRE BOOT: swap queued\n",
+ 		[DRE_BOOT_SWAP_DEQUEUED] = "DRE BOOT: display timer dequeued swap\n",
+@@ -321,7 +338,6 @@
+ 		[DRE_BOOT_MAP_FAILED] = "DRE BOOT: swap surface mapping failed\n",
+ 		[DRE_BOOT_COPY_BEGIN] = "DRE BOOT: copying first frame\n",
+ 	};
+-	static uint32_t seen;
+ 	extern int disableConsoleOutput;
+ 
+ 	if (!dre_quiet_boot || !dre_boot_progress_enabled ||
+@@ -331,17 +347,17 @@
+ 	}
+ 	uint32_t bit = 1u << stage;
+ 	uint32_t blocked = (1u << DRE_BOOT_COPY_BEGIN) | bit;
+-	if (os_atomic_load(&seen, relaxed) & blocked) {
++	if (os_atomic_load(&dre_boot_seen, relaxed) & blocked) {
+ 		return;
+ 	}
+ 	/* The console drain and these short lines share one output lock. The
+ 	 * final checkpoint closes this path before the compositor writes pixels.
+ 	 */
+ 	lck_mtx_lock(&console_ring.flush_lock);
+-	uint32_t snapshot = os_atomic_load(&seen, relaxed);
++	uint32_t snapshot = os_atomic_load(&dre_boot_seen, relaxed);
+ 	if (!(snapshot & blocked) && !panic_active()) {
+ 		if (stage == DRE_BOOT_COPY_BEGIN || (!disableConsoleOutput && !sweet_console_muted)) {
+-			os_atomic_store(&seen, snapshot | bit, relaxed);
++			os_atomic_store(&dre_boot_seen, snapshot | bit, relaxed);
+ 		}
+ 		if (!disableConsoleOutput && !sweet_console_muted) {
+ 			for (const char *c = messages[stage]; *c; c++) {

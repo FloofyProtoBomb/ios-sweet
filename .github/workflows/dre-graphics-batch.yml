@@ -1,0 +1,26 @@
+name: dre-graphics-batch
+
+on:
+  push:
+    branches: [dre-graphics-batch]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: dre-graphics-batch
+  cancel-in-progress: false
+
+jobs:
+  display-kernel:
+    uses: ./.github/workflows/xnu.yml
+    with:
+      machine_config: DRE
+      dre_profile: ui
+      native_drafts: true
+  gpu-runtime:
+    needs: display-kernel
+    uses: ./.github/workflows/dre-ios-rust.yml
+    with:
+      reuse_ios_objects: true

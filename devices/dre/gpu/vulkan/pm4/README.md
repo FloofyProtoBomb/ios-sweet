@@ -1,11 +1,10 @@
 # A619 PM4 intake — UNVALIDATED structural subset
 
-This is a concrete private command-copy and packet-intake implementation draft.
-**No tests, compile, source-preparation recipe, CI, QEMU or phone execution has
-run.** The source and its ABI have not been qualified. It does not complete a
-raw Turnip command validator or permit GPU submission. Every successful result
-is named `STRUCTURAL_SUBSET_ONLY`; `raw_submission_authorized` remains zero.
-Nothing here changes a provider capability or installs a native submit hook.
+This private command-copy and packet-intake implementation covers a structural
+subset. Local sanitized fixtures and a freestanding ARM64 object compile
+passed. Every successful result is named `STRUCTURAL_SUBSET_ONLY`.
+`raw_submission_authorized` stays zero and the native provider still needs
+isolated mappings and a submission hook.
 
 ## Source-derived admission
 
@@ -96,17 +95,17 @@ source snapshot and packet/address word offset. Ownership/seals are rechecked
 before returning the structural plan, while the caller's locks/pins must still
 remain held through later materialization and retirement.
 
-## Materialization remains mandatory
+## Command relocation and GPU storage
 
-The parser's CPU snapshots are not executable GPU addresses. A real provider
-must create separate kernel-owned executable GPU BOs, copy the snapshots, patch
-each child address using the returned edge graph, preserve the validated word
-counts and protect those new command copies from all user/GPU mutation.
-Publishing the original root or nested user BO addresses would discard the
-snapshot guarantee. All code/data references, descriptor resources, commands
-and leases must survive uncertain publication, reset, cache/TLB and completion
-paths. The existing single-exclusive-task bootstrap VM has not established
-full per-task isolation and keeps RAW disabled.
+`dre_pm4_relocate_snapshot` builds a CPU staging copy for one sealed snapshot.
+It checks the destination spans and reconciles every nested IB with its
+recorded original address and length before writing. It replaces only the
+nested address words and leaves the snapshot and all data operands intact.
+
+The provider must allocate and prove distinct kernel-owned GPU command
+mappings, copy and seal the relocated bytes, and retain mappings, commands
+and resource pins through completion, cache/TLB retirement and uncertain
+publication or reset. The current bootstrap VM keeps RAW disabled.
 
 The original
 [Turnip CS source](https://chromium.googlesource.com/external/gitlab.freedesktop.org/mesa/mesa/+/85fda3b36405bcaea8bffc64aa4f2651dc90770d/src/freedreno/vulkan/tu_cs.cc)
@@ -125,7 +124,8 @@ privileged/register/unknown denials; exact full-range READ/WRITE/EXEC/resource
 and protected-boundary checks; cycle/repeated-IB/depth/word/page/reference
 limits; partial-copy leases; negative proof-callback values; stale generation,
 mutable snapshot and ownership loss; output/workspace/input aliases; and
-retained cleanup records after every failure. Actual immutable GPU copy and
-relocation correctness, native BO pins, IRQ/error-after-publication, cache/TLB
-retirement and hardware workloads require separate integration checks. None
-has been run for these new sources.
+retained cleanup records after every failure. Local fixtures cover nested
+address relocation, alias and bounds rejection, and leaving staging output
+untouched on refusal. Native BO pins, device-side immutable storage,
+IRQ/error-after-publication, cache/TLB retirement and hardware workloads
+still need integration checks.

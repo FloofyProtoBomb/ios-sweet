@@ -1,6 +1,12 @@
 name: dre-ios-rust
 
 on:
+  workflow_call:
+    inputs:
+      reuse_ios_objects:
+        description: Reuse the digest-pinned SDK frontend and Rust objects after checking source correspondence
+        type: boolean
+        default: false
   workflow_dispatch:
   push:
     branches: [dre-native-validation]
@@ -25,6 +31,7 @@ concurrency:
 
 jobs:
   native-sdk-and-metadata:
+    if: ${{ !inputs.reuse_ios_objects }}
     # Cross-compile the ARM64 iPhoneOS objects on Intel to reserve ARM64
     # runner capacity for the pinned Rust and Mesa host tools.
     runs-on: macos-15-intel
@@ -70,8 +77,12 @@ jobs:
     # Distinct full Mesa C/C++ gate, after the independent native C boundary.
     # Never treat a successful helper compile as a successful Turnip link.
     needs: native-sdk-and-metadata
+    if: ${{ !cancelled() && (needs.native-sdk-and-metadata.result == 'success' || (inputs.reuse_ios_objects && needs.native-sdk-and-metadata.result == 'skipped')) }}
     runs-on: macos-15
     timeout-minutes: 70
+    permissions:
+      contents: read
+      actions: read
     env:
       HOMEBREW_NO_AUTO_UPDATE: '1'
       HOMEBREW_NO_INSTALL_CLEANUP: '1'
@@ -115,6 +126,37 @@ jobs:
           python3 devices/dre/gpu/vulkan/build_turnip_dre.py \
             --prepared out/turnip-prepared --out out/turnip-sdk \
             --meson "$PWD/out/mesa-tools/venv/bin/meson" --ninja "$(command -v ninja)"
+      - name: Link the private development Metal bundle with the verified SDK inputs
+        if: inputs.reuse_ios_objects
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          saved="$RUNNER_TEMP/dre-ios-rust-13463588885.zip"
+          gh api --method GET "repos/$GITHUB_REPOSITORY/actions/artifacts/13463588885/zip" > "$saved"
+          printf '%s  %s\n' 6868ad117eacf23974263c5e2a4aa4714b5e28707b94d1471c0012d8eade663a "$saved" | shasum -a 256 -c -
+          unzip -q "$saved" -d out/saved-ios-objects
+          cmp out/saved-ios-objects/metal306-frontend/source-provenance.json out/turnip-frontend-inputs/source-provenance.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          saved = json.loads(Path("out/saved-ios-objects/metal306-bridge-ios/build-inputs.json").read_text())["source"]
+          fresh = json.loads(Path("out/turnip-bridge-inputs/bridge-source-provenance.json").read_text())
+          for field in ("translator", "translator_patched_tree", "bridge_sources_sha256",
+                        "dre_device_policy", "fixture_sources_sha256", "rust_toolchain",
+                        "rust_target", "mesa_recipe", "mesa_reference_patches"):
+              if saved[field] != fresh[field]:
+                  raise SystemExit("saved iOS bridge source input changed: " + field)
+          PY
+          python3 devices/dre/gpu/runtime/acquire_llvm_macos.py --out out/package-llvm
+          llvm_as=$(python3 -c 'import json; print(json.load(open("out/package-llvm/llvm-acquisition.json"))["llvm_as"])')
+          python3 devices/dre/gpu/runtime/package_dre_metal.py \
+            --frontend-build out/saved-ios-objects/metal306-frontend \
+            --bridge-build out/saved-ios-objects/metal306-bridge-ios \
+            --turnip-build out/turnip-sdk --llvm-nm "$(dirname "$llvm_as")/llvm-nm" \
+            --out out/metal-package
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -132,8 +174,21 @@ jobs:
             out/turnip-sdk/*.log
             out/turnip-sdk/objects/
             out/turnip-sdk/build/meson-logs/
+            out/package-llvm/*.json
+            out/package-llvm/*.log
+            out/metal-package/*.json
+            out/metal-package/*.log
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: inputs.reuse_ios_objects
+        with:
+          name: dre-metal-development-bundle
+          path: |
+            out/metal-package/DREMetal.bundle/
+            out/metal-package/package-result.json
           if-no-files-found: error
   matching-ios-objects:
+    if: ${{ !inputs.reuse_ios_objects }}
     # Standard macos-15 is ARM64; the acquisition helper also verifies the
     # actual architecture/OS before accepting the pinned Sequoia LLVM bottle.
     # https://docs.github.com/en/actions/reference/runners/github-hosted-runners

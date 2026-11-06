@@ -201,3 +201,60 @@ const char *dre_taskvm_build_proposal(const struct dre_taskvm_proof_ops *o,
         c->catalog_generation,rows,excludedPages};
     return "TASKVM_CPU_PERMISSION_PROPOSAL_ONLY";
 }
+
+const char *dre_taskvm_stage_table(const struct dre_taskvm_proof_ops *o,
+    const struct dre_taskvm_catalog *c,struct dre_taskvm_workspace *w,
+    struct dre_taskvm_proposal *out,const struct dre_taskvm_table_ops *ops,
+    const struct dre_a619_smmu_view *view,uint64_t *table)
+{
+    if(!o||!c||!w||!out||!ops||!ops->owns_unpublished||!ops->barrier||!view||
+       c->window_pages<1024||c->window_pages>DRE_A619_SMMU_MAX_PAGES||
+       !view->reservation_lease||!view->task_generation||
+       view->task_generation!=c->catalog_generation||!view->asid||view->asid>255)
+        return "TASKVM_INVALID_TABLE_RESERVATION";
+    const uint32_t l3=(c->window_pages+511u)/512u;
+    const size_t bytes=(((size_t)l3+2)*4096+16383)&~(size_t)16383;
+    if(view->table_bytes!=bytes||!view->table_pa||(view->table_pa&16383)||
+       view->table_pa>(UINT64_C(1)<<40)-bytes||((uintptr_t)table&16383)||
+       !region(table,bytes)||w->pa_capacity>DRE_TASKVM_MAX_CATALOG_PAGES||
+       w->row_capacity>DRE_TASKVM_MAX_CATALOG_PAGES||
+       !separate(table,bytes,w,sizeof(*w))||!workspace_separate(w,table,bytes)||
+       !separate(table,bytes,out,sizeof(*out))||
+       !workspace_separate(w,ops,sizeof(*ops))||!workspace_separate(w,view,sizeof(*view))||
+       !separate(out,sizeof(*out),ops,sizeof(*ops))||!separate(out,sizeof(*out),view,sizeof(*view)))
+        return "TASKVM_INVALID_TABLE_WORKSPACE";
+
+    const char *status=dre_taskvm_build_proposal(o,c,w,out);
+    if(strcmp(status,"TASKVM_CPU_PERMISSION_PROPOSAL_ONLY"))return status;
+    if(!separate(table,bytes,c,sizeof(*c))||!separate(table,bytes,o,sizeof(*o))||
+       !separate(table,bytes,ops,sizeof(*ops))||!separate(table,bytes,view,sizeof(*view))||
+       !separate(table,bytes,c->allocations,(size_t)c->allocation_count*sizeof(*c->allocations)))
+        return "TASKVM_TABLE_ALIASES_CATALOG";
+    int in_catalog=0;
+    for(uint32_t i=0;i<c->allocation_count;i++) {
+        const struct dre_taskvm_allocation *a=&c->allocations[i];
+        if(!separate(table,bytes,a->pages,(size_t)a->page_count*sizeof(*a->pages)))
+            return "TASKVM_TABLE_ALIASES_CATALOG";
+        if(a->role!=DRE_TASKVM_TRANSLATION_TABLE||a->pages[0].pa!=view->table_pa)continue;
+        if(a->mapped_prefix_pages||a->page_count!=bytes/4096)
+            return "TASKVM_TABLE_EXTENT_MISMATCH";
+        for(uint32_t j=0;j<a->page_count;j++)
+            if(a->pages[j].pa!=view->table_pa+(uint64_t)j*4096)
+                return "TASKVM_TABLE_EXTENT_MISMATCH";
+        in_catalog=1;
+    }
+    if(!in_catalog||!snapshot(o,c)||ops->owns_unpublished(ops->cookie,c,view,table)!=1)
+        return "TASKVM_UNPUBLISHED_TABLE_OWNERSHIP_REQUIRED";
+
+    const uint64_t descriptor=UINT64_C(0x8000000000000003);
+    memset(table,0,bytes);
+    table[(c->va_base>>30)&511]=(view->table_pa+4096)|descriptor;
+    for(uint32_t i=0;i<l3;i++)
+        table[512+((c->va_base>>21)&511)+i]=(view->table_pa+8192+(uint64_t)i*4096)|descriptor;
+    for(uint32_t i=0;i<out->row_count;i++)
+        table[1024+(w->rows[i].va-c->va_base)/4096]=w->rows[i].proposed_leaf;
+    ops->barrier(ops->cookie);
+    if(!snapshot(o,c)||ops->owns_unpublished(ops->cookie,c,view,table)!=1)
+        return "TASKVM_TABLE_STAGING_UNCERTAIN";
+    return "TASKVM_TABLE_STAGED_UNPUBLISHED";
+}

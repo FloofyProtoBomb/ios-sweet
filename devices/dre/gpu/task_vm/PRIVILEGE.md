@@ -62,7 +62,13 @@ and65536 total catalog pages, sorts physical pages in O(n log n), and checks
 at most128² allocation VA intervals. These are planning limits, not advertised
 GPU memory capacity. The exact success string
 `TASKVM_CPU_PERMISSION_PROPOSAL_ONLY` still means **non-installed arithmetic**.
-Rows have no authorization path into the current VM or native user client.
+The table writer can stage these rows into a distinct unpublished Normal-NC
+allocation once the real owner proves the complete catalog and ASID lease.
+The writer checks the full table extent in the catalog, preserves unmapped
+holes and clears padding. The SID0 switch can select an owner-qualified view
+with the GPU drained, a faulting transition and TLB synchronization for both
+ASIDs. If a write or readback is uncertain, it holds the view for reset.
+Neither entry point grants authorization to the native user client.
 
 Required shared primitives before any future broadening:
 
@@ -79,10 +85,10 @@ Required shared primitives before any future broadening:
 3. Prove actual owned SID/SMR/CB/ASID and unmodified incoming privilege/security
    semantics. No forced-privileged S2CR, unsupported APRIV write or reused live
    global stream owner is an acceptable shortcut.
-4. Implement genuine serialized context/TTBR/ASID switching with GPU/cache/
-   firmware reference retirement and real TLB synchronization, keeping every
-   bootstrap consumer mapped with correct permissions. Current global SID0
-   bookkeeping does not provide a per-task execution context.
+4. Supply the real allocator, ASID and drain proofs to the table writer and
+   SID0 switch under a serialized scheduler. Qualify the transition and every
+   retained bootstrap mapping on hardware, including CP, cache, firmware and
+   outstanding DMA references. No task scheduling is wired to the switch yet.
 5. Validate immutable root/nested/indirect command snapshots and every address
    source; forbid IB_PRIV20, protected-mode disables, privileged register/MMU/
    ring/secure/context operations and unknown packet paths. Existing narrow
@@ -90,6 +96,8 @@ Required shared primitives before any future broadening:
 6. Establish an actual hardware-confirmed retirement path whose completion
    storage untrusted shaders cannot forge. No timestamp, RPTR equality, PTE
    change or proposed privilege bit alone authorizes freeing live resources.
+   The explicit private COPY32 probe only exercises the bootstrap view and
+   its existing kernel-owned completion path.
 
 Primary references, pinned source read only:
 

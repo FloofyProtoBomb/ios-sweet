@@ -75,13 +75,29 @@ struct dre_taskvm_proposal {
 /* Read-only actual original-Holi identity + actual pinned catalog inspection.
  * Does not allocate/pin, write PTE/registers, switch contexts, alter public
  * permissions, prove privileged transactions or authorize any user stream.
- * Exact TASKVM_CPU_PERMISSION_PROPOSAL_ONLY means arithmetic/inventory only;
- * there is deliberately NO installation, protected-VM or RAW-admission API.
+ * Exact TASKVM_CPU_PERMISSION_PROPOSAL_ONLY means arithmetic/inventory only.
  * Caller keeps every input reference pinned/stable through the whole call.
  */
 const char *dre_taskvm_build_proposal(const struct dre_taskvm_proof_ops *,
     const struct dre_taskvm_catalog *,struct dre_taskvm_workspace *,
     struct dre_taskvm_proposal *);
+
+struct dre_taskvm_table_ops {
+    void *cookie;
+    /* EXACT1 for this private CPU mapping of the full NC table allocation and
+     * fresh ASID reservation under the catalog owner. The table must be
+     * unpublished, writable only by the owner and inaccessible to GPU DMA. */
+    int (*owns_unpublished)(void *,const struct dre_taskvm_catalog *,
+        const struct dre_a619_smmu_view *,const uint64_t *);
+    void (*barrier)(void *);
+};
+/* Build an unpublished SID0 table from the complete live allocation catalog.
+ * The caller keeps the catalog and reservations pinned under the same lock.
+ * Success does not prove privilege behavior or authorize any command stream. */
+const char *dre_taskvm_stage_table(const struct dre_taskvm_proof_ops *,
+    const struct dre_taskvm_catalog *,struct dre_taskvm_workspace *,
+    struct dre_taskvm_proposal *,const struct dre_taskvm_table_ops *,
+    const struct dre_a619_smmu_view *,uint64_t *table);
 #ifdef __cplusplus
 }
 #endif

@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT
- * UNVALIDATED structural subset only. No test/compile/GPU execution has run.
+ * Structural subset only. Locally checked, with no GPU execution.
  * No MMIO, DMA publication, allocation, free, recursion, libc or capability
  * registration. Successful parsing never sets RAW_IB_SUBMIT authorization.
  */
@@ -20,6 +20,11 @@ static uint32_t le32(const uint32_t *value)
 }
 static uint64_t address64(const uint32_t *words)
 { return le32(words) | (uint64_t)le32(words + 1) << 32; }
+static void store_le32(uint32_t *word, uint32_t value)
+{
+    uint8_t *p = (uint8_t *)word;
+    for (unsigned i = 0; i < 4; ++i) p[i] = (uint8_t)(value >> (8 * i));
+}
 static uint32_t parity(uint32_t value)
 {
     value ^= value >> 16; value ^= value >> 8; value ^= value >> 4;
@@ -117,7 +122,8 @@ static enum dre_pm4_status capture(struct context *c, const struct dre_pm4_resou
         return fail(c, DRE_PM4_LIMIT);
     *index = c->result->snapshots++;
     struct dre_pm4_snapshot *s = &c->work->snapshots[*index];
-    s->source_handle = bo->handle; s->source_offset = offset; s->snapshot_lease = 0;
+    s->source_handle = bo->handle; s->source_offset = offset; s->source_gpu_va = bo->gpu_va + offset;
+    s->snapshot_lease = 0;
     s->words = words; s->arena_word = c->result->arena_words; s->state = 1; s->reserved = 0;
     c->result->arena_words += reserved; c->result->copied_words += words; c->result->snapshot_pages += pages;
     uint32_t *destination = c->work->word_arena + s->arena_word;
@@ -348,6 +354,102 @@ enum dre_pm4_status dre_pm4_intake(const struct dre_pm4_request *r, const struct
     out->raw_submission_authorized = 0;
     return out->status;
 }
+
+enum dre_pm4_status dre_pm4_relocate_snapshot(const struct dre_pm4_workspace *w,
+    const struct dre_pm4_result *r, const struct dre_pm4_ops *ops,
+    const uint64_t *gpu_vas, uint32_t va_count, uint32_t snapshot,
+    uint32_t *output, uint32_t output_words)
+{
+    const uint32_t page_words = DRE_PM4_SNAPSHOT_PAGE_BYTES / 4;
+    if (!w || !r || !ops || !ops->owns_workspace || !ops->owns_immutable_snapshot ||
+        w->in_use != 1 || r->status != DRE_PM4_STRUCTURAL_SUBSET_ONLY ||
+        !r->task_generation || r->raw_submission_authorized ||
+        !va_count || va_count != r->snapshots || va_count > DRE_PM4_MAX_SNAPSHOTS ||
+        w->snapshot_capacity > DRE_PM4_MAX_SNAPSHOTS || va_count > w->snapshot_capacity ||
+        snapshot >= va_count || r->edges > w->edge_capacity || w->edge_capacity > DRE_PM4_MAX_EDGES ||
+        w->reference_capacity > DRE_PM4_MAX_REFERENCES || r->references > w->reference_capacity ||
+        !r->arena_words || r->arena_words > w->word_capacity ||
+        w->word_capacity > DRE_PM4_MAX_ARENA_WORDS)
+        return DRE_PM4_BAD_INPUT;
+
+    const void *inputs[] = {w, r, ops, gpu_vas, w->word_arena, w->snapshots, w->references, w->edges};
+    const size_t sizes[] = {sizeof(*w), sizeof(*r), sizeof(*ops), (size_t)va_count * sizeof(*gpu_vas),
+        (size_t)w->word_capacity * 4, (size_t)w->snapshot_capacity * sizeof(*w->snapshots),
+        (size_t)w->reference_capacity * sizeof(*w->references), (size_t)w->edge_capacity * sizeof(*w->edges)};
+    for (unsigned i = 0; i < sizeof(inputs) / sizeof(inputs[0]); ++i)
+        if (!host_range(inputs[i], sizes[i])) return DRE_PM4_BAD_INPUT;
+
+    uint32_t next_word = 0;
+    uint64_t target_bytes[DRE_PM4_MAX_SNAPSHOTS];
+    for (uint32_t i = 0; i < va_count; ++i) {
+        const struct dre_pm4_snapshot *s = &w->snapshots[i];
+        if (s->state != 3 || !s->snapshot_lease || !s->words ||
+            s->words > DRE_PM4_MAX_SINGLE_WORDS || s->arena_word != next_word ||
+            (s->source_gpu_va & 3u) || !gpu_range(s->source_gpu_va, (uint64_t)s->words * 4))
+            return DRE_PM4_BAD_INPUT;
+        uint32_t reserved = (s->words + page_words - 1) & ~(page_words - 1);
+        if (reserved > r->arena_words - next_word) return DRE_PM4_BAD_INPUT;
+        next_word += reserved;
+        target_bytes[i] = (uint64_t)reserved * 4;
+        if ((gpu_vas[i] & (DRE_PM4_SNAPSHOT_PAGE_BYTES - 1)) ||
+            !gpu_range(gpu_vas[i], target_bytes[i]))
+            return DRE_PM4_BAD_ADDRESS;
+        for (uint32_t j = 0; j < i; ++j)
+            if (overlaps(gpu_vas[i], target_bytes[i], gpu_vas[j], target_bytes[j]))
+                return DRE_PM4_BAD_ADDRESS;
+    }
+    if (next_word != r->arena_words) return DRE_PM4_BAD_INPUT;
+    for (uint32_t i = 0; i < va_count; ++i)
+        for (uint32_t j = 0; j < va_count; ++j)
+            if (overlaps(gpu_vas[i], target_bytes[i], w->snapshots[j].source_gpu_va,
+                (uint64_t)w->snapshots[j].words * 4))
+                return DRE_PM4_BAD_ADDRESS;
+
+    const struct dre_pm4_snapshot *s = &w->snapshots[snapshot];
+    const uint32_t *source = w->word_arena + s->arena_word;
+    size_t bytes = (size_t)s->words * 4;
+    if (output_words < s->words || ((uintptr_t)output & 3u) || !host_range(output, bytes))
+        return DRE_PM4_BAD_INPUT;
+    for (unsigned i = 0; i < sizeof(inputs) / sizeof(inputs[0]); ++i)
+        if (host_overlap(output, bytes, inputs[i], sizes[i])) return DRE_PM4_BAD_INPUT;
+    if (ops->owns_workspace(ops->cookie, output, bytes) != 1 ||
+        ops->owns_immutable_snapshot(ops->cookie, s->snapshot_lease, source, bytes) != 1)
+        return DRE_PM4_OWNERSHIP_UNPROVEN;
+
+    /* Reconcile the edges in packet order. Every nested IB must have exactly
+     * one edge, even if a stale plan omitted or duplicated a relocation. */
+    uint32_t edge = 0;
+    for (uint32_t at = 0; at < s->words;) {
+        uint32_t header = le32(source + at);
+        uint32_t opcode = (header >> 16) & 0x7f, count = header & 0x3fff;
+        if (header != type7(opcode, count)) return DRE_PM4_BAD_HEADER;
+        if (count >= s->words - at) return DRE_PM4_TRUNCATED_PACKET;
+        if (opcode == DRE_PM4_INDIRECT_BUFFER) {
+            while (edge < r->edges && w->edges[edge].parent_snapshot != snapshot) ++edge;
+            if (count != 3 || edge == r->edges) return DRE_PM4_BAD_PACKET_SHAPE;
+            const struct dre_pm4_edge *e = &w->edges[edge++];
+            if (e->packet_word != at || e->address_word != at + 1 ||
+                e->child_snapshot <= snapshot || e->child_snapshot >= va_count ||
+                address64(source + at + 1) != w->snapshots[e->child_snapshot].source_gpu_va ||
+                le32(source + at + 3) != w->snapshots[e->child_snapshot].words)
+                return DRE_PM4_BAD_PACKET_SHAPE;
+        }
+        at += count + 1;
+    }
+    for (; edge < r->edges; ++edge)
+        if (w->edges[edge].parent_snapshot == snapshot) return DRE_PM4_BAD_PACKET_SHAPE;
+
+    for (uint32_t i = 0; i < s->words; ++i) output[i] = source[i];
+    for (uint32_t i = 0; i < r->edges; ++i) {
+        const struct dre_pm4_edge *e = &w->edges[i];
+        if (e->parent_snapshot != snapshot) continue;
+        uint64_t address = gpu_vas[e->child_snapshot];
+        store_le32(output + e->address_word, (uint32_t)address);
+        store_le32(output + e->address_word + 1, (uint32_t)(address >> 32));
+    }
+    return DRE_PM4_STRUCTURAL_SUBSET_ONLY;
+}
+
 const char *dre_pm4_status_name(enum dre_pm4_status status)
 {
     switch (status) {

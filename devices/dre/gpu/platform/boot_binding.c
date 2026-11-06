@@ -248,6 +248,32 @@ int dre_gpu_boot_binding_vm_ops(struct dre_gpu_boot_binding *b,struct dre_a619_v
     if(binding(b->router)!=b||b->preparing_cpu||!b->memory_prepared)return DRE_GPU_NOT_READY;
     *out=b->memory->ops;return DRE_GPU_OK;
 }
+const char *dre_gpu_boot_binding_probe_submission(struct dre_gpu_boot_binding *b,
+    uint64_t budget)
+{
+    if(!b||!budget||budget>19200000)return "BOOT_QUEUE_INVALID_ARGUMENT";
+    if(binding(b->router)!=b||!b->plan_bound||!b->private_queue||
+       b->memory->domain.task_view.reservation_lease||
+       b->startup->phase!=DRE_A619_START_MARKER_CONFIRMED||
+       !domain_proof(b,&b->memory->domain,CHECK_QUIESCENT))
+        return "BOOT_QUEUE_REAL_DRAINED_OWNER_REQUIRED";
+    if(b->queue_probe_attempted)return "BOOT_QUEUE_PROBE_ALREADY_ATTEMPTED";
+    b->queue_probe_attempted=1;
+    const char *status=dre_gpu_trusted_attach(b->private_queue,b->startup);
+    if(!equal(status,"TRUSTED_PRIVATE_QUEUE_ATTACHED_ONLY"))return fail(b,status);
+    uint64_t ticket=0;uint32_t published=0;
+    status=dre_gpu_trusted_submit(b->private_queue,DRE_GPU_TRUSTED_COPY32,
+        UINT32_C(0x619c0a11),&ticket,&published);
+    if(!equal(status,"TRUSTED_IB_PUBLISHED_NOT_COMPLETE"))return fail(b,status);
+    if(!ticket||published!=1)
+        return fail(b,"BOOT_QUEUE_PUBLICATION_UNCONFIRMED");
+    struct dre_gpu_trusted_completion completion;
+    status=dre_gpu_trusted_wait(b->private_queue,ticket,budget,&completion);
+    if(!equal(status,"TRUSTED_IB_HARDWARE_AND_UCHE_EVENTS_COMPLETE"))return fail(b,status);
+    status=dre_gpu_trusted_close(b->private_queue,ticket);
+    if(!equal(status,"TRUSTED_TICKET_CLOSED_PRIVATE_MAPPINGS_RETAINED"))return fail(b,status);
+    return "BOOT_QUEUE_PRIVATE_COPY_HARDWARE_COMPLETE";
+}
 static int rbbm_ready(void *cookie);
 static int cp_ready(void *cookie);
 static int cp_mapping(void *cookie,const struct dre_a619_cp_buffer *,uint32_t);

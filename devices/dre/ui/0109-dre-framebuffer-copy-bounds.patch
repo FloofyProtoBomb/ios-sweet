@@ -1,0 +1,134 @@
+diff --git a/iokit/Kernel/arm/SweetFramebuffer.cpp b/iokit/Kernel/arm/SweetFramebuffer.cpp
+--- a/iokit/Kernel/arm/SweetFramebuffer.cpp
++++ b/iokit/Kernel/arm/SweetFramebuffer.cpp
+@@ -154,7 +154,7 @@
+ 	fWidth = (uint32_t)video.v_width;
+ 	fHeight = (uint32_t)video.v_height;
+ 	fRowBytes = (uint32_t)video.v_rowBytes;
+-	if (fPhys == 0 || fWidth == 0 || fHeight == 0 || fRowBytes < fWidth * 4) {
++	if (fPhys == 0 || fWidth == 0 || fHeight == 0 || fRowBytes < (uint64_t)fWidth * 4) {
+ 		IOLog("DRE FB: no boot framebuffer\n");
+ 		return false;
+ 	}
+@@ -298,9 +298,9 @@
+ 		uint32_t id = get32(rec, 0x54 + 4 * layer);
+ 		const uint8_t *a = rec + 0x64 + 16 * layer;
+ 		const uint8_t *b = rec + 0xc4 + 16 * layer;
+-		int32_t sx = (int32_t)get32(a, 0), sy = (int32_t)get32(a, 4);
+-		int32_t dx = (int32_t)get32(b, 0), dy = (int32_t)get32(b, 4);
+-		int32_t w = (int32_t)get32(b, 8), h = (int32_t)get32(b, 12);
++		int64_t sx = (int32_t)get32(a, 0), sy = (int32_t)get32(a, 4);
++		int64_t dx = (int32_t)get32(b, 0), dy = (int32_t)get32(b, 4);
++		int64_t w = (int32_t)get32(b, 8), h = (int32_t)get32(b, 12);
+ 
+ 		if (!(mask & (1u << layer)) || id == 0) {
+ 			continue;
+@@ -310,18 +310,17 @@
+ 			sweet_fb_swaps_logged++;
+ 			IOLog("DRE FB: swap %u layer %u surface %u %ux%u fmt 0x%x bpr %u a %d,%d %ux%u b %d,%d %dx%d\n",
+ 			    get32(rec, 0x50), layer, id, s ? s->width : 0, s ? s->height : 0,
+-			    s ? s->pixelFormat : 0, s ? s->bytesPerRow : 0, sx, sy, get32(a, 8),
+-			    get32(a, 12), dx, dy, w, h);
++			    s ? s->pixelFormat : 0, s ? s->bytesPerRow : 0, (int32_t)sx, (int32_t)sy,
++			    get32(a, 8), get32(a, 12), (int32_t)dx, (int32_t)dy, (int32_t)w, (int32_t)h);
+ 		}
+ 		if (s == NULL || s == fSurface) {
+ 			OSSafeReleaseNULL(s);
+ 			continue;
+ 		}
+-		uintptr_t src = s->kernelAddress();
+ 		uint32_t bpe = s->bytesPerElement ? s->bytesPerElement : 4;
+ 		if (w <= 0 || h <= 0) {
+-			w = (int32_t)s->width;
+-			h = (int32_t)s->height;
++			w = s->width;
++			h = s->height;
+ 		}
+ 		if (sx < 0 || sy < 0) {
+ 			sx = sy = 0;
+@@ -342,40 +341,52 @@
+ 			h += dy;
+ 			dy = 0;
+ 		}
+-		if (w > (int32_t)s->width - sx) {
+-			w = (int32_t)s->width - sx;
+-		}
+-		if (h > (int32_t)s->height - sy) {
+-			h = (int32_t)s->height - sy;
+-		}
+-		if (w > (int32_t)fWidth - dx) {
+-			w = (int32_t)fWidth - dx;
+-		}
+-		if (h > (int32_t)fHeight - dy) {
+-			h = (int32_t)fHeight - dy;
+-		}
+-		uint64_t last = (uint64_t)s->offset + (uint64_t)(sy + h - 1) * s->bytesPerRow +
+-		    (uint64_t)(sx + w) * 4;
+-		if (w <= 0 || h <= 0 || s->elementWidth != 1 || s->elementHeight != 1 ||
+-		    s->memory == NULL || last > s->memory->getLength()) {
+-			src = 0;
+-		}
+-		if (src != 0 && bpe == 4) {
+-			/* Keep boot diagnostics visible until a layer can be copied. */
+-			if (!fConsolePaused) {
+-				int quiet = 0;
+-				fConsolePaused = true;
+-				if (PE_parse_boot_argn("sweetfb_noconsole", &quiet, sizeof(quiet)) && quiet != 0) {
+-					/* Not PE_initialize_console(kPEDisableScreen): its console switch
+-					 * writes the read-only-late cons_ops_index and panics. */
+-					sweet_console_muted = 1;
+-				}
++		if (w > (int64_t)s->width - sx) {
++			w = (int64_t)s->width - sx;
++		}
++		if (h > (int64_t)s->height - sy) {
++			h = (int64_t)s->height - sy;
++		}
++		if (w > (int64_t)fWidth - dx) {
++			w = (int64_t)fWidth - dx;
++		}
++		if (h > (int64_t)fHeight - dy) {
++			h = (int64_t)fHeight - dy;
++		}
++		if (w <= 0 || h <= 0 || bpe != 4 || s->elementWidth != 1 ||
++		    s->elementHeight != 1 || s->memory == NULL) {
++			s->release();
++			continue;
++		}
++		uint64_t rowEnd = (uint64_t)(sx + w) * 4;
++		uint64_t lastRow = (uint64_t)(sy + h - 1) * s->bytesPerRow;
++		uint64_t length = s->memory->getLength();
++		if (rowEnd > s->bytesPerRow || s->offset > length ||
++		    lastRow > length - s->offset || rowEnd > length - s->offset - lastRow) {
++			s->release();
++			continue;
++		}
++		uintptr_t src = s->kernelAddress();
++		if (src == 0) {
++			s->release();
++			continue;
++		}
++		const bool firstCopy = !fConsolePaused;
++		if (firstCopy) {
++			int quiet = 0;
++			if (PE_parse_boot_argn("sweetfb_noconsole", &quiet, sizeof(quiet)) && quiet != 0) {
++				/* PE_initialize_console would write the read-only-late cons_ops_index. */
++				sweet_console_muted = 1;
+ 			}
+-			for (int32_t y = 0; y < h; y++) {
+-				memcpy((void *)(fPixels + (uint64_t)(dy + y) * fRowBytes + (uint64_t)dx * 4),
+-				    (const void *)(src + s->offset + (uint64_t)(sy + y) * s->bytesPerRow + (uint64_t)sx * 4),
+-				    (size_t)w * 4);
+-			}
++		}
++		for (int64_t y = 0; y < h; y++) {
++			memcpy((void *)(fPixels + (uint64_t)(dy + y) * fRowBytes + (uint64_t)dx * 4),
++			    (const void *)(src + s->offset + (uint64_t)(sy + y) * s->bytesPerRow + (uint64_t)sx * 4),
++			    (size_t)w * 4);
++		}
++		if (firstCopy) {
++			fConsolePaused = true;
++			IOLog("DRE FB: copied first frame, swap %u layer %u\n", get32(rec, 0x50), layer);
+ 		}
+ 		s->release();
+ 	}

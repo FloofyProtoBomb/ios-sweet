@@ -68,6 +68,10 @@ int dre_gpu_platform_provider_create(const struct dre_gpu_platform_provider_conf
  * and live native provider checks via native_owner; not called by describe or
  * configure, and it enables no GPU RBBM interrupt mask. No hidden auto-arm. */
 int dre_gpu_platform_provider_arm_fault_irq(struct dre_gpu_platform_provider *);
+/* Explicit owner-lock-held private submission diagnostic. Run after native
+ * startup succeeds and before fault IRQ arming; no UAPI capability changes. */
+const char *dre_gpu_platform_provider_probe_submission(struct dre_gpu_platform_provider *,
+    uint64_t budget_ticks);
 /* Private owner-lock-held diagnostics only, never a user ABI/readiness flag.
  * Partial lease metadata and constant failure reason stay available on error.
  */

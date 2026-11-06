@@ -1,6 +1,17 @@
 name: xnu
 
 on:
+  workflow_call:
+    inputs:
+      machine_config:
+        type: string
+        required: true
+      dre_profile:
+        type: string
+        required: true
+      native_drafts:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       macos_version:

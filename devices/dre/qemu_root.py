@@ -283,21 +283,22 @@ def run(args):
                 return screen, log
             tags = tuple(FIXTURE_TAGS if args.fixture else ()) + tuple(args.expect or ())
             deadline = time.monotonic() + args.seconds
-            screen = log = ''
-            while time.monotonic() < deadline:
+            observed = set()
+            while True:
                 time.sleep(min(10, max(0, deadline - time.monotonic())))
                 qmp('stop'); screen, log = snapshot()
                 text = screen + '\n' + log
+                observed.update(tag for tag in tags if tag in text)
                 if 'panic(cpu' in text or 'DRE_HFS_RW=FAIL_STAGE_' in text:
                     result['status'] = 'FAIL'; break
-                if tags and all(tag in text for tag in tags):
+                if tags and observed.issuperset(tags):
                     result['status'] = 'PASS'; break
+                if time.monotonic() >= deadline:
+                    result['status'] = 'TIMEOUT' if tags else 'OBSERVED_WITHOUT_PASS_CRITERIA'
+                    break
                 qmp('cont')
-            else:
-                qmp('stop'); screen, log = snapshot()
-                result['status'] = 'TIMEOUT' if tags else 'OBSERVED_WITHOUT_PASS_CRITERIA'
             result['expected_markers'] = list(tags)
-            result['observed_markers'] = [tag for tag in tags if tag in screen + '\n' + log]
+            result['observed_markers'] = [tag for tag in tags if tag in observed]
             result['framebuffer_png'] = str(out / 'fb.png')
             all_text = '\n'.join(history) + '\n' + screen
             result['simulated_file_provider_registered'] = 'DRE UFS: QEMU file provider registered' in all_text
@@ -310,7 +311,7 @@ def run(args):
             result['graphical_ui_requires_visual_inspection'] = True
             if args.fixture and result['status'] == 'PASS':
                 require(result['simulated_file_provider_registered'], 'fixture did not use the file provider')
-                require(f"DRE CPU: {info['cpus']}/{info['cpus']} CPUs initialized" in log,
+                require(f"DRE CPU: {info['cpus']}/{info['cpus']} CPUs initialized" in all_text,
                         'fixture did not initialize every requested virtual CPU')
                 result['hfs_pid1_posix_write_readback'] = True
                 result['hfs_fullfsync_and_both_flush_ioctls'] = True

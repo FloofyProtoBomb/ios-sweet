@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT
- * UNVALIDATED overnight draft. No test/compile/execution has run.
+ * Locally checked structural subset. No native execution.
  * Kernel-private, portable C structural intake. Not an IOUserClient UAPI.
  * A successful subset result NEVER authorizes RAW_IB_SUBMIT or GPU execution.
  */
@@ -72,7 +72,7 @@ struct dre_pm4_request {
     uint32_t protected_count;
 };
 struct dre_pm4_snapshot {
-    uint64_t source_handle, source_offset, snapshot_lease;
+    uint64_t source_handle, source_offset, source_gpu_va, snapshot_lease;
     uint32_t words, arena_word;
     uint32_t state, reserved; /* state:1 reserved/partial,2 sealed,3 walked */
 };
@@ -137,6 +137,18 @@ enum dre_pm4_status dre_pm4_intake(const struct dre_pm4_request *,
  * untouched so its lease cleanup metadata is not destroyed by a second call.
  * The returned status must always be checked; no result authorizes raw work. */
 const char *dre_pm4_status_name(enum dre_pm4_status);
+
+/* Produce one relocated CPU staging copy from a successful sealed intake.
+ * The owner must keep the original workspace, mappings and pins held across
+ * this call. Each GPU VA is the base of a distinct private 16KiB-aligned
+ * destination allocation. The provider must separately prove those mappings,
+ * copy and seal the output for device reads, and hold it through retirement.
+ * No GPU mapping, write, publication or RAW authorization occurs here.
+ * On refusal the staging output is unchanged. */
+enum dre_pm4_status dre_pm4_relocate_snapshot(const struct dre_pm4_workspace *,
+    const struct dre_pm4_result *, const struct dre_pm4_ops *,
+    const uint64_t *gpu_vas, uint32_t va_count, uint32_t snapshot,
+    uint32_t *output, uint32_t output_words);
 #ifdef __cplusplus
 }
 #endif

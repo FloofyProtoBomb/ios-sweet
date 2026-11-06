@@ -195,6 +195,7 @@ static int live(struct dre_gpu_trusted_queue *s)
        s->startup->lease!=s->lease||s->startup->plan.vm!=s->vm||s->startup->plan.vm_ops!=s->vm_ops||
        s->startup->plan.cp->queue!=s->ring||s->vm->unsafe||s->vm->generation!=s->vm_generation||
        !s->vm->domain||s->vm->domain!=s->vm->owned_domain||
+       s->vm->domain->task_view.reservation_lease||
        s->vm->pages!=s->vm->owned_pages||s->vm->leases!=s->vm->owned_leases||
        s->vm->domain->page_count!=s->vm->owned_pages_count||
        !equal(dre_a619_startup_check_live(s->startup),"NATIVE_START_HELD")||

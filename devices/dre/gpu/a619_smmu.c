@@ -10,6 +10,7 @@
 #define CBAR(n) (BASE+0x1000+(uint64_t)(n)*4)
 #define CBA2R(n) (BASE+0x1800+(uint64_t)(n)*4)
 #define TABLE_BYTES 12288u
+#define TASK_TABLE_MAX_BYTES (((2u+DRE_A619_SMMU_MAX_PAGES/512u)*4096u+16383u)&~16383u)
 #define FAULT_STREAM 0x20300u
 #define SCTLR_ENABLE 0x00c01027u /* NC/NSH, ASIDPNE, CFRE, AFE/TRE/M; no IRQ/stall */
 static const uint32_t offsets[]={0,4,0x10,0x30,0x38,0x3c};
@@ -41,9 +42,9 @@ static int check32(const struct dre_a619_smmu_ops *o,uint64_t a,uint32_t expecte
 { uint32_t v; return rd(o,a,&v) && v==expected; }
 static int check64(const struct dre_a619_smmu_ops *o,uint64_t a,uint64_t expected)
 { uint64_t v; return o->guard(o->cookie) && o->read64(o->cookie,a,&v) && v==expected; }
-static int tlb(struct dre_a619_smmu *s,const struct dre_a619_smmu_ops *o)
+static int tlb_asid(struct dre_a619_smmu *s,const struct dre_a619_smmu_ops *o,uint32_t asid)
 {
-    if (!wr(o,s->cb_base+0x610,s->asid) || !wr(o,s->cb_base+0x7f0,0)) return 0;
+    if (!wr(o,s->cb_base+0x610,asid) || !wr(o,s->cb_base+0x7f0,0)) return 0;
     uint64_t start=o->now(o->cookie);
     for (unsigned i=0;i<1000000;i++) {
         uint32_t status;
@@ -53,6 +54,8 @@ static int tlb(struct dre_a619_smmu *s,const struct dre_a619_smmu_ops *o)
     }
     return 0;
 }
+static int tlb(struct dre_a619_smmu *s,const struct dre_a619_smmu_ops *o)
+{ return tlb_asid(s,o,s->asid); }
 static size_t table_bytes(const struct dre_a619_smmu *s)
 {
     if (!s->page_count || s->page_count>DRE_A619_SMMU_MAX_PAGES)return 0;
@@ -217,7 +220,7 @@ const char *dre_a619_smmu_activate(struct dre_a619_smmu *s,const struct dre_a619
     if (s->chip_id!=DRE_A619_CHIP_ID) return "WRONG_GPU";
     if (s->prerequisites!=DRE_A619_SMMU_PREREQUISITES) return "SMMU_PLATFORM_UNAVAILABLE";
     if (s->tick_hz!=19200000) return "UNSUPPORTED_TIMER";
-    if (s->active || s->changed) return "SMMU_ALREADY_ACTIVE";
+    if (s->active || s->changed || s->task_view.reservation_lease) return "SMMU_ALREADY_ACTIVE";
     if (!o->guard(o->cookie)) return "SMMU_OWNERSHIP_REJECTED";
     const char *status=memory_check(s,o);
     if (status) return status;
@@ -258,6 +261,7 @@ const char *dre_a619_smmu_release(struct dre_a619_smmu *s,const struct dre_a619_
 {
     if (!valid(s,o)) return "INVALID_ARGUMENT";
     if (s->unsafe) return "SMMU_RESET_REQUIRED";
+    if (s->task_view.reservation_lease) return "SMMU_TASK_VIEW_ACTIVE";
     if (!s->changed) return "SMMU_NO_OWNED_CONTEXT";
     if (s->chip_id!=DRE_A619_CHIP_ID || s->prerequisites!=DRE_A619_SMMU_PREREQUISITES ||
         s->tick_hz!=19200000 || s->context_bank>=8 || s->smr_index>=128 ||
@@ -280,14 +284,11 @@ static int immutable_owned(const struct dre_a619_smmu *s)
         s->owned_va_base==s->va_base && s->owned_pages==s->pages &&
         s->owned_page_count==s->page_count && s->owned_table_bytes==table_bytes(s);
 }
-const char *dre_a619_smmu_check_live(struct dre_a619_smmu *s,const struct dre_a619_smmu_ops *o)
+static int check_live_ttbr(const struct dre_a619_smmu *s,const struct dre_a619_smmu_ops *o,
+    uint64_t ttbr)
 {
-    if (!valid(s,o))return "INVALID_ARGUMENT";
-    if (s->unsafe)return "SMMU_RESET_REQUIRED";
-    if (!s->active || !s->changed)return "SMMU_NOT_ACTIVE";
-    uint64_t ttbr=s->table_pa|((uint64_t)s->asid<<48);
     uint32_t global;
-    int ok=immutable_owned(s) && o->guard(o->cookie) &&
+    return immutable_owned(s) && o->guard(o->cookie) &&
         rd(o,BASE,&global) && !(global&9) && (global&(1u<<10)) && check32(o,BASE+0x48,0) &&
         check32(o,SMR(s->smr_index),0x80000000) &&
         check32(o,S2CR(s->smr_index),0x300|s->context_bank) &&
@@ -298,13 +299,98 @@ const char *dre_a619_smmu_check_live(struct dre_a619_smmu *s,const struct dre_a6
         check32(o,s->cb_base+4,0x70000000) &&
         check32(o,CBAR(s->context_bank),0x1f300) && check32(o,CBA2R(s->context_bank),1) &&
         check32(o,s->cb_base+0x58,0) && check32(o,s->cb_base+0x7f4,0) && o->guard(o->cookie);
-    if (!ok) { s->unsafe=1;return "SMMU_LIVE_STATE_UNSAFE"; }
+}
+const char *dre_a619_smmu_check_live(struct dre_a619_smmu *s,const struct dre_a619_smmu_ops *o)
+{
+    if (!valid(s,o))return "INVALID_ARGUMENT";
+    if (s->unsafe)return "SMMU_RESET_REQUIRED";
+    if (!s->active || !s->changed)return "SMMU_NOT_ACTIVE";
+    const struct dre_a619_smmu_view *view=&s->task_view;
+    uint64_t ttbr=s->table_pa|((uint64_t)s->asid<<48);
+    if (view->reservation_lease) {
+        if (!s->task_ops.owns_view || s->task_ops.owns_view(s->task_ops.cookie,view)!=1) {
+            s->unsafe=1;return "SMMU_LIVE_STATE_UNSAFE";
+        }
+        ttbr=view->table_pa|((uint64_t)view->asid<<48);
+    }
+    if (!check_live_ttbr(s,o,ttbr)) { s->unsafe=1;return "SMMU_LIVE_STATE_UNSAFE"; }
     return "SMMU_LIVE_STATE_VERIFIED";
 }
 const char *dre_a619_smmu_sync_live(struct dre_a619_smmu *s,const struct dre_a619_smmu_ops *o)
 {
+    if (valid(s,o) && !s->unsafe && s->task_view.reservation_lease)
+        return "SMMU_TASK_VIEW_ACTIVE";
     const char *status=dre_a619_smmu_check_live(s,o);
     if (!valid(s,o) || !s->active || !s->changed || s->unsafe)return status;
     if (!tlb(s,o)) { s->unsafe=1;return "SMMU_TLB_RETIREMENT_UNSAFE"; }
     return dre_a619_smmu_check_live(s,o);
+}
+
+static int switch_ttbr(struct dre_a619_smmu *s,const struct dre_a619_smmu_ops *o,
+    uint32_t from_asid,uint32_t to_asid,uint64_t to_pa)
+{
+    const struct dre_a619_smmu_view_ops *p=&s->task_ops;
+    uint64_t ttbr=to_pa|((uint64_t)to_asid<<48);
+    /* Break before make. The SID stays faulting while the CB is disabled
+     * and both ASIDs are invalidated. There is never a bypass transition. */
+    return wr(o,S2CR(s->smr_index),FAULT_STREAM) &&
+        check32(o,S2CR(s->smr_index),FAULT_STREAM) &&
+        wr(o,s->cb_base,0) && check32(o,s->cb_base,0) &&
+        tlb_asid(s,o,from_asid) &&
+        wr64(o,s->cb_base+0x20,ttbr) && check64(o,s->cb_base+0x20,ttbr) &&
+        tlb_asid(s,o,to_asid) &&
+        p->quiescent(p->cookie)==1 && p->owns_view(p->cookie,&s->task_view)==1 &&
+        wr(o,s->cb_base,SCTLR_ENABLE) && check32(o,s->cb_base,SCTLR_ENABLE) &&
+        check32(o,s->cb_base+0x58,0) &&
+        wr(o,S2CR(s->smr_index),0x300|s->context_bank) &&
+        check32(o,S2CR(s->smr_index),0x300|s->context_bank);
+}
+
+const char *dre_a619_smmu_enter_view(struct dre_a619_smmu *s,const struct dre_a619_smmu_ops *o,
+    const struct dre_a619_smmu_view *view,const struct dre_a619_smmu_view_ops *p)
+{
+    if (!valid(s,o) || !view || !p || !p->owns_view || !p->quiescent) return "INVALID_ARGUMENT";
+    if (s->unsafe) return "SMMU_RESET_REQUIRED";
+    if (s->task_view.reservation_lease) return "SMMU_TASK_VIEW_ACTIVE";
+    if (!view->task_generation || !view->reservation_lease || !view->asid ||
+        view->asid>255 || view->asid==s->asid || !view->table_pa ||
+        (view->table_pa&16383u) || view->table_bytes<16384u ||
+        (view->table_bytes&16383u) || view->table_bytes>TASK_TABLE_MAX_BYTES ||
+        view->table_pa>(UINT64_C(1)<<40)-view->table_bytes ||
+        overlap(view->table_pa,view->table_bytes,s->owned_table_pa,s->owned_table_bytes))
+        return "SMMU_INVALID_TASK_VIEW";
+    if (!s->active || !s->changed || p->quiescent(p->cookie)!=1 ||
+        p->owns_view(p->cookie,view)!=1 || o->owns_ram(o->cookie,view->table_pa,view->table_bytes)!=1)
+        return "SMMU_TASK_VIEW_OWNERSHIP_REQUIRED";
+    (void)dre_a619_smmu_check_live(s,o);
+    if (s->unsafe) return "SMMU_RESET_REQUIRED";
+    s->task_view=*view;
+    s->task_ops=*p;
+    if (!switch_ttbr(s,o,s->asid,s->task_view.asid,s->task_view.table_pa)) {
+        s->unsafe=1; return "SMMU_TASK_VIEW_SWITCH_UNCERTAIN";
+    }
+    (void)dre_a619_smmu_check_live(s,o);
+    return s->unsafe ? "SMMU_TASK_VIEW_SWITCH_UNCERTAIN" : "SMMU_TASK_VIEW_ENTERED";
+}
+
+const char *dre_a619_smmu_leave_view(struct dre_a619_smmu *s,const struct dre_a619_smmu_ops *o,
+    uint64_t task_generation,uint64_t reservation_lease)
+{
+    if (!valid(s,o)) return "INVALID_ARGUMENT";
+    if (s->unsafe) return "SMMU_RESET_REQUIRED";
+    if (!reservation_lease || s->task_view.reservation_lease!=reservation_lease ||
+        s->task_view.task_generation!=task_generation) return "SMMU_STALE_TASK_VIEW";
+    if (!s->active || !s->changed) {
+        s->unsafe=1; return "SMMU_TASK_VIEW_SWITCH_UNCERTAIN";
+    }
+    if (!s->task_ops.quiescent || s->task_ops.quiescent(s->task_ops.cookie)!=1)
+        return "SMMU_TASK_VIEW_NOT_DRAINED";
+    (void)dre_a619_smmu_check_live(s,o);
+    if (s->unsafe || !switch_ttbr(s,o,s->task_view.asid,s->asid,s->table_pa) ||
+        !check_live_ttbr(s,o,s->table_pa|((uint64_t)s->asid<<48))) {
+        s->unsafe=1; return "SMMU_TASK_VIEW_SWITCH_UNCERTAIN";
+    }
+    s->task_view=(struct dre_a619_smmu_view){0};
+    s->task_ops=(struct dre_a619_smmu_view_ops){0};
+    return "SMMU_BOOTSTRAP_VIEW_RESTORED";
 }

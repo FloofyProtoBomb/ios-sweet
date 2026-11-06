@@ -52,6 +52,7 @@ struct dre_gpu_boot_binding {
     const char *error;
     uint32_t firmware_attempted,firmware_prepared,bound,preparing_cpu;
     uint32_t memory_attempted,memory_prepared,plan_bound,checking_domain;
+    uint32_t queue_probe_attempted;
 };
 /* Owns the ONE actual native PAS-buffer preparation call. May run before
  * router/RPM construction so the known GPU8KiB/IPA shared16KiB mapper refusal
@@ -89,6 +90,11 @@ const char *dre_gpu_boot_binding_plan(struct dre_gpu_boot_binding *,struct dre_a
  * real live+quiescent provider and real NC table prefix, after actual power/
  * SPTPRAC/RBBM acquisition. It NEVER writes prerequisite flags. */
 int dre_gpu_boot_binding_qualify_domain(void *router_cookie,const struct dre_a619_smmu *);
+/* Once-only, explicit kernel probe after cold-start marker completion.
+ * Uses the real private ring and bounded COPY32 template. Caller must hold
+ * the common owner lock. This never accepts user addresses or sets RAW. */
+const char *dre_gpu_boot_binding_probe_submission(struct dre_gpu_boot_binding *,
+    uint64_t budget_ticks);
 #ifdef __cplusplus
 }
 #endif

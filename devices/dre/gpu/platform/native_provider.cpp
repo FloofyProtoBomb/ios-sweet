@@ -345,6 +345,13 @@ extern "C" int dre_gpu_platform_provider_arm_fault_irq(dre_gpu_platform_provider
     if(!p||!p->configured||!p->startup||owns(p,p->lease)!=1)return DRE_GPU_NOT_READY;
     return dre_gpu_native_owner_arm_irq(p->owner);
 }
+extern "C" const char *dre_gpu_platform_provider_probe_submission(dre_gpu_platform_provider *p,
+    uint64_t budget)
+{
+    if(!p||!p->configured||!p->control||owns(p,p->lease)!=1||!ownedControl(p))
+        return "NATIVE_PLATFORM_REAL_QUEUE_OWNER_REQUIRED";
+    return dre_gpu_boot_binding_probe_submission(&p->control->binding,budget);
+}
 extern "C" int dre_gpu_platform_provider_retained(dre_gpu_platform_provider *p,
     uint64_t *lease,uint64_t *epoch,const char **reason)
 {

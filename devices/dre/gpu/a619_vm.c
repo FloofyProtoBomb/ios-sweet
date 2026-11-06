@@ -158,6 +158,7 @@ const char *dre_a619_vm_map(struct dre_a619_vm *v,const struct dre_a619_vm_ops *
     if (!v || !valid_ops(o) || !m)return "INVALID_ARGUMENT";
     if (!same(v))return v->initialized?unsafe(v):"VM_NOT_PREPARED";
     struct dre_a619_smmu *s=v->domain;
+    if (s->task_view.reservation_lease)return "VM_TASK_VIEW_ACTIVE";
     if (!count || first>=s->page_count || count>s->page_count-first ||
         protected_cpu(v,o,pages,(size_t)count*sizeof(*pages)) || protected_cpu(v,o,m,sizeof(*m)) ||
         overlap(pages,(size_t)count*sizeof(*pages),m,sizeof(*m)))return "VM_INVALID_RANGE";
@@ -215,6 +216,7 @@ const char *dre_a619_vm_unmap(struct dre_a619_vm *v,const struct dre_a619_vm_ops
 {
     if (!v || !valid_ops(o) || !m)return "INVALID_ARGUMENT";
     if (!same(v))return v->initialized?unsafe(v):"VM_NOT_PREPARED";
+    if (v->domain->task_view.reservation_lease)return "VM_TASK_VIEW_ACTIVE";
     struct dre_a619_smmu *s=v->domain;
     if (protected_cpu(v,o,m,sizeof(*m)))return "VM_INVALID_HANDLE";
     uint32_t first=m->first_page,count=m->page_count;
@@ -245,6 +247,7 @@ const char *dre_a619_vm_release(struct dre_a619_vm *v,const struct dre_a619_vm_o
 {
     if (!v || !valid_ops(o))return "INVALID_ARGUMENT";
     if (!same(v))return v->initialized?unsafe(v):"VM_NOT_PREPARED";
+    if (v->domain->task_view.reservation_lease)return "VM_TASK_VIEW_ACTIVE";
     if (v->mapped_pages || v->mappings)return "VM_MAPPINGS_LIVE";
     if (!checked(v,o,v->domain->active))return unsafe(v);
     if (v->domain->active) {

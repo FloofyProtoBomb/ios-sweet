@@ -28,6 +28,22 @@ struct dre_a619_smmu_ops {
     uint64_t (*now)(void *cookie);
     void *cookie;
 };
+struct dre_a619_smmu_view {
+    uint64_t table_pa, task_generation, reservation_lease;
+    size_t table_bytes;
+    uint32_t asid;
+};
+struct dre_a619_smmu_view_ops {
+    void *cookie;
+    /* Exact1 for an actually reserved ASID and a complete immutable NC
+     * task table tree, with qualified bootstrap and protection mappings.
+     * The native owner keeps both views and the common lock held. */
+    int (*owns_view)(void *,const struct dre_a619_smmu_view *);
+    /* Exact1 only after submission is blocked, CP/SQE, firmware and DMA
+     * references have drained, and caches cannot serve the outgoing view.
+     * Must also work with a faulting stream and disabled CB. */
+    int (*quiescent)(void *);
+};
 struct dre_a619_smmu {
     uint32_t chip_id, prerequisites, tick_hz, context_bank, smr_index, asid;
     uint64_t va_base, table_pa;
@@ -48,6 +64,9 @@ struct dre_a619_smmu {
     size_t owned_table_bytes;
     uint32_t saved32[8], saved_smr, saved_s2cr;
     int active, changed, unsafe;
+    /* Journaled before the first context-switch write. Retain on uncertainty. */
+    struct dre_a619_smmu_view task_view;
+    struct dre_a619_smmu_view_ops task_ops;
 };
 /* A restricted SID0-only 39-bit/4KiB stage1 domain. It constructs actual
  * translation tables and programs an exclusively owned disabled context bank.
@@ -70,6 +89,14 @@ const char *dre_a619_smmu_check_live(struct dre_a619_smmu *state,
     const struct dre_a619_smmu_ops *ops);
 const char *dre_a619_smmu_sync_live(struct dre_a619_smmu *state,
     const struct dre_a619_smmu_ops *ops);
+/* Switch the owned SID0 CB to a separately reserved task view, or restore the
+ * original bootstrap TTBR0. Both calls require an actual drained GPU and hold
+ * both table lifetimes. Any uncertain write requires reset before reuse. */
+const char *dre_a619_smmu_enter_view(struct dre_a619_smmu *,
+    const struct dre_a619_smmu_ops *,const struct dre_a619_smmu_view *,
+    const struct dre_a619_smmu_view_ops *);
+const char *dre_a619_smmu_leave_view(struct dre_a619_smmu *,
+    const struct dre_a619_smmu_ops *,uint64_t task_generation,uint64_t reservation_lease);
 #ifdef __cplusplus
 }
 #endif

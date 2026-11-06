@@ -112,6 +112,17 @@ int main(void)
     for (uint32_t i=0;i<surface_pages;i++)assert(vm_translate(&f,0x82000000+(uint64_t)i*4096+4095,1,0)==f.input[i+3000].pa+4095);
     assert(f.vm.mapped_pages==2*surface_pages+2);
     EXPECT(dre_a619_vm_release(&f.vm,&f.io),"VM_MAPPINGS_LIVE");
+    struct dre_a619_smmu_view view={.table_pa=0x90040000,.table_bytes=16384,
+        .asid=9,.task_generation=3,.reservation_lease=71};
+    struct dre_a619_smmu_view_ops view_ops={&f.base,view_held,view_drained};
+    f.base.task_owner=f.base.task_drained=1;
+    EXPECT(dre_a619_smmu_enter_view(&f.base.state,&f.io.mmu,&view,&view_ops),"SMMU_TASK_VIEW_ENTERED");
+    unsigned task_writes=f.base.writes;
+    EXPECT(map_bo(&f,512,6500,1,&f.extra),"VM_TASK_VIEW_ACTIVE");
+    EXPECT(unmap_bo(&f,&f.front),"VM_TASK_VIEW_ACTIVE");
+    EXPECT(dre_a619_vm_release(&f.vm,&f.io),"VM_TASK_VIEW_ACTIVE");
+    assert(!f.extra.lease && !f.front.retired && f.base.writes==task_writes);
+    EXPECT(dre_a619_smmu_leave_view(&f.base.state,&f.io.mmu,3,71),"SMMU_BOOTSTRAP_VIEW_RESTORED");
     struct dre_a619_vm_mapping partial=f.front;partial.first_page++;partial.page_count--;
     EXPECT(unmap_bo(&f,&partial),"VM_PARTIAL_HANDLE");assert(!partial.retired);
     struct dre_a619_vm_mapping stale=f.front;stale.lease++;

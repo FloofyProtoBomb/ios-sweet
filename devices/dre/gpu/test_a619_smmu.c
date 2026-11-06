@@ -14,7 +14,7 @@ struct fixture {
     unsigned writes,reads,barriers,guards,fail_write,ignore_write,lose_write;
     unsigned tlb_count,timeouts;
     uint64_t ticks,fail_read;
-    int owner,unowned,clock_stuck;
+    int owner,unowned,clock_stuck,task_owner,task_drained;
 };
 static const uint32_t impl_offsets[]={0x6000,0x6060,0x678c,0x6794,0x6800,0x6900,0x6924,0x6928,0x6930,0x6960,0x6b64,0x6b68};
 static const uint32_t impl_values[]={0x2378,0x1055,8,0x28,6,0x3ff,0x204,0x11000,0x800,0xffffffff,0x1a5551,0x9a82a382};
@@ -87,6 +87,13 @@ static const char *activate(struct fixture *f)
 { struct dre_a619_smmu_ops o=ops(f); return dre_a619_smmu_activate(&f->state,&o); }
 static const char *release(struct fixture *f)
 { struct dre_a619_smmu_ops o=ops(f); return dre_a619_smmu_release(&f->state,&o); }
+static int view_held(void *cookie,const struct dre_a619_smmu_view *v)
+{
+    struct fixture *f=cookie;
+    return v->reservation_lease==71 && v->task_generation==3 ? f->task_owner : 0;
+}
+static int view_drained(void *cookie)
+{ return ((struct fixture *)cookie)->task_drained; }
 static void init(struct fixture *f)
 {
     memset(f,0,sizeof(*f)); memset(table,0xaa,sizeof(table)); f->owner=1;
@@ -202,6 +209,55 @@ int main(void)
     assert(!strcmp(release(&f),"SMMU_RESET_REQUIRED") && f.writes==writes && f.state.unsafe); checks++;
     init(&f); CHECK("SMMU_SID0_ACTIVE"); f.state.smr_index=2; writes=f.writes;
     assert(!strcmp(release(&f),"SMMU_RESET_REQUIRED") && f.writes==writes && f.state.unsafe); checks++;
+    struct dre_a619_smmu_view v={.table_pa=0x90040000,.table_bytes=16384,
+        .asid=9,.task_generation=3,.reservation_lease=71};
+    struct dre_a619_smmu_view_ops vo={&f,view_held,view_drained};
+    struct dre_a619_smmu_ops io=ops(&f);
+    init(&f); CHECK("SMMU_SID0_ACTIVE"); writes=f.writes;
+    f.task_drained=1; f.task_owner=-1;
+    assert(!strcmp(dre_a619_smmu_enter_view(&f.state,&io,&v,&vo),
+        "SMMU_TASK_VIEW_OWNERSHIP_REQUIRED") && f.writes==writes); checks++;
+    f.task_owner=1; v.asid=1;
+    assert(!strcmp(dre_a619_smmu_enter_view(&f.state,&io,&v,&vo),
+        "SMMU_INVALID_TASK_VIEW") && f.writes==writes); checks++;
+    v.asid=9;
+    assert(!strcmp(dre_a619_smmu_enter_view(&f.state,&io,&v,&vo),"SMMU_TASK_VIEW_ENTERED")); checks++;
+    unsigned switch_writes=f.writes-writes;
+    assert(f.regs[(CB+0x20)/4]==0x90040000 && f.regs[(CB+0x24)/4]==0x90000);
+    assert(f.regs[(CB+0x610)/4]==9 && f.tlb_count==3 && !f.regs[(CB+0x7f4)/4]);
+    assert(!strcmp(dre_a619_smmu_check_live(&f.state,&io),"SMMU_LIVE_STATE_VERIFIED"));
+    writes=f.writes;
+    assert(!strcmp(dre_a619_smmu_sync_live(&f.state,&io),"SMMU_TASK_VIEW_ACTIVE"));
+    assert(!strcmp(release(&f),"SMMU_TASK_VIEW_ACTIVE"));
+    assert(!strcmp(dre_a619_smmu_leave_view(&f.state,&io,4,71),"SMMU_STALE_TASK_VIEW"));
+    f.task_drained=0;
+    assert(!strcmp(dre_a619_smmu_leave_view(&f.state,&io,3,71),"SMMU_TASK_VIEW_NOT_DRAINED"));
+    assert(f.writes==writes && f.state.task_view.reservation_lease==71); checks++;
+    f.task_drained=1;
+    assert(!strcmp(dre_a619_smmu_leave_view(&f.state,&io,3,71),"SMMU_BOOTSTRAP_VIEW_RESTORED"));
+    assert(!f.state.task_view.reservation_lease && f.tlb_count==5);
+    assert(f.regs[(CB+0x20)/4]==0x90000000 && f.regs[(CB+0x24)/4]==0x10000);
+    assert(f.regs[0x808/4]==0x80000002 && f.regs[0xc08/4]==0x302);
+    assert(!strcmp(release(&f),"SMMU_SID0_RESTORED")); restored(&f); checks++;
+    for (unsigned i=1;i<=switch_writes;i++) {
+        init(&f); CHECK("SMMU_SID0_ACTIVE"); f.task_owner=f.task_drained=1;
+        f.fail_write=f.writes+i;
+        assert(!strcmp(dre_a619_smmu_enter_view(&f.state,&io,&v,&vo),
+            "SMMU_TASK_VIEW_SWITCH_UNCERTAIN"));
+        assert(f.state.unsafe && f.state.task_view.reservation_lease==71);
+        writes=f.writes;
+        assert(!strcmp(release(&f),"SMMU_RESET_REQUIRED") && f.writes==writes); checks++;
+    }
+    for (unsigned i=1;i<=switch_writes;i++) {
+        init(&f); CHECK("SMMU_SID0_ACTIVE"); f.task_owner=f.task_drained=1;
+        assert(!strcmp(dre_a619_smmu_enter_view(&f.state,&io,&v,&vo),"SMMU_TASK_VIEW_ENTERED"));
+        f.fail_write=f.writes+i;
+        assert(!strcmp(dre_a619_smmu_leave_view(&f.state,&io,3,71),
+            "SMMU_TASK_VIEW_SWITCH_UNCERTAIN"));
+        assert(f.state.unsafe && f.state.task_view.reservation_lease==71);
+        writes=f.writes;
+        assert(!strcmp(release(&f),"SMMU_RESET_REQUIRED") && f.writes==writes); checks++;
+    }
     printf("PASS %u SID0 SMMUv2 activation/tablewalk/permission/secure-isolation/rollback checks; synthetic hardware only\n",checks);
     return 0;
 }

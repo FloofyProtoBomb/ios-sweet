@@ -8,8 +8,8 @@ separate from hardware, factory and Metal acceptance.
 """
 from __future__ import annotations
 import argparse
+import hashlib
 import json
-import os
 from pathlib import Path
 import plistlib
 import shutil
@@ -31,6 +31,17 @@ def run(argv, out: Path, name: str, timeout=180) -> str:
     return "\n".join(text.splitlines()[1:]).strip()
 
 
+def frontend_license(provenance: dict) -> bytes:
+    text = provenance.get("third_party_license_text")
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("frontend license is missing from the build receipt")
+    data = text.encode("utf-8")
+    expected = provenance.get("prepared_source_sha256", {}).get("LICENSE")
+    if hashlib.sha256(data).hexdigest() != expected:
+        raise ValueError("frontend license differs from the prepared source")
+    return data
+
+
 def package(args, out: Path) -> dict:
     if sys.platform != "darwin": raise ValueError("actual macOS/Xcode is required for the link")
     sys.path.insert(0, str(HERE.parent / "vulkan"))
@@ -45,7 +56,11 @@ def package(args, out: Path) -> dict:
         raise ValueError("a host archive cannot satisfy the actual iOS Rust link input")
     if vk.get("status") != "COMPILED_IPHONEOS_TURNIP_UNVALIDATED" or vk.get("target") != "arm64-apple-ios16.0":
         raise ValueError("actual DRE iPhoneOS Turnip build proof missing")
+    if vk.get("strict_undefined_link") is not True or vk.get("unresolved_import_waiver") is not False or \
+        (vk.get("strict_default_linker_proof") or {}).get("missing_symbol_rejected") is not True:
+        raise ValueError("strict DRE iPhoneOS Turnip link proof missing")
     front_proof = json.loads((frontend / "source-provenance.json").read_text(encoding="utf-8"))
+    license_bytes = frontend_license(front_proof)
     connection = front_proof.get("dre_compiler_connection")
     if not connection or connection.get("status") != "UNVALIDATED_COMPILER306_SOURCE_CONNECTED" or \
         connection.get("accepted_request_types") != [13] or connection.get("request14_supported"):
@@ -123,7 +138,7 @@ def package(args, out: Path) -> dict:
     # Source and redistribution obligations remain an explicit separate audit.
     # This private development package is not labeled distribution-ready.
     notices = bundle / "Notices"; notices.mkdir()
-    shutil.copyfile(frontend / "prepared/LICENSE", notices / "Frontend-MIT.txt")
+    (notices / "Frontend-MIT.txt").write_bytes(license_bytes)
     (notices / "Sources.json").write_text(json.dumps({"frontend": front_proof["frontend_repository"],
         "runtime": bridge_inputs["source"]["translator"], "runtime_license": "GPL-2.0-or-later OR LGPL-3.0-or-later",
         "mesa": vk["source"]["mesa"], "relink_objects_retained_in_build_inputs": True,

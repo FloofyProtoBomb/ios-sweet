@@ -259,8 +259,8 @@ def stage_native_drafts(here, out, features, gpu_nc_proof=False,
         # Private planning only: no executor, observed retirement or new cap.
         add('gpu/cache/a619_cache.c')
         add('gpu/cache/a619_cache.h')
-        # Non-installable private AP/purpose proposals. These confer no task
-        # isolation and cannot change the active VM or enable raw submission.
+        # Private AP/purpose proposals and unpublished task table staging.
+        # Linking these does not establish isolation or enable raw submission.
         for name in ('permissions', 'plan', 'registry_binding'):
             add('gpu/task_vm/' + name + '.h')
             add('gpu/task_vm/' + name + '.c', 'gpu/task_vm/dre_gpu_taskvm_' + name + '.c')

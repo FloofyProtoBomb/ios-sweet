@@ -387,7 +387,8 @@ static VkResult sync_wait(struct vk_device *vk, struct vk_sync *base, uint64_t,
    pthread_mutex_unlock(&dev->submit_mutex);
    if (r != DRE_DARWIN_OK) return refusal(dev, r, "retain sync fence");
    VkResult result = wait_real(dev, fence, deadline);
-   dre_darwin_fence_release(dre(dev)->native, fence);
+   if (dre_darwin_fence_release(dre(dev)->native, fence) != DRE_DARWIN_OK)
+      return vk_device_set_lost(&dev->vk, "DRE sync wait could not collect native retirement");
    return result;
 }
 static const struct vk_sync_type sync_type = {
@@ -487,18 +488,28 @@ static VkResult queue_submit(struct tu_queue *queue, void *data,
       if (fence) dre_darwin_fence_release(d->native, fence);
       return r == DRE_DARWIN_BUSY ? vk_error(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY) : refusal(dev, r, "native atomic submit");
    }
-   if (d->last_fence) dre_darwin_fence_release(d->native, d->last_fence);
+   uint64_t previous_fence = d->last_fence;
    d->last_fence = fence;
+   if (previous_fence && dre_darwin_fence_release(d->native, previous_fence) != DRE_DARWIN_OK) {
+      pthread_mutex_unlock(&d->lock);
+      return vk_device_set_lost(&dev->vk, "DRE submit could not collect the previous queue fence");
+   }
    if (submit->ib_count) queue->fence = (int)++d->last_cookie;
    for (uint32_t i = 0; i < signal_count; ++i) {
       struct dre_sync *s = container_of(signals[i].sync, struct dre_sync, base);
       if (fence && dre_darwin_fence_retain(d->native, fence) != DRE_DARWIN_OK) {
          pthread_mutex_unlock(&d->lock); return vk_device_set_lost(&dev->vk, "DRE signal fence retain failed");
       }
-      if (s->fence) dre_darwin_fence_release(d->native, s->fence);
+      uint64_t previous_signal = s->fence;
       s->fence = fence;
       s->state = fence ? DRE_SYNC_FENCE : DRE_SYNC_HOST_SIGNALED;
+      if (previous_signal && dre_darwin_fence_release(d->native, previous_signal) != DRE_DARWIN_OK) {
+         pthread_mutex_unlock(&d->lock);
+         return vk_device_set_lost(&dev->vk, "DRE submit could not collect the previous signal fence");
+      }
    }
+   if (signal_count)
+      pthread_cond_broadcast(&dev->timeline_cond);
    pthread_mutex_unlock(&d->lock);
    return VK_SUCCESS;
 }
@@ -518,7 +529,8 @@ static VkResult queue_wait(struct tu_queue *queue, uint32_t cookie, uint64_t tim
    pthread_mutex_unlock(&d->lock);
    if (r != DRE_DARWIN_OK) return refusal(dev, r, "queue fence retain");
    r = dre_darwin_fence_wait(d->native, fence, timeout);
-   dre_darwin_fence_release(d->native, fence);
+   if (dre_darwin_fence_release(d->native, fence) != DRE_DARWIN_OK)
+      return vk_device_set_lost(&dev->vk, "DRE queue wait could not collect native retirement");
    return refusal(dev, r, "queue fence wait");
 }
 static const struct tu_knl functions = {

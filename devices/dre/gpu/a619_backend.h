@@ -48,6 +48,14 @@ struct dre_a619_ops {
     void *cookie;
 };
 
+static inline int dre_a619_deadline_expired(uint64_t start, uint64_t now, uint64_t budget)
+{
+    /* An older counter sample must not look like a huge elapsed duration.
+     * Small forward deltas still work across wrap. Callers bound poll counts. */
+    uint64_t elapsed = now - start;
+    return elapsed < (UINT64_C(1) << 63) && elapsed >= budget;
+}
+
 uint32_t dre_a619_type7(unsigned opcode, unsigned count);
 /* One restricted native bring-up job, not an application command parser.
  * Emits only CP_MEM_WRITE, WAIT_MEM_WRITES and WAIT_FOR_IDLE. Hardware is

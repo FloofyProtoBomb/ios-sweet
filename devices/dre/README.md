@@ -448,6 +448,17 @@ The verified splash reservation is 0x85200000 + 0xc00000. GICD is at
 reservation, dynamic allocation range, shim, DTB or initrd. The top 1 MiB
 is reserved for the panic log.
 
+### Direct XNU boot image
+
+Add `--direct-xnu` to the native `--install-root` build to embed a flat XNU
+memory image in the ABL kernel image. The builder resolves segment placement,
+zero-fill, ADT placement and XNU boot arguments ahead of time. The linked ABL
+entry checks the live board and owned memory, copies that image, applies
+per-boot ADT fixups and transfers control to XNU. The boot artifact omits
+the legacy segment loader. The host-only `payload.bin` is retained for
+inspection and the existing virtual XNU tests. The default diagnostic
+and install build paths retain their existing boot format.
+
 For GPU development, `gpu/a619_packet.h` contains the packet used in the
 physical test. The Android-only test uses the matching kernel's
 `include/uapi/linux/msm_kgsl.h`. Build with

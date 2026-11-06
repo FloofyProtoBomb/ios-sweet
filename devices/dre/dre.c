@@ -62,6 +62,9 @@ void dre_main(const void *dt)
     uintptr_t base = splash(dt);
     if (!base) return;
     con_fb = (volatile uint32_t *)base;
+#ifdef DRE_XNU_DIRECT
+    con_str("XNU", dre_handoff(dt));
+#else
     con_clear(BLUE);
     con_str("DRE", "N200 / SM4350");
     con_str("STAGE", "Boot shim running");
@@ -87,5 +90,6 @@ void dre_main(const void *dt)
     con_str("XNU", dre_handoff(dt));
 #else
     con_str("RESULT", "DRE PROBE OK");
+#endif
 #endif
 }

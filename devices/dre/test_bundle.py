@@ -115,7 +115,8 @@ def disk(case):
     return {1: bytes(header), **{2 + i: bytes(entries[i * 4096:(i + 1) * 4096]) for i in range(4)}}
 
 
-def run(image, dtb, syms, case, context_probe=False, driver_prep=False, handoff_read=False, native_ufs=False):
+def run(image, dtb, syms, case, context_probe=False, driver_prep=False, handoff_read=False, native_ufs=False,
+        direct_payload=None):
     if case == 'dt_mismatch':
         dtb = dtb.replace(b'qcom,holi-gcc\0', b'qcom,xoli-gcc\0')
     elif case == 'touch_dt_mismatch':
@@ -137,8 +138,15 @@ def run(image, dtb, syms, case, context_probe=False, driver_prep=False, handoff_
     elif case == 'gpi_dma_mismatch':
         dtb = change_property(dtb, '/soc/qcom,gpi-dma@4a00000', '#dma-cells', lambda p: struct.pack('>I', 4))
     kernel = image[4096:4096 + struct.unpack_from('<I', image, 8)[0]]
-    payload = kernel.index(b'SWEETXNU\x01\0\0\0')
-    va, entry, _, _, end, base, _ = struct.unpack_from('<7Q', kernel, payload + 16)
+    if direct_payload is None:
+        offset = kernel.index(b'SWEETXNU\x01\0\0\0')
+        payload = kernel[offset:]
+    else:
+        from direct_image import flatten
+        payload = direct_payload
+        flat, layout = flatten(payload)
+        assert kernel.endswith(flat) and 'loader_boot_range_with_adt' not in syms
+    va, entry, _, _, end, base, _ = struct.unpack_from('<7Q', payload, 16)
     cpu = Uc(UC_ARCH_ARM64, UC_MODE_ARM)
     # The old synthetic FDT address was inside the live secure CDSP carve-out.
     # Runtime ownership checks require an unreserved RAM address.
@@ -600,7 +608,15 @@ def run(image, dtb, syms, case, context_probe=False, driver_prep=False, handoff_
         raw = bytes(cpu.mem_read(ba + 108, 608))
         assert b'\0' in raw
         args = raw.split(b'\0')[0].decode()
-        assert args.split(' dre_report=')[1].split('|') == fields
+        if direct_payload is None:
+            assert args.split(' dre_report=')[1].split('|') == fields
+        else:
+            assert ba == layout['ARGS']
+            assert raw == payload[0x48:0x2a8]
+            expected_args = flat[layout['ARGS'] - layout['DST']:]
+            assert bytes(cpu.mem_read(ba, len(expected_args))) == expected_args
+            kernel_bytes = layout['ADT'] - layout['DST']
+            assert bytes(cpu.mem_read(layout['DST'], kernel_bytes)) == flat[:kernel_bytes]
         adt_va, adt_size = struct.unpack('<QI', bytes(cpu.mem_read(ba + 96, 12)))
         root, consumed = adt.parse(bytes(cpu.mem_read(adt_va + base - va, adt_size)))
         expected_serial = re.search(rb'(?:^|[ \0])androidboot.serialno=([A-Za-z0-9-]{1,63})(?: |\0)', dtb)[1]
@@ -637,6 +653,7 @@ if __name__ == '__main__':
     ap.add_argument('--driver-prep', action='store_true')
     ap.add_argument('--ufs-handoff-read', action='store_true')
     ap.add_argument('--native-ufs', action='store_true')
+    ap.add_argument('--direct-payload', type=Path, help='host-only segment map for an install --direct-xnu image')
     args = ap.parse_args()
     cases = args.case or ('ready', 'translated', 'route_fault', 'route_reserved', 'unmatched_fault',
         'unmatched_bypass', 'ambiguous', 'masked', 'extended', 'bad_smmu_id', 'client_disabled',
@@ -667,6 +684,8 @@ if __name__ == '__main__':
     image, dtb = args.image.read_bytes(), args.device_dtb.read_bytes()
     kernel = image[4096:4096 + struct.unpack_from('<I', image, 8)[0]]
     syms = symbols(args.elf, kernel)
-    reports = {case: run(image, dtb, syms, case, args.dma_context, args.driver_prep, args.ufs_handoff_read, args.native_ufs) for case in cases}
+    direct_payload = args.direct_payload.read_bytes() if args.direct_payload else None
+    reports = {case: run(image, dtb, syms, case, args.dma_context, args.driver_prep, args.ufs_handoff_read,
+                         args.native_ufs, direct_payload) for case in cases}
     if args.report_json:
         args.report_json.write_text(json.dumps(reports, indent=2) + '\n')

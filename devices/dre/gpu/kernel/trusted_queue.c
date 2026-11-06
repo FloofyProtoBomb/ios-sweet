@@ -397,7 +397,7 @@ const char *dre_gpu_trusted_wait(struct dre_gpu_trusted_queue *s,uint64_t ticket
     for(unsigned polls=0;polls<1000000;polls++) {
         const char *status=dre_gpu_trusted_query(s,ticket,out);
         if(!equal(status,"TRUSTED_PENDING"))return status;
-        if(io->now(io->cookie)-start>=budget) {
+        if(dre_a619_deadline_expired(start,io->now(io->cookie),budget)) {
             fail(s,"TRUSTED_COMPLETION_TIMEOUT_RETAINED");*out=s->observed;return "TRUSTED_COMPLETION_TIMEOUT_RETAINED";
         }
     }

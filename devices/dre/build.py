@@ -55,6 +55,8 @@ def main():
     ap.add_argument("--native-ufs", action="store_true", help="transfer owned DMA memory to the opt-in native read-only XNU driver")
     ap.add_argument("--install-root", action="store_true",
                     help="boot writable iOS from userdata; no diagnostic RAM root (requires private product ADT)")
+    ap.add_argument("--direct-xnu", action="store_true",
+                    help="link the ABL entry with a prelaid XNU memory image (install profile only)")
     ap.add_argument("--ufs-read-batch", action="store_true",
                     help="opt into up to three native blocks per physical UFS read on install boots")
     ap.add_argument("--quiet-boot", action="store_true",
@@ -77,6 +79,8 @@ def main():
     ap.add_argument("--gpu-firmware-relocated", action="store_true",
                     help="opt-in v2 boot-held aligned PAS13 load arena; requires private firmware provisioning and real relocated-PAS policy")
     args = ap.parse_args()
+    if args.direct_xnu and not args.install_root:
+        ap.error("--direct-xnu requires --install-root")
     if args.ufs_read_batch and not args.install_root:
         ap.error("--ufs-read-batch requires --install-root")
     if args.quiet_boot and not args.install_root:
@@ -232,11 +236,23 @@ def main():
                 cc += ["-DDRE_GPU_FW_RELOCATED=1"]
         source = out / "embedded.S"
         payload = (out / "payload.bin").read_bytes()
+        blob = out / "payload.bin"
+        if args.direct_xnu:
+            from direct_image import flatten
+            payload, layout = flatten(payload)
+            blob = out / "direct-xnu.bin"
+            blob.write_bytes(payload)
+            header = out / "direct-layout.h"
+            header.write_text("".join(f"#define DRE_DIRECT_{name} 0x{value:x}ULL\n"
+                                      for name, value in layout.items()), encoding="ascii")
+            cc += ["-DDRE_XNU_DIRECT", "-I" + str(out)]
         # Zig's assembly cache does not track the file named by .incbin.
         digest = hashlib.sha256(payload).hexdigest()
-        source.write_text(f'/* {digest} */\n.section .dre_payload,"a"\n.incbin "payload.bin"\n',
+        source.write_text(f'/* {digest} */\n.section .dre_payload,"a"\n.incbin "{blob.name}"\n',
                           encoding="ascii")
-        sources += [source, HERE / "handoff.c", HERE / "identity.c", SHIM / "loader.c"]
+        sources += [source, HERE / "handoff.c", HERE / "identity.c"]
+        if not args.direct_xnu:
+            sources += [SHIM / "loader.c"]
         cc += ["-DDRE_XNU"]
     objects = []
     for source in sources:
@@ -278,6 +294,8 @@ def main():
         info['boot_progress'] = True
     if args.ufs_read_batch:
         info['ufs_read_batch'] = True
+    if args.direct_xnu:
+        info['direct_xnu'] = True
     if args.panel_hz is not None:
         info['software_vsync_hz'] = args.panel_hz
     if gpu_firmware is not None:

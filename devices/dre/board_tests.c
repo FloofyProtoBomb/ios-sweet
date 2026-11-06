@@ -364,7 +364,9 @@ const char *dre_board_report(const void *dt)
     }
 #endif
     add("dre_report=UFS=");
+#ifndef DRE_XNU_DIRECT
     con_str("UFS", "reading power/clock state");
+#endif
     check_ufs(dt);
 #ifdef DRE_DMA_PROBE
     check_dma_ufs(dt);

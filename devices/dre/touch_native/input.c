@@ -83,8 +83,8 @@ enum dre_tn_result dre_tn_input_worker(struct dre_tn_input *i)
     if (__atomic_load_n(&i->stopping, __ATOMIC_ACQUIRE)) return DRE_TN_STATE;
     if (__atomic_exchange_n(&i->worker_active, 1, __ATOMIC_ACQUIRE)) return DRE_TN_STATE;
     enum dre_tn_result result = DRE_TN_OK;
-    unsigned pending = __atomic_exchange_n(&i->pending, 0, __ATOMIC_ACQ_REL);
     unsigned budget = 0;
+    unsigned pending;
     /* Do not replay an authentic but now stale held frame from a previous
      * controller/transport generation. Stream loss cannot reset IDs or make
      * newly booted hardware part of this existing submitted contact lifetime.
@@ -98,6 +98,8 @@ enum dre_tn_result dre_tn_input_worker(struct dre_tn_input *i)
         ++i->submitted_frames;
         i->has_held = 0;
     }
+    /* Keep a latched GPIO event while an older frame still awaits HID. */
+    pending = __atomic_exchange_n(&i->pending, 0, __ATOMIC_ACQ_REL);
     for (budget = 0; budget != 16; ++budget) {
         unsigned level;
         if (__atomic_load_n(&i->stopping, __ATOMIC_ACQUIRE)) break;

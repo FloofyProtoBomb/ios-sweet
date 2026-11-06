@@ -15,6 +15,7 @@ struct fixture {
     uint8_t packet[24][65];
     unsigned packet_count,read_count,samples,rearms,masks,queues,delay,submits,accepted,quiesces;
     unsigned fail_submit,fail_queue,fail_sample,fail_rearm,fail_quiesce,fault_read,generation_read,source_fault;
+    unsigned force_high;
     uint64_t time;
     struct dre_tn_hid_frame events[64];
 };
@@ -24,7 +25,7 @@ static int mask(void *c,void *lease)
 static int queue_work(void *c,unsigned delay)
 { struct fixture *f=c;++f->queues;f->delay=delay;return f->fail_queue?1:0; }
 static int sample(void *c,void *lease,unsigned *level)
-{ struct fixture *f=c;CHECK(lease==f);++f->samples;if(f->fail_sample)return 1;*level=f->read_count>=f->packet_count;return 0; }
+{ struct fixture *f=c;CHECK(lease==f);++f->samples;if(f->fail_sample)return 1;*level=f->force_high||f->read_count>=f->packet_count;return 0; }
 static int rearm(void *c,void *lease,unsigned *again)
 { struct fixture *f=c;CHECK(lease==f);++f->rearms;if(f->fail_rearm)return 1;*again=f->read_count<f->packet_count;return 0; }
 static uint64_t time_now(void *c) { return ++((struct fixture *)c)->time; }
@@ -129,6 +130,24 @@ static void terminal_loss(void)
         CHECK(dre_tn_input_start(&f.input,&f.controller,&f.input.ops)==DRE_TN_STATE);
     }
 }
+static void held_delivery_preserves_gpio_edge(void)
+{
+    struct fixture f;
+    init(&f);
+    press(&f, 3);
+    f.fail_submit = 2;
+    CHECK(dre_tn_input_irq(&f.input) == DRE_TN_OK);
+    CHECK(dre_tn_input_worker(&f.input) == DRE_TN_INPUT);
+    CHECK(f.input.has_held && f.read_count == 1);
+    press(&f, 6);
+    f.force_high = 1;
+    CHECK(dre_tn_input_irq(&f.input) == DRE_TN_OK);
+    CHECK(dre_tn_input_worker(&f.input) == DRE_TN_INPUT);
+    CHECK(f.input.has_held && f.read_count == 1 && !f.accepted);
+    CHECK(dre_tn_input_worker(&f.input) == DRE_TN_OK);
+    CHECK(f.read_count == 2 && f.accepted == 2);
+    CHECK(f.events[0].active_mask == 4 && f.events[1].active_mask == 32);
+}
 static void faults_and_stop(void)
 {
     struct fixture f;init(&f);press(&f,1);run(&f);
@@ -163,4 +182,4 @@ static void faults_and_stop(void)
     CHECK(dre_tn_input_stop(&f.input)==DRE_TN_OWNERSHIP);
 }
 int main(void)
-{ lifecycle();held_and_corrupt();terminal_loss();faults_and_stop();printf("PASS %u production input/report boundary checks\n",checks);return 0; }
+{ lifecycle();held_and_corrupt();terminal_loss();held_delivery_preserves_gpio_edge();faults_and_stop();printf("PASS %u production input/report boundary checks\n",checks);return 0; }

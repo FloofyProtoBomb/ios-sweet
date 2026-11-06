@@ -12,7 +12,7 @@ struct fixture {
     uint32_t ring[64], result[32];
     uint32_t low, high, control, rptr, wptr;
     unsigned guards, guard_fail, reads, read_fail, writes, barriers;
-    int write_fail, completion, clock_stuck;
+    int write_fail, completion, clock_stuck, clock_backstep;
     uint64_t clock;
 };
 static int guard(void *cookie)
@@ -54,7 +54,19 @@ static int write32(void *cookie, uint64_t address, uint32_t value)
 }
 static void barrier(void *cookie) { ((struct fixture *)cookie)->barriers++; }
 static uint64_t now(void *cookie)
-{ struct fixture *f=cookie; if (!f->clock_stuck) f->clock++; return f->clock; }
+{
+    struct fixture *f=cookie;
+    if (f->clock_backstep && f->clock == 1) {
+        /* The first poll was incomplete. Hardware finishes before the
+         * second poll, but the intervening timer read goes backward. */
+        f->rptr = f->wptr;
+        f->result[4] = f->ring[3];
+        f->clock_backstep = 0;
+        return 0;
+    }
+    if (!f->clock_stuck) f->clock++;
+    return f->clock;
+}
 static void init(struct fixture *f)
 {
     memset(f,0,sizeof(*f));
@@ -87,6 +99,10 @@ int main(int argc, char **argv)
     assert(f.q.submitted==1 && f.q.completed==1 && !f.q.poisoned && f.writes==1);
     assert(f.result[4]==0x44524531 && f.result[0]==0x77777777);
     CHECK_RESULT("MARKER_COMPLETED"); assert(f.q.submitted==2 && f.q.completed==2 && f.wptr==12);
+    init(&f); f.completion=0; f.clock_backstep=1; CHECK_RESULT("MARKER_COMPLETED");
+    assert(f.q.completed == 1 && !f.q.poisoned && !f.clock_backstep);
+    assert(!dre_a619_deadline_expired(UINT64_MAX, 0, 2));
+    assert(dre_a619_deadline_expired(UINT64_MAX, 1, 2));
     init(&f); f.q.chip_id=0; CHECK_RESULT("WRONG_GPU"); unchanged(&f);
     for (unsigned bit=0;bit<5;bit++) {
         init(&f); f.q.ready_mask&=~(1u<<bit); CHECK_RESULT("INITIALIZATION_INCOMPLETE"); unchanged(&f);

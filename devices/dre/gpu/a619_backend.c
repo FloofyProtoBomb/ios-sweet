@@ -95,7 +95,7 @@ const char *dre_a619_submit_marker(struct dre_a619_queue *q,
             return "MARKER_COMPLETED";
         }
         if (++polls == 1000000) return poison(q, "CLOCK_STALLED");
-    } while (ops->now(ops->cookie) - start < budget);
+    } while (!dre_a619_deadline_expired(start, ops->now(ops->cookie), budget));
     return poison(q, "COMPLETION_TIMEOUT");
 }
 static uint32_t little(const uint8_t *p)

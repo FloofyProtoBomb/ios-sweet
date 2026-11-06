@@ -1,0 +1,127 @@
+--- a/iokit/Kernel/IOUserClient.cpp
++++ b/iokit/Kernel/IOUserClient.cpp
+@@ -2626,18 +2626,20 @@
+ 	return strcmp(name, "backboardd") == 0;
+ }
+ 
+-static void
+-dre_backboard_display_match(OSDictionary *dict)
++static bool
++dre_backboard_begin_display_match(OSDictionary *dict)
+ {
+ 	if (!dre_boot_progress_enabled) {
+-		return;
++		return false;
+ 	}
+ 	OSString *provider = OSDynamicCast(OSString, dict->getObject(kIOProviderClassKey));
+ 	if (provider != NULL &&
+ 	    (provider->isEqualTo("IOMobileFramebuffer") || provider->isEqualTo("AppleCLCD")) &&
+ 	    dre_backboard_progress()) {
+ 		dre_boot_checkpoint(DRE_BOOT_BACKBOARD_DISPLAY_MATCH);
+-	}
++		return true;
++	}
++	return false;
+ }
+ 
+ static bool
+@@ -2706,8 +2708,15 @@
+ 
+ 	if ((dict = OSDynamicCast( OSDictionary, obj))) {
+ 		IOTaskRegistryCompatibilityMatching(current_task(), dict);
++#if defined(ARM64_BOARD_CONFIG_DRE)
++		const bool progress_display = dre_backboard_begin_display_match(dict);
++#endif
+ 		OSIterator *found = IOService::getMatchingServices( dict );
+ #if defined(ARM64_BOARD_CONFIG_DRE)
++		if (progress_display) {
++			dre_boot_checkpoint(found != NULL ? DRE_BOOT_BACKBOARD_DISPLAY_FOUND :
++			    DRE_BOOT_BACKBOARD_DISPLAY_MISSING);
++		}
+ 		char sname[32];
+ 		if (sweet_iolog(sname, sizeof(sname))) {
+ 			unsigned int count = 0;
+@@ -2805,10 +2814,16 @@
+ 
+ 	if ((dict = OSDynamicCast( OSDictionary, obj))) {
+ 		IOTaskRegistryCompatibilityMatching(current_task(), dict);
++#if defined(ARM64_BOARD_CONFIG_DRE)
++		const bool progress_display = dre_backboard_begin_display_match(dict);
++#endif
+ 		*service = IOService::copyMatchingService( dict );
+ 		kr = *service ? kIOReturnSuccess : kIOReturnNotFound;
+ #if defined(ARM64_BOARD_CONFIG_DRE)
+-		dre_backboard_display_match(dict);
++		if (progress_display) {
++			dre_boot_checkpoint(*service != NULL ? DRE_BOOT_BACKBOARD_DISPLAY_FOUND :
++			    DRE_BOOT_BACKBOARD_DISPLAY_MISSING);
++		}
+ 		char sname[32];
+ 		if (sweet_iolog(sname, sizeof(sname))) {
+ 			sweet_iolog_dict(sname, "matching1", dict,
+@@ -2894,6 +2909,9 @@
+ 	OSDictionary *              dict;
+ 	IOReturn                    err;
+ 	natural_t                   userMsgType;
++#if defined(ARM64_BOARD_CONFIG_DRE)
++	bool                        progress_display = false;
++#endif
+ 
+ 	if (main_port != main_device_port) {
+ 		return kIOReturnNotPrivileged;
+@@ -2919,7 +2937,7 @@
+ 		}
+ 		IOTaskRegistryCompatibilityMatching(current_task(), dict);
+ #if defined(ARM64_BOARD_CONFIG_DRE)
+-		dre_backboard_display_match(dict);
++		progress_display = dre_backboard_begin_display_match(dict);
+ 		{
+ 			char sname[32];
+ 			if (sweet_iolog(sname, sizeof(sname))) {
+@@ -2977,6 +2995,12 @@
+ 		obj->release();
+ 	}
+ 
++#if defined(ARM64_BOARD_CONFIG_DRE)
++	if (progress_display) {
++		dre_boot_checkpoint(err == kIOReturnSuccess ? DRE_BOOT_BACKBOARD_DISPLAY_NOTIFY_ARMED :
++		    DRE_BOOT_BACKBOARD_DISPLAY_NOTIFY_FAILED);
++	}
++#endif
+ 	return err;
+ }
+ 
+--- a/osfmk/console/dre_boot_progress.h
++++ b/osfmk/console/dre_boot_progress.h
+@@ -17,6 +17,10 @@
+ 	DRE_BOOT_BACKBOARD_KEYSTORE,
+ 	DRE_BOOT_BACKBOARD_INPUT,
+ 	DRE_BOOT_BACKBOARD_DISPLAY_MATCH,
++	DRE_BOOT_BACKBOARD_DISPLAY_FOUND,
++	DRE_BOOT_BACKBOARD_DISPLAY_MISSING,
++	DRE_BOOT_BACKBOARD_DISPLAY_NOTIFY_ARMED,
++	DRE_BOOT_BACKBOARD_DISPLAY_NOTIFY_FAILED,
+ 	DRE_BOOT_BACKBOARD_DISPLAY_OPEN,
+ 	DRE_BOOT_BACKBOARD_DISPLAY_REFUSED,
+ 	DRE_BOOT_BACKBOARD_CONNECTED,
+--- a/osfmk/console/serial_console.c
++++ b/osfmk/console/serial_console.c
+@@ -307,6 +307,7 @@
+ 
+ #if defined(ARM64_BOARD_CONFIG_DRE)
+ static uint32_t dre_boot_seen;
++_Static_assert(DRE_BOOT_STAGE_COUNT <= 32, "DRE boot stage mask is full");
+ 
+ bool
+ dre_boot_trace_syscalls(void)
+@@ -333,6 +334,10 @@
+ 		[DRE_BOOT_BACKBOARD_KEYSTORE] = "DRE BOOT: backboardd opened keystore\n",
+ 		[DRE_BOOT_BACKBOARD_INPUT] = "DRE BOOT: backboardd opened input\n",
+ 		[DRE_BOOT_BACKBOARD_DISPLAY_MATCH] = "DRE BOOT: backboardd requested display match\n",
++		[DRE_BOOT_BACKBOARD_DISPLAY_FOUND] = "DRE BOOT: backboardd found display service\n",
++		[DRE_BOOT_BACKBOARD_DISPLAY_MISSING] = "DRE BOOT: display lookup returned no service\n",
++		[DRE_BOOT_BACKBOARD_DISPLAY_NOTIFY_ARMED] = "DRE BOOT: backboardd armed display notification\n",
++		[DRE_BOOT_BACKBOARD_DISPLAY_NOTIFY_FAILED] = "DRE BOOT: display notification failed\n",
+ 		[DRE_BOOT_BACKBOARD_DISPLAY_OPEN] = "DRE BOOT: backboardd requested display open\n",
+ 		[DRE_BOOT_BACKBOARD_DISPLAY_REFUSED] = "DRE BOOT: backboardd display open failed\n",
+ 		[DRE_BOOT_BACKBOARD_CONNECTED] = "DRE BOOT: backboardd opened display\n",

@@ -1,7 +1,12 @@
 /* Validate the entire XNU window, including its 1 MiB panic-log reservation,
  * against this boot's live FDT before handing the embedded payload to XNU. */
 #include <libfdt.h>
+#ifdef DRE_XNU_DIRECT
+#include "console.h"
+#include "direct-layout.h"
+#else
 #include "loader.h"
+#endif
 #include "identity.h"
 #ifdef DRE_NATIVE_UFS
 #include "storage_handoff.h"
@@ -53,6 +58,31 @@ const char *dre_board_scm_prepare(const void *dt);
 #define SIZE DRE_RAM_SIZE
 #define LIMIT (BASE + SIZE)
 extern const char _head[], _end[], _payload_start[], _payload_end[];
+
+#ifdef DRE_XNU_DIRECT
+_Static_assert(DRE_DIRECT_BASE == BASE && DRE_DIRECT_RAM == SIZE - 0x100000,
+    "direct image and board RAM window differ");
+_Static_assert(DRE_DIRECT_DST >= BASE && DRE_DIRECT_DST + DRE_DIRECT_BYTES <= BASE + DRE_DIRECT_RAM,
+    "direct image outside managed RAM");
+_Static_assert(DRE_DIRECT_DST % 0x4000 == 0 && DRE_DIRECT_BYTES % 0x4000 == 0,
+    "direct image must preserve XNU page alignment");
+
+static const char *enter_direct_xnu(void)
+{
+    /* The initialized memory image includes zero-fill, the ADT and boot_args.
+     * Keep accesses naturally aligned while the MMU is off. */
+    const volatile uint64_t *src = (const volatile uint64_t *)_payload_start;
+    volatile uint64_t *dst = (volatile uint64_t *)DRE_DIRECT_DST;
+    for (unsigned i = 0; i < DRE_DIRECT_BYTES / sizeof(*dst); i++) {
+        dst[i] = src[i];
+    }
+    const char *error = fixup((void *)DRE_DIRECT_ADT, DRE_DIRECT_ADT_SIZE);
+    if (error) return error;
+    __asm__ volatile("dsb sy; ic iallu; dsb sy; isb" ::: "memory");
+    ((void (*)(uint64_t))DRE_DIRECT_ENTRY)(DRE_DIRECT_ARGS);
+    return "xnu returned";
+}
+#endif
 
 static uint64_t be64(const fdt32_t *p)
 {
@@ -143,18 +173,30 @@ const char *dre_handoff(const void *dt)
         conflicts((uintptr_t)dt, fdt_totalsize(dt)) ||
         !ram_ok(dt) || !reservations_clear(dt))
         return "RAM window unavailable";
+#ifdef DRE_XNU_DIRECT
+    if ((uintptr_t)con_fb != DRE_DIRECT_SPLASH || ((uintptr_t)_payload_start & 7) ||
+        (uintptr_t)_payload_end - (uintptr_t)_payload_start != DRE_DIRECT_BYTES)
+        return "direct XNU layout mismatch";
+#else
     const uint64_t *p = (const uint64_t *)_payload_start;
     if ((uintptr_t)_payload_end - (uintptr_t)p < 72 ||
         p[7] != BASE || p[8] != SIZE - 0x100000)
         return "payload RAM mismatch";
+#endif
     const char *identity_error = dre_identity_detect(dt);
     if (identity_error) return identity_error;
+#ifndef DRE_XNU_DIRECT
     const char *extra = NULL;
+#endif
 #ifdef DRE_BOARD_TESTS
+#ifdef DRE_XNU_DIRECT
+    dre_board_report(dt);
+#else
     extra = dre_board_report(dt);
+#endif
     const char *board_error = dre_board_error();
     if (board_error) return board_error;
-#ifdef DRE_INSTALL_ROOT
+#if defined(DRE_INSTALL_ROOT) && !defined(DRE_XNU_DIRECT)
     /* Retain all early guards/probes; the full diagnostic report would
      * crowd out the real userspace/root arguments in iBoot's608-byte field. */
     extra = NULL;
@@ -168,6 +210,10 @@ const char *dre_handoff(const void *dt)
     const char *firmware_error = dre_gpu_fw_prepare(dt);
     if (firmware_error) return firmware_error;
 #endif
+#ifdef DRE_XNU_DIRECT
+    return enter_direct_xnu();
+#else
     return loader_boot_range_with_adt((uintptr_t)p, (uintptr_t)_payload_end,
                                       extra, fixup);
+#endif
 }

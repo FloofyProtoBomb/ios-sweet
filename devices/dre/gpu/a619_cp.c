@@ -81,7 +81,7 @@ static const char *wait_idle(struct dre_a619_cp *s,const struct dre_a619_cp_ops 
             !(s->status&0xfffffffeu) && *s->scratch.cpu==expected)
             return live(o)?(const char *)0:"OWNERSHIP_LOST";
         if (++polls==1000000)return "CP_CLOCK_STALLED";
-    } while (o->io.now(o->io.cookie)-start<budget);
+    } while (!dre_a619_deadline_expired(start, o->io.now(o->io.cookie), budget));
     return "CP_COMPLETION_TIMEOUT";
 }
 static int program_checked(struct dre_a619_cp *s,const struct dre_a619_cp_ops *o,

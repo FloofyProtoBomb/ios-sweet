@@ -271,7 +271,14 @@ def inspect_boot(build, kernel):
     header_version, = struct.unpack_from('<I', boot, 40)
     require(header_version == 3 and 0 < kernel_size <= len(boot) - 4096,
             'unexpected Android boot header or kernel length')
-    require(boot[4096:4096 + kernel_size].count(payload) == 1, 'boot image does not contain this exact payload')
+    image = boot[4096:4096 + kernel_size]
+    if info.get('direct_xnu') is True:
+        from direct_image import flatten
+        flat, _ = flatten(payload)
+        require(image.endswith(flat) and image.count(flat) == 1 and payload not in image,
+                'direct boot image does not contain this exact flat XNU image')
+    else:
+        require(image.count(payload) == 1, 'boot image does not contain this exact payload')
     cmd = payload[0x48:0x48 + 608]
     require(b'\0' in cmd, 'boot command line is not terminated')
     args = inspect_install_arguments(cmd.split(b'\0')[0].decode('ascii'))

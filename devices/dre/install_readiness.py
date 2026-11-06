@@ -245,6 +245,8 @@ def inspect_install_arguments(command):
                 'boot checkpoints require the quiet boot profile')
     if 'dre_panel_hz' in args:
         require(args['dre_panel_hz'] in ('45', '60', '90'), 'unsupported software vsync mode')
+    if 'dre_ufs_read_batch' in args:
+        require(args['dre_ufs_read_batch'] == '1', 'invalid native UFS read batching flag')
     return args
 
 
@@ -275,11 +277,14 @@ def inspect_boot(build, kernel):
     args = inspect_install_arguments(cmd.split(b'\0')[0].decode('ascii'))
     quiet_boot = 'dre_quiet_boot' in args
     boot_progress = 'dre_boot_progress' in args
+    read_batch = 'dre_ufs_read_batch' in args
     panel_hz = int(args['dre_panel_hz']) if 'dre_panel_hz' in args else None
     require(info.get('quiet_boot', False) == quiet_boot and info.get('software_vsync_hz') == panel_hz,
             'boot console or software vsync differs from build metadata')
     require(info.get('boot_progress', False) == boot_progress,
             'boot checkpoints differ from build metadata')
+    require(info.get('ufs_read_batch', False) == read_batch,
+            'native UFS read batching differs from build metadata')
     off, size = struct.unpack_from('<QQ', payload, 0x20)
     require(0 < size <= len(payload) and off <= len(payload) - size, 'payload ADT range is invalid')
     root, consumed = adt.parse(payload[off:off + size])
@@ -304,6 +309,7 @@ def inspect_boot(build, kernel):
         require(marker in raw, 'kernel lacks required built-in UI/HFS/userdata-RW capability')
     require(not quiet_boot or b'dre_quiet_boot\0' in raw, 'kernel lacks quiet-console support')
     require(not boot_progress or b'dre_boot_progress\0' in raw, 'kernel lacks boot checkpoint support')
+    require(not read_batch or b'dre_ufs_read_batch\0' in raw, 'kernel lacks native UFS read batching')
     require(panel_hz is None or b'dre_panel_hz\0' in raw, 'kernel lacks software vsync support')
     return {'boot_sha256':boot_sha, 'kernel_sha256':info['kernel_sha256'],
             'root_device':'ufsroot0', 'userdata_rw_opt_in':True, 'diagnostic_ram_root':False,

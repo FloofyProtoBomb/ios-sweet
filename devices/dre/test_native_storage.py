@@ -27,7 +27,7 @@ class State(C.Structure):
         [(n,C.c_uint32) for n in ('last_opcode','command_lba','fault_doorbell','fault_interrupts','fault_hcs','fault_ocs')] + \
         [('fault_uec',C.c_uint32*5)] + \
         [(n,C.c_uint32) for n in ('fault_valid','fault_power','fault_utrl_lo','fault_utrl_hi')] + \
-        [('command_ticks',C.c_uint64)]
+        [('command_ticks',C.c_uint64), ('command_blocks', C.c_uint)]
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
@@ -64,6 +64,9 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return tick_cb ? tick_cb(
     read = api.dre_ufs_read_block_guarded
     read.argtypes = [C.POINTER(Route), C.POINTER(State), GUARD, C.c_void_p, C.c_uint32, C.c_void_p]
     read.restype = C.c_char_p
+    read_blocks = api.dre_ufs_read_blocks_guarded
+    read_blocks.argtypes = [*read.argtypes[:-1], C.c_uint, C.c_void_p]
+    read_blocks.restype = C.c_char_p
     write = api.dre_ufs_write_userdata_guarded
     write.argtypes = [C.POINTER(Route), C.POINTER(State), GUARD, C.c_void_p, C.c_uint64, C.c_void_p]
     write.restype = C.c_char_p
@@ -129,7 +132,8 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return tick_cb ? tick_cb(
     struct.pack_into('<QIII', header, 72, 2, 32, 128, zlib.crc32(entries))
     struct.pack_into('<I', header, 16, zlib.crc32(header[:92]))
     payload = bytes((i * 17 + 3) % 256 for i in range(4096))
-    disk = {1: bytes(header), 2: bytes(entries), 100: payload}
+    disk = {1: bytes(header), 2: bytes(entries), 100: payload, 101: bytes([0x81]) * 4096,
+            102: bytes([0x42]) * 4096}
     tick_hook = C.c_void_p.in_dll(api, 'tick_cb')
     for mode in ('pass', 'guard_before', 'guard_after', 'timeout', 'ocs', 'restore', 'short',
                  'timeout_restore', 'timeout_power_off', 'timeout_power_unreadable', 'timeout_layer_unreadable'):
@@ -178,6 +182,8 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return tick_cb ? tick_cb(
                 length = int.from_bytes(command[12:16], 'big')
                 if length:
                     assert struct.unpack('<II', bytes(arena[0x800:0x808])) == (pa + 0x1000, 0)
+                    assert words[7] == (256 << 16) | 1
+                    assert struct.unpack('<I', bytes(arena[0x80c:0x810])) == (length - 1,)
                     assert command[1] == (0x20 if op == 0x2a else 0x40)
                     assert (words[0] >> 25) & 3 == (1 if op == 0x2a else 2)
                 commands.append(op)
@@ -185,8 +191,10 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return tick_cb ? tick_cb(
                 data = b''
                 if op == 0x9e: data = struct.pack('>QI', 999, 4096) + bytes(20)
                 if op == 0x28:
-                    assert command[24] == 1
-                    data = disk[int.from_bytes(command[18:22], 'big')]
+                    count = int.from_bytes(command[23:25], 'big')
+                    lba = int.from_bytes(command[18:22], 'big')
+                    assert 1 <= count <= 3 and length == count * 4096
+                    data = b''.join(disk[lba + i] for i in range(count))
                 if op == 0x2a:
                     assert command[24] == 1 and length == 4096
                     lba = int.from_bytes(command[18:22], 'big')
@@ -227,7 +235,7 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return tick_cb ? tick_cb(
         assert not callback_errors, callback_errors
         assert result == expected, (mode, result)
         if mode.startswith('timeout'):
-            assert state.last_opcode == 0x28 and state.command_lba == 100
+            assert state.last_opcode == 0x28 and state.command_lba == 100 and state.command_blocks == 1
             assert state.fault_ocs == 0xf
             assert state.command_ticks >= 9600000
             if mode in ('timeout_power_off', 'timeout_power_unreadable'):
@@ -248,8 +256,34 @@ uint64_t dre_ufs_test_ticks(void) { static uint64_t t; return tick_cb ? tick_cb(
             commands.clear()
             assert read(C.byref(route), C.byref(state), guard, None, 1000, out) == b'LBA_RANGE'
             assert not commands; checks += 1
+            for count in (2, 3):
+                multi = C.create_string_buffer(count * 4096)
+                commands.clear()
+                assert read_blocks(C.byref(route), C.byref(state), guard, None, 100, count, multi) == b'READ_PASS'
+                assert commands == [0x28] and state.command_blocks == count and state.safe
+                assert multi.raw == b''.join(disk[100 + i] for i in range(count))
+                assert not callback_errors, callback_errors
+                checks += 1
+            untouched = C.create_string_buffer(b'Z' * (3 * 4096), 3 * 4096)
+            for lba, count, rejection in ((100, 0, b'READ_RANGE'), (100, 4, b'READ_RANGE'),
+                                          (998, 3, b'LBA_RANGE'), (0xfffffffe, 3, b'LBA_RANGE')):
+                commands.clear()
+                state.last = 0x100000000 if lba == 0xfffffffe else 999
+                assert read_blocks(C.byref(route), C.byref(state), guard, None, lba, count, untouched) == rejection
+                assert not commands and untouched.raw == b'Z' * (3 * 4096)
+                checks += 1
+            state.last = 999
+            for failure, expected_failure in (('short', b'SHORT_TRANSFER'), ('timeout', b'COMMAND_TIMEOUT')):
+                active_mode = failure
+                commands.clear()
+                assert read_blocks(C.byref(route), C.byref(state), guard, None, 100, 3, untouched) == expected_failure
+                assert commands == [0x28] and state.command_blocks == 3 and state.safe
+                assert untouched.raw == b'Z' * (3 * 4096)
+                assert [regs[o] for o in (0x50, 0x54, 0x60, 0x24)] == [0x81000000, 0, 1, 0x1234]
+                checks += 1
             # Keep the fifth command pending while CNTVCT moves backward one tick.
             active_mode = 'counter_backstep'
+            commands.clear()
             try:
                 result = probe(C.byref(route), C.byref(state), guard, None)
             finally:

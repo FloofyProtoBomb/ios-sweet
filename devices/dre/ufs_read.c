@@ -45,7 +45,8 @@ unsigned dre_ufs_probe_size(void) { return ARENA_BYTES; }
 #define DMA_COMMAND (arena + 0x400)
 #define DMA_RESPONSE (arena + 0x600)
 #define DMA_PRDT ((volatile uint32_t *)(arena + 0x800))
-#define DMA_DATA (arena + 0x1000)
+#define DATA_OFFSET 0x1000u
+#define DMA_DATA (arena + DATA_OFFSET)
 
 static uint64_t ticks(void)
 {
@@ -147,20 +148,22 @@ static void timeout_snapshot(struct dre_ufs_read_state *s)
 
 /* This interface accepts only the explicitly constructed commands below. */
 static const char *submit_data(struct dre_ufs_read_state *s, unsigned op, uint32_t lba,
-                               const uint8_t *input)
+                               unsigned read_blocks, const uint8_t *input)
 {
     s->ocs = UINT32_MAX; s->response = 0; s->status = 0;
     if (s->guard && !s->guard(s->guard_cookie)) { s->guard_lost = 1; return "DMA_GUARD_CHANGED"; }
     uint32_t len;
     if (op == 0xff || op == 0 || op == 0x35) len = 0; /* NOP/TUR/cache flush */
     else if (op == 0x9e) len = 32;     /* READ CAPACITY(16) */
-    else if (op == 0x28 || (op == 0x2a && input)) len = BLOCK;
+    else if (op == 0x28) len = read_blocks * BLOCK;
+    else if (op == 0x2a && input) len = BLOCK;
     else return "COMMAND_REJECTED";
     uint32_t doorbell;
     if (!read_reg(DOORBELL, &doorbell) || doorbell) return "COMMAND_BUSY";
     clear_arena();
     uint8_t tag = (uint8_t)++s->commands;
     s->last_opcode = op; s->command_lba = lba;
+    s->command_blocks = op == 0x2a ? 1 : read_blocks;
     DMA_COMMAND[0] = op == 0xff ? 0 : 1;
     DMA_COMMAND[1] = len ? (op == 0x2a ? 0x20 : 0x40) : 0;
     DMA_COMMAND[2] = 0;                  /* LUN 0, never an RPMB well-known LUN */
@@ -170,9 +173,9 @@ static const char *submit_data(struct dre_ufs_read_state *s, unsigned op, uint32
     if (op == 0x9e) { DMA_COMMAND[17] = 0x10; DMA_COMMAND[29] = 32; }
     if (op == 0x28 || op == 0x2a) {
         for (unsigned i = 0; i < 4; i++) DMA_COMMAND[18 + i] = lba >> (24 - 8 * i);
-        DMA_COMMAND[24] = 1;
+        DMA_COMMAND[24] = s->command_blocks;
     }
-    uint64_t ucd = ARENA_PA + 0x400, block = ARENA_PA + 0x1000;
+    uint64_t ucd = ARENA_PA + 0x400, block = ARENA_PA + DATA_OFFSET;
     DMA_RING[0] = (1u << 28) | (1u << 24) | (len ? (op == 0x2a ? 1u : 2u) << 25 : 0);
     DMA_RING[2] = 0xf;
     DMA_RING[4] = (uint32_t)ucd; DMA_RING[5] = (uint64_t)ucd >> 32;
@@ -203,7 +206,7 @@ static const char *submit_data(struct dre_ufs_read_state *s, unsigned op, uint32
     return 0;
 }
 static const char *submit(struct dre_ufs_read_state *s, unsigned op, uint32_t lba)
-{ return submit_data(s, op, lba, 0); }
+{ return submit_data(s, op, lba, op == 0x28 ? 1 : 0, 0); }
 
 static const char *read_gpt(struct dre_ufs_read_state *s)
 {
@@ -263,7 +266,8 @@ const char *dre_ufs_read_test(const struct dre_dma_route *route, struct dre_ufs_
 
 static const char *transaction(const struct dre_dma_route *route, struct dre_ufs_read_state *s,
                               dre_ufs_dma_guard guard, void *cookie, uint32_t lba,
-                              uint8_t *block_out, const uint8_t *block_in, int flush)
+                              uint8_t *block_out, unsigned read_blocks,
+                              const uint8_t *block_in, int flush)
 {
     uint64_t last = s->last_lba, first = s->userdata_first, blocks = s->userdata_blocks;
     *s = (struct dre_ufs_read_state){.safe_to_handoff = 1, .guard = guard, .guard_cookie = cookie};
@@ -271,6 +275,8 @@ static const char *transaction(const struct dre_dma_route *route, struct dre_ufs
         s->last_lba = last; s->userdata_first = first; s->userdata_blocks = blocks;
         s->block_size = BLOCK;
         if (!last || (!flush && lba > last)) return "LBA_RANGE";
+        if (block_out && (read_blocks - 1 > last - lba || read_blocks - 1 > UINT32_MAX - lba))
+            return "LBA_RANGE";
     }
     if (!route->physical_dma && !guard) return "DMA_BLOCKED";
     if (guard && !guard(cookie)) return "DMA_GUARD_BLOCKED";
@@ -304,11 +310,11 @@ static const char *transaction(const struct dre_dma_route *route, struct dre_ufs
         !wait_reg(UTRL_HI, UINT32_MAX, (uint64_t)dma >> 32) ||
         !write_reg(RUN_STOP, 1) || !wait_reg(RUN_STOP, 1, 1)) goto restore;
     if (block_out) {
-        error = submit(s, 0x28, lba);
+        error = submit_data(s, 0x28, lba, read_blocks, 0);
         goto restore;
     }
     if (block_in) {
-        error = submit_data(s, 0x2a, lba, block_in);
+        error = submit_data(s, 0x2a, lba, 0, block_in);
         if (!error) error = submit(s, 0x35, 0);
         goto restore;
     }
@@ -346,7 +352,7 @@ restore:
     if (s->guard && (s->guard_lost || !s->guard(s->guard_cookie))) return "DMA_GUARD_CHANGED";
     s->safe_to_handoff = 1;
     if (!error && block_out)
-        for (unsigned i = 0; i < BLOCK; i++) block_out[i] = DMA_DATA[i];
+        for (unsigned i = 0; i < read_blocks * BLOCK; i++) block_out[i] = DMA_DATA[i];
     clear_arena();
     return error ? error : block_in ? "WRITE_PASS" : flush ? "FLUSH_PASS" : block_out ? "READ_PASS" : "GPT_PASS";
 }
@@ -356,7 +362,7 @@ const char *dre_ufs_read_guarded(const struct dre_dma_route *route, struct dre_u
 {
     /* The probe caller need not initialize its output structure. */
     *s = (struct dre_ufs_read_state){0};
-    return transaction(route, s, guard, cookie, 0, 0, 0, 0);
+    return transaction(route, s, guard, cookie, 0, 0, 0, 0, 0);
 }
 
 const char *dre_ufs_read_block_guarded(const struct dre_dma_route *route,
@@ -364,8 +370,18 @@ const char *dre_ufs_read_block_guarded(const struct dre_dma_route *route,
                                      dre_ufs_dma_guard guard, void *cookie,
                                      uint32_t lba, uint8_t out[4096])
 {
+    return dre_ufs_read_blocks_guarded(route, s, guard, cookie, lba, 1, out);
+}
+
+const char *dre_ufs_read_blocks_guarded(const struct dre_dma_route *route,
+                                      struct dre_ufs_read_state *s,
+                                      dre_ufs_dma_guard guard, void *cookie,
+                                      uint32_t lba, unsigned count, uint8_t *out)
+{
     if (!out) return "BUFFER_INVALID";
-    return transaction(route, s, guard, cookie, lba, out, 0, 0);
+    if (!count || count > DRE_UFS_MAX_READ_BLOCKS || count > (ARENA_BYTES - DATA_OFFSET) / BLOCK)
+        return "READ_RANGE";
+    return transaction(route, s, guard, cookie, lba, out, count, 0, 0);
 }
 
 static int writable_geometry(const struct dre_ufs_read_state *s)
@@ -384,11 +400,11 @@ const char *dre_ufs_write_userdata_guarded(const struct dre_dma_route *route,
     if (!data || !guard) return "WRITE_GUARD_REQUIRED";
     if (!writable_geometry(s) || relative >= s->userdata_blocks ||
         s->userdata_first + relative > UINT32_MAX) return "WRITE_RANGE";
-    return transaction(route, s, guard, cookie, (uint32_t)(s->userdata_first + relative), 0, data, 0);
+    return transaction(route, s, guard, cookie, (uint32_t)(s->userdata_first + relative), 0, 0, data, 0);
 }
 const char *dre_ufs_flush_guarded(const struct dre_dma_route *route,
     struct dre_ufs_read_state *s, dre_ufs_dma_guard guard, void *cookie)
 {
     if (!guard || !writable_geometry(s)) return "WRITE_GUARD_REQUIRED";
-    return transaction(route, s, guard, cookie, 0, 0, 0, 1);
+    return transaction(route, s, guard, cookie, 0, 0, 0, 0, 1);
 }

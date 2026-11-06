@@ -142,7 +142,7 @@ def tree(identity=None, ui=False, cpus=1, product_path=None, native_ufs=False, r
 def embed(kernel, out, init_obj, donor=False, identity_path=None,
           ui=False, cpus=1, product_path=None, native_ufs=False, ram_mib=512, install_root=False,
           gpu_firmware=False, gpu_firmware_relocated=False, quiet_boot=False, panel_hz=None,
-          boot_progress=False):
+          boot_progress=False, ufs_read_batch=False):
     data = kernel.read_bytes()
     if donor:
         data = retarget(data)
@@ -165,6 +165,8 @@ def embed(kernel, out, init_obj, donor=False, identity_path=None,
         raise ValueError("--quiet-boot requires an install-root kernel with quiet-console support")
     if boot_progress and (not quiet_boot or b"dre_boot_progress\0" not in data):
         raise ValueError("--boot-progress requires quiet boot and a kernel with DRE checkpoint support")
+    if ufs_read_batch and (not install_root or b"dre_ufs_read_batch\0" not in data):
+        raise ValueError("--ufs-read-batch requires an install-root kernel with native UFS read batching")
     if panel_hz is not None and (not ui or panel_hz not in (45, 60, 90) or b"dre_panel_hz\0" not in data):
         raise ValueError("--panel-hz requires a supported mode and a kernel with DRE vsync timing support")
     if gpu_firmware and (not native_ufs or not ui or donor or not all(marker in data for marker in
@@ -197,6 +199,8 @@ def embed(kernel, out, init_obj, donor=False, identity_path=None,
         cmdline += (' dre_ufs_rw=1 rootrw=1 unentitled_ios_sim_launch=1 ignition_level=1'
                     ' launchd_unsecure_cache=1'
                     ' sweetfb_noconsole=1 sweetfb_hz=30')
+    if ufs_read_batch:
+        cmdline += " dre_ufs_read_batch=1"
     if panel_hz is not None:
         cmdline += f" dre_panel_hz={panel_hz}"
     if len(cmdline.encode()) >= 608: raise ValueError('boot arguments exceed shim limit')

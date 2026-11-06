@@ -3,6 +3,7 @@
 #include "dma_route.h"
 typedef int (*dre_ufs_dma_guard)(void *cookie);
 #define DRE_UFS_FAULT_CAPTURED (1u << 31)
+#define DRE_UFS_MAX_READ_BLOCKS 3u
 
 struct dre_ufs_read_state {
     uint32_t capabilities, block_size, ocs, response, status;
@@ -19,6 +20,7 @@ struct dre_ufs_read_state {
      * Bit31 means capture attempted, including when register reads failed. */
     uint32_t fault_valid, fault_power, fault_utrl_lo, fault_utrl_hi;
     uint64_t command_ticks;
+    unsigned command_blocks;
 };
 
 /* Polled, LUN-0-only read test with a private, below-4G-capable DMA arena.
@@ -40,6 +42,11 @@ const char *dre_ufs_read_block_guarded(const struct dre_dma_route *route,
                                      struct dre_ufs_read_state *state,
                                      dre_ufs_dma_guard guard, void *cookie,
                                      uint32_t lba, uint8_t out[4096]);
+/* out must hold count native blocks. The 8 KiB shim arena fits one block. */
+const char *dre_ufs_read_blocks_guarded(const struct dre_dma_route *route,
+                                      struct dre_ufs_read_state *state,
+                                      dre_ufs_dma_guard guard, void *cookie,
+                                      uint32_t lba, unsigned count, uint8_t *out);
 /* Installer/runtime opt-in only. Relative block is confined to validated
  * userdata; primary and backup GPT are excluded. WRITE(10) is followed by
  * SYNCHRONIZE CACHE before success. Caller must serialize and authorize RW. */

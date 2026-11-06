@@ -55,6 +55,8 @@ def main():
     ap.add_argument("--native-ufs", action="store_true", help="transfer owned DMA memory to the opt-in native read-only XNU driver")
     ap.add_argument("--install-root", action="store_true",
                     help="boot writable iOS from userdata; no diagnostic RAM root (requires private product ADT)")
+    ap.add_argument("--ufs-read-batch", action="store_true",
+                    help="opt into up to three native blocks per physical UFS read on install boots")
     ap.add_argument("--quiet-boot", action="store_true",
                     help="hide normal XNU console output on install boots while retaining panics")
     ap.add_argument("--boot-progress", action="store_true",
@@ -75,6 +77,8 @@ def main():
     ap.add_argument("--gpu-firmware-relocated", action="store_true",
                     help="opt-in v2 boot-held aligned PAS13 load arena; requires private firmware provisioning and real relocated-PAS policy")
     args = ap.parse_args()
+    if args.ufs_read_batch and not args.install_root:
+        ap.error("--ufs-read-batch requires --install-root")
     if args.quiet_boot and not args.install_root:
         ap.error("--quiet-boot requires --install-root")
     if args.boot_progress and not args.quiet_boot:
@@ -207,7 +211,8 @@ def main():
               native_ufs=args.native_ufs, ram_mib=args.ram_mib, install_root=args.install_root,
               gpu_firmware=gpu_firmware is not None,
               gpu_firmware_relocated=args.gpu_firmware_relocated,
-              quiet_boot=args.quiet_boot, panel_hz=args.panel_hz, boot_progress=args.boot_progress)
+              quiet_boot=args.quiet_boot, panel_hz=args.panel_hz, boot_progress=args.boot_progress,
+              ufs_read_batch=args.ufs_read_batch)
         if gpu_firmware is not None:
             # Private output only. The kernel anchor was matched before any
             # compilation. No default image, source digest or boot argument
@@ -271,6 +276,8 @@ def main():
         info['quiet_boot'] = True
     if args.boot_progress:
         info['boot_progress'] = True
+    if args.ufs_read_batch:
+        info['ufs_read_batch'] = True
     if args.panel_hz is not None:
         info['software_vsync_hz'] = args.panel_hz
     if gpu_firmware is not None:

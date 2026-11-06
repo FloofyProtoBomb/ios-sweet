@@ -45,9 +45,10 @@ static struct { uint64_t pa, size; vm_offset_t va; } regions[] = {
 };
 static struct dre_ufs_handoff_dma dma;
 static struct dre_ufs_read_state media;
-static uint8_t bounce[4096];
+static uint8_t bounce[4096 * DRE_UFS_MAX_READ_BLOCKS];
 static int attempted, ready, dead, bmajor = -1, cmajor = -1;
 static int writable;
+static int read_batch;
 /* Explicit QEMU-only BSD interface fixture, never a physical storage backend. */
 static int virtual_disk;
 static uint8_t virtual_gpt[8192];
@@ -86,14 +87,12 @@ static int driver_fault_sysctl(__unused struct sysctl_oid *oidp, __unused void *
     lck_mtx_unlock(&dre_ufs_lock);
     if (!(fault.fault_valid & DRE_UFS_FAULT_CAPTURED)) return ENOENT;
 
-    /* The engine constructs single-block READ(10) and WRITE(10) CDBs. */
-    unsigned blocks = (fault.last_opcode == 0x28 || fault.last_opcode == 0x2a) ? 1 : 0;
     char snapshot[256];
     int length = snprintf(snapshot, sizeof(snapshot),
         "NATIVE_F1=LBA=%x/BLK=%u/TICKS=%llu/VALID=%x\n"
         "NATIVE_F2=HCS=%x/UEC=%x/%x/%x/%x/%x\n"
         "NATIVE_F3=PWR=%x/ARENA=%llx/UTRL=%x:%08x\n",
-        fault.command_lba, blocks, (unsigned long long)fault.command_ticks, fault.fault_valid,
+        fault.command_lba, fault.command_blocks, (unsigned long long)fault.command_ticks, fault.fault_valid,
         fault.fault_hcs, fault.fault_uec[0], fault.fault_uec[1], fault.fault_uec[2],
         fault.fault_uec[3], fault.fault_uec[4], fault.fault_power,
         (unsigned long long)arena_pa, fault.fault_utrl_hi, fault.fault_utrl_lo);
@@ -245,9 +244,14 @@ static void disk_strategy_common(buf_t bp, int user_buffer)
         unsigned skip = position % 4096;
         uint32_t take = MIN(count - done, 4096u - skip);
         if (block > UINT32_MAX) { error = EINVAL; break; }
+        unsigned blocks = 1;
+        if (reading && read_batch && !virtual_disk && !skip && count - done >= 8192u) {
+            blocks = MIN((count - done) / 4096u, DRE_UFS_MAX_READ_BLOCKS);
+            take = blocks * 4096u;
+        }
         /* Partial writes must preserve the other sectors. A full 4 KiB
          * write replaces every byte of the bounce block before submission. */
-        if (reading || take != sizeof(bounce)) {
+        if (reading || take != 4096u) {
             set_state("READ", "BEGIN");
             if (virtual_disk) {
                 if (block == 1 || block == 2) memcpy(bounce, virtual_gpt + (block - 1) * 4096, 4096);
@@ -255,10 +259,10 @@ static void disk_strategy_common(buf_t bp, int user_buffer)
                     if (!dre_qemu_disk_read(block - 100, bounce)) error = EIO;
                 } else if (virtual_disk == 1 && block >= 100 && block < 200)
                     memcpy(bounce, virtual_userdata + (block - 100) * 4096, 4096);
-                else memset(bounce, (uint8_t)block, sizeof(bounce));
+                else memset(bounce, (uint8_t)block, 4096);
             } else {
-                error = check_result(dre_ufs_read_block_guarded(&dma.route, &media,
-                    native_guard, &dma, (uint32_t)block, bounce), "READ_PASS");
+                error = check_result(dre_ufs_read_blocks_guarded(&dma.route, &media,
+                    native_guard, &dma, (uint32_t)block, blocks, bounce), "READ_PASS");
             }
             if (error) break;
         }
@@ -303,7 +307,11 @@ static int disk_ioctl(dev_t dev, u_long cmd, caddr_t data, __unused int flag,
     case DKIOCSETBLOCKSIZE: return *(uint32_t *)data == DEV_BSIZE ? 0 : EINVAL;
     case DKIOCGETBLOCKCOUNT: *(uint64_t *)data = count_blocks(dev) * 8; return 0;
     case DKIOCISWRITABLE: *(uint32_t *)data = writable && minor(dev) == 0; return 0;
-    case DKIOCGETMAXBLOCKCOUNTREAD: *(uint64_t *)data = 8; return 0;
+    case DKIOCGETMAXBLOCKCOUNTREAD:
+        /* VFS rounds its I/O size to a page. The strategy splits a page
+         * into bounded commands inside the existing DMA arena. */
+        *(uint64_t *)data = read_batch && !virtual_disk ? PAGE_SIZE / DEV_BSIZE : 8;
+        return 0;
     case DKIOCGETMAXBLOCKCOUNTWRITE: *(uint64_t *)data = writable && minor(dev) == 0 ? 8 : 0; return 0;
     case DKIOCGETFEATURES: *(uint32_t *)data = 0; return 0; /* no FUA/UNMAP promises */
     case DKIOCISSOLIDSTATE: *(uint32_t *)data = 1; return 0; /* UFS and its virtual model */
@@ -398,6 +406,8 @@ static int initialize(void)
     if (enabled != 1) { set_state("BOOTARG", "DISABLED"); return ENXIO; }
     PE_parse_boot_argn("dre_ufs_rw", &writable, sizeof(writable));
     writable = writable == 1;
+    PE_parse_boot_argn("dre_ufs_read_batch", &read_batch, sizeof(read_batch));
+    read_batch = read_batch == 1;
     if (!dre_ufs_get_handoff(w)) { set_state("HANDOFF", "MISSING"); return ENXIO; }
     if (!dre_storage_abi_valid(w)) { set_state("HANDOFF", "INVALID"); return ENXIO; }
     int map_test = 0, qemu = 0;

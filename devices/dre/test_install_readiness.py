@@ -29,6 +29,9 @@ def main():
         checks += 1
     command = ' '.join(f'{key}={value}' for key,value in r.REQUIRED_ARGS.items())
     assert r.inspect_install_arguments(command)['rd'] == 'ufsroot0'; checks += 1
+    assert r.inspect_install_arguments(command + ' dre_ufs_read_batch=1')['dre_ufs_read_batch'] == '1'
+    checks += 1
+    reject(lambda:r.inspect_install_arguments(command + ' dre_ufs_read_batch=0'), 'invalid native UFS')
     progress = ' dre_quiet_boot=1 dre_boot_progress=1'
     assert r.inspect_install_arguments(command + progress)['dre_boot_progress'] == '1'; checks += 1
     reject(lambda:r.inspect_install_arguments(command + ' dre_boot_progress=1'), 'quiet boot profile')

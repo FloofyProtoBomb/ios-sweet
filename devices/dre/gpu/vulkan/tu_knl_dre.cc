@@ -72,7 +72,7 @@ static VkResult refusal(struct tu_device *dev, enum dre_darwin_result r, const c
       return vk_device_set_lost(&dev->vk, "%s: %s", where, dre_darwin_result_name(r));
    }
 }
-static struct dre_bo_record *find_bo(struct dre_device *d, struct tu_bo *bo)
+static struct dre_bo_record *find_bo(struct dre_device *d, const struct tu_bo *bo)
 {
    for (struct dre_bo_record *r = d->bos; r; r = r->next)
       if (r->bo == bo) return r;

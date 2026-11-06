@@ -1,0 +1,169 @@
+--- a/iokit/Kernel/IOUserClient.cpp
++++ b/iokit/Kernel/IOUserClient.cpp
+@@ -55,6 +55,10 @@
+ 
+ #include <libkern/amfi/amfi.h>
+ 
++#if defined(ARM64_BOARD_CONFIG_DRE)
++#include <console/dre_boot_progress.h>
++#endif
++
+ #if CONFIG_MACF
+ 
+ extern "C" {
+@@ -2612,15 +2616,43 @@
+ static uint32_t sweet_iolog_lines;
+ 
+ static bool
++dre_backboard_progress(void)
++{
++	if (!dre_boot_progress_enabled || !dre_boot_trace_syscalls()) {
++		return false;
++	}
++	char name[32];
++	proc_selfname(name, sizeof(name));
++	return strcmp(name, "backboardd") == 0;
++}
++
++static void
++dre_backboard_display_match(OSDictionary *dict)
++{
++	if (!dre_boot_progress_enabled) {
++		return;
++	}
++	OSString *provider = OSDynamicCast(OSString, dict->getObject(kIOProviderClassKey));
++	if (provider != NULL &&
++	    (provider->isEqualTo("IOMobileFramebuffer") || provider->isEqualTo("AppleCLCD")) &&
++	    dre_backboard_progress()) {
++		dre_boot_checkpoint(DRE_BOOT_BACKBOARD_DISPLAY_MATCH);
++	}
++}
++
++static bool
+ sweet_iolog(char *name, size_t len)
+ {
+ 	if (!sweet_iolog_parsed) {
+ 		if (!PE_parse_boot_argn("sweetiolog", sweet_iolog_names, sizeof(sweet_iolog_names))) {
+-			strlcpy(sweet_iolog_names, "backboardd", sizeof(sweet_iolog_names));
++			/* Checkpoint boots use short markers instead of XML by default. */
++			if (!dre_boot_progress_enabled) {
++				strlcpy(sweet_iolog_names, "backboardd", sizeof(sweet_iolog_names));
++			}
+ 		}
+ 		sweet_iolog_parsed = 1;
+ 	}
+-	if (sweet_iolog_lines >= 400) {
++	if (sweet_iolog_names[0] == '\0' || sweet_iolog_lines >= 400) {
+ 		return false;
+ 	}
+ 	proc_selfname(name, (int)len);
+@@ -2776,6 +2808,7 @@
+ 		*service = IOService::copyMatchingService( dict );
+ 		kr = *service ? kIOReturnSuccess : kIOReturnNotFound;
+ #if defined(ARM64_BOARD_CONFIG_DRE)
++		dre_backboard_display_match(dict);
+ 		char sname[32];
+ 		if (sweet_iolog(sname, sizeof(sname))) {
+ 			sweet_iolog_dict(sname, "matching1", dict,
+@@ -2886,6 +2919,7 @@
+ 		}
+ 		IOTaskRegistryCompatibilityMatching(current_task(), dict);
+ #if defined(ARM64_BOARD_CONFIG_DRE)
++		dre_backboard_display_match(dict);
+ 		{
+ 			char sname[32];
+ 			if (sweet_iolog(sname, sizeof(sname))) {
+@@ -4360,13 +4394,31 @@
+ 		return kIOReturnBadArgument;
+ 	}
+ 
++#if defined(ARM64_BOARD_CONFIG_DRE)
++	const char *progress_service = dre_backboard_progress() ?
++	    service->getMetaClass()->getClassName() : NULL;
++	const bool progress_display = progress_service && strcmp(progress_service, "AppleCLCD") == 0;
++	if (progress_display) {
++		dre_boot_checkpoint(DRE_BOOT_BACKBOARD_DISPLAY_OPEN);
++	}
++#endif
+ #if CONFIG_MACF
+ 	if (mac_iokit_check_open_service(kauth_cred_get(), service, connect_type) != 0) {
++#if defined(ARM64_BOARD_CONFIG_DRE)
++		if (progress_display) {
++			dre_boot_checkpoint(DRE_BOOT_BACKBOARD_DISPLAY_REFUSED);
++		}
++#endif
+ 		return kIOReturnNotPermitted;
+ 	}
+ #endif
+ 	do{
+ 		if (properties) {
++#if defined(ARM64_BOARD_CONFIG_DRE)
++			if (progress_display) {
++				dre_boot_checkpoint(DRE_BOOT_BACKBOARD_DISPLAY_REFUSED);
++			}
++#endif
+ 			return kIOReturnUnsupported;
+ 		}
+ #if 0
+@@ -4574,6 +4626,19 @@
+ 	*connection = client;
+ 	*result = res;
+ 
++#if defined(ARM64_BOARD_CONFIG_DRE)
++	bool opened = err == KERN_SUCCESS && res == kIOReturnSuccess && client != NULL;
++	if (progress_display) {
++		dre_boot_checkpoint(opened ? DRE_BOOT_BACKBOARD_CONNECTED : DRE_BOOT_BACKBOARD_DISPLAY_REFUSED);
++	} else if (opened && progress_service != NULL) {
++		if (strcmp(progress_service, "AppleKeyStore") == 0) {
++			dre_boot_checkpoint(DRE_BOOT_BACKBOARD_KEYSTORE);
++		} else if (strcmp(progress_service, "SweetHIDTouch") == 0 ||
++		    strcmp(progress_service, "SweetHIDButtons") == 0) {
++			dre_boot_checkpoint(DRE_BOOT_BACKBOARD_INPUT);
++		}
++	}
++#endif
+ 	return err;
+ }
+ 
+--- a/iokit/Kernel/arm/SweetFramebuffer.cpp
++++ b/iokit/Kernel/arm/SweetFramebuffer.cpp
+@@ -415,11 +415,6 @@
+ 		return false;
+ 	}
+ 	fFB->addClient(this);
+-	char name[32];
+-	proc_selfname(name, sizeof(name));
+-	if (strcmp(name, "backboardd") == 0) {
+-		dre_boot_checkpoint(DRE_BOOT_BACKBOARD_CONNECTED);
+-	}
+ 	return true;
+ }
+ 
+--- a/osfmk/console/dre_boot_progress.h
++++ b/osfmk/console/dre_boot_progress.h
+@@ -14,6 +14,11 @@
+ 	DRE_BOOT_LOGD_HELPER_SYSCALL,
+ 	DRE_BOOT_SPRINGBOARD_SYSCALL,
+ 	DRE_BOOT_BACKBOARD_SYSCALL,
++	DRE_BOOT_BACKBOARD_KEYSTORE,
++	DRE_BOOT_BACKBOARD_INPUT,
++	DRE_BOOT_BACKBOARD_DISPLAY_MATCH,
++	DRE_BOOT_BACKBOARD_DISPLAY_OPEN,
++	DRE_BOOT_BACKBOARD_DISPLAY_REFUSED,
+ 	DRE_BOOT_BACKBOARD_CONNECTED,
+ 	DRE_BOOT_SWAP_QUEUED,
+ 	DRE_BOOT_SWAP_DEQUEUED,
+--- a/osfmk/console/serial_console.c
++++ b/osfmk/console/serial_console.c
+@@ -330,6 +330,11 @@
+ 		[DRE_BOOT_LOGD_HELPER_SYSCALL] = "DRE BOOT: logd_helper entered BSD syscall\n",
+ 		[DRE_BOOT_SPRINGBOARD_SYSCALL] = "DRE BOOT: SpringBoard entered BSD syscall\n",
+ 		[DRE_BOOT_BACKBOARD_SYSCALL] = "DRE BOOT: backboardd entered BSD syscall\n",
++		[DRE_BOOT_BACKBOARD_KEYSTORE] = "DRE BOOT: backboardd opened keystore\n",
++		[DRE_BOOT_BACKBOARD_INPUT] = "DRE BOOT: backboardd opened input\n",
++		[DRE_BOOT_BACKBOARD_DISPLAY_MATCH] = "DRE BOOT: backboardd requested display match\n",
++		[DRE_BOOT_BACKBOARD_DISPLAY_OPEN] = "DRE BOOT: backboardd requested display open\n",
++		[DRE_BOOT_BACKBOARD_DISPLAY_REFUSED] = "DRE BOOT: backboardd display open failed\n",
+ 		[DRE_BOOT_BACKBOARD_CONNECTED] = "DRE BOOT: backboardd opened display\n",
+ 		[DRE_BOOT_SWAP_QUEUED] = "DRE BOOT: swap queued\n",
+ 		[DRE_BOOT_SWAP_DEQUEUED] = "DRE BOOT: display timer dequeued swap\n",

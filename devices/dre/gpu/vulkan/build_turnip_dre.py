@@ -20,6 +20,89 @@ import sys
 from prepare_turnip_dre import HERE, sha
 
 
+ENTRYPOINT_TABLES = {
+    "tu_entrypoints.cc": "src/freedreno/vulkan/tu_entrypoints.cc",
+    "vk_cmd_enqueue_entrypoints.c": "src/vulkan/runtime/vk_cmd_enqueue_entrypoints.c",
+    "vk_common_entrypoints.c": "src/vulkan/runtime/vk_common_entrypoints.c",
+    "wsi_common_entrypoints.c": "src/vulkan/wsi/wsi_common_entrypoints.c",
+}
+TABLE_REFERENCE = re.compile(
+    r"      _(\w+_entrypoints(?:_[a-z0-9]+)?) in "
+    r"(?:[\w.]+\.a\[\d+\]\()?meson-generated_\.\._(\w+\.(?:c|cc))\.o\)?")
+
+
+def missing_optional_entries(log: str) -> dict[str, set[tuple[str, str]]]:
+    """Accept only missing symbols referenced exclusively by generated tables."""
+    log = re.sub(r"\x1b\[[0-9;]*m", "", log)
+    blocks = re.findall(r"^Undefined symbols for architecture arm64:\n(.*?)"
+                        r"^ld: symbol\(s\) not found for architecture arm64\s*$", log, re.M | re.S)
+    if len(blocks) != 1:
+        raise ValueError("expected one strict arm64 linker failure for optional entrypoints")
+    groups = re.split(r'^  "([^"\n]+)", referenced from:\n', blocks[0], flags=re.M)
+    if groups[0] or len(groups) < 3:
+        raise ValueError("unexpected undefined-symbol diagnostic format")
+    files = {}
+    for name, references in zip(groups[1::2], groups[2::2]):
+        cpp = re.search(r"\b(tu_[A-Za-z0-9_]+)(?:<\(chip\)([678])>)?\(", name)
+        if cpp:
+            symbol, chip = cpp.groups()
+            if chip:
+                symbol += f"<A{chip}XX>"
+        elif re.fullmatch(r"_(?:vk_cmd_enqueue|vk_common|wsi)_[A-Za-z0-9_]+", name):
+            symbol = name[1:]
+        else:
+            raise ValueError("unexpected unresolved symbol: " + name)
+        refs = references.splitlines()
+        if not refs:
+            raise ValueError("missing unresolved-symbol reference: " + name)
+        for ref in refs:
+            match = TABLE_REFERENCE.fullmatch(ref)
+            if not match or match[2] not in ENTRYPOINT_TABLES:
+                raise ValueError("unresolved symbol outside optional entrypoint tables: " + name)
+            table, file = match.groups()
+            files.setdefault(file, set()).add((table, symbol))
+    return files
+
+
+def resolve_optional_entries(build_dir: Path, log: str, planned: str) -> dict[str, int]:
+    """Leave missing optional slots null and require a second strict link."""
+    replacements = []
+    counts = {}
+    for file, missing in missing_optional_entries(log).items():
+        relative = ENTRYPOINT_TABLES[file]
+        generator = [line for line in planned.splitlines() if "vk_entrypoints_gen.py" in line
+                     and "--weak" in line and f"--out-c {relative} " in line]
+        if len(generator) != 1:
+            raise ValueError("missing exact weak-table generator command: " + relative)
+        path = build_dir / relative
+        text = path.read_text(encoding="utf-8")
+        if "#define VK_ENTRY_USE_WEAK 1\n" not in text:
+            raise ValueError("expected generated weak entrypoint source: " + relative)
+        removed = set()
+        table_pattern = re.compile(
+            r"(^const struct vk_\w+_entrypoint_table (\w+) = \{\n)(.*?)(^\};)", re.M | re.S)
+        def rewrite_table(match):
+            start, name, body, end = match.groups()
+            def rewrite_entry(entry):
+                key = name, entry[2]
+                if key not in missing:
+                    return entry[0]
+                if key in removed:
+                    raise ValueError("ambiguous optional entrypoint slot: " + entry[2])
+                removed.add(key)
+                return entry[1] + "0,"
+            body = re.sub(r"^(\s*\.\w+ = )(\w+(?:<[A-Za-z0-9_]+>)?),$", rewrite_entry, body, flags=re.M)
+            return start + body + end
+        revised = table_pattern.sub(rewrite_table, text)
+        if removed != missing:
+            raise ValueError(f"optional linker references do not match generated slots: {relative}")
+        counts[relative] = len(removed)
+        replacements.append((path, revised))
+    for path, revised in replacements:
+        path.write_text(revised, encoding="utf-8")
+    return counts
+
+
 def command(argv, out: Path, name: str, env: dict, timeout=180) -> str:
     log = out / (name + ".log")
     with log.open("w", encoding="utf-8") as stream:
@@ -135,7 +218,19 @@ def build(args, out: Path) -> dict:
     if (re.search(r"(?:^|\s)-undefined\s+(?:dynamic_lookup|suppress|warning)(?:\s|$)", words) or
         re.search(r"(?:^|\s)-flat_namespace(?:\s|$)", words)):
         raise ValueError("generated Mesa command reintroduced an unresolved-import waiver")
-    command([args.ninja, "-C", build_dir, "-j2"], out, "build", env, timeout=3600)
+    ninja = [args.ninja, "-C", build_dir, "-j2"]
+    optional_null_slots = {}
+    try:
+        command(ninja, out, "build", env, timeout=3600)
+    except ValueError as build_error:
+        log = (out / "build.log").read_text(encoding="utf-8", errors="replace")
+        try:
+            optional_null_slots = resolve_optional_entries(build_dir, log, planned)
+        except ValueError as link_error:
+            raise ValueError(f"{build_error}; {link_error}") from link_error
+        (out / "optional-entrypoint-null-slots.json").write_text(
+            json.dumps(optional_null_slots, indent=2) + "\n", encoding="utf-8")
+        command(ninja, out, "build-strict-relink", env, timeout=600)
     dylib = build_dir / "src/freedreno/vulkan/libvulkan_freedreno.dylib"
     check_ios_dylib(dylib)
     exports = command(["nm", "-gU", dylib], out, "exports", env)
@@ -150,6 +245,7 @@ def build(args, out: Path) -> dict:
         "dylib": {"file": copied.name, "bytes": copied.stat().st_size, "sha256": sha(copied)},
         "official_iphoneos_sdk": sdk, "dependencies": dependencies,
         "strict_undefined_link": True, "unresolved_import_waiver": False,
+        "optional_entrypoint_null_slots": optional_null_slots,
         "strict_default_linker_proof": linker_proof,
         "builtin_pack_sha256": pack_sha, "native_provider_exercised": False,
         "physical_device_enumerated": False, "runtime_executed": False,

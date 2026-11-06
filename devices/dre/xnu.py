@@ -141,7 +141,8 @@ def tree(identity=None, ui=False, cpus=1, product_path=None, native_ufs=False, r
 
 def embed(kernel, out, init_obj, donor=False, identity_path=None,
           ui=False, cpus=1, product_path=None, native_ufs=False, ram_mib=512, install_root=False,
-          gpu_firmware=False, gpu_firmware_relocated=False, quiet_boot=False, panel_hz=None):
+          gpu_firmware=False, gpu_firmware_relocated=False, quiet_boot=False, panel_hz=None,
+          boot_progress=False):
     data = kernel.read_bytes()
     if donor:
         data = retarget(data)
@@ -162,6 +163,8 @@ def embed(kernel, out, init_obj, donor=False, identity_path=None,
         raise ValueError('--install-root requires UI, product metadata and a userdata-RW native kernel')
     if quiet_boot and (not install_root or b"dre_quiet_boot\0" not in data):
         raise ValueError("--quiet-boot requires an install-root kernel with quiet-console support")
+    if boot_progress and (not quiet_boot or b"dre_boot_progress\0" not in data):
+        raise ValueError("--boot-progress requires quiet boot and a kernel with DRE checkpoint support")
     if panel_hz is not None and (not ui or panel_hz not in (45, 60, 90) or b"dre_panel_hz\0" not in data):
         raise ValueError("--panel-hz requires a supported mode and a kernel with DRE vsync timing support")
     if gpu_firmware and (not native_ufs or not ui or donor or not all(marker in data for marker in
@@ -181,6 +184,8 @@ def embed(kernel, out, init_obj, donor=False, identity_path=None,
         ramdisk.write_bytes(mkinit.build(init_obj.read_bytes()))
     root_device = 'ufsroot0' if install_root else 'md0'
     console = "dre_quiet_boot=1" if quiet_boot else "-enable_kprintf_spam"
+    if boot_progress:
+        console += " dre_boot_progress=1"
     cmdline = f"debug=0xc serial=3 cpus={cpus} keepsyms=1 {console} -noprogress rd={root_device}"
     if ui:
         cmdline += " msgbuf=65536"  # Retain driver-start records until diagnostic PID 1.

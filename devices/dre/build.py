@@ -57,6 +57,8 @@ def main():
                     help="boot writable iOS from userdata; no diagnostic RAM root (requires private product ADT)")
     ap.add_argument("--quiet-boot", action="store_true",
                     help="hide normal XNU console output on install boots while retaining panics")
+    ap.add_argument("--boot-progress", action="store_true",
+                    help="show one-shot root and display checkpoints during a quiet install boot")
     ap.add_argument("--panel-hz", type=int, choices=(45, 60, 90),
                     help="target a known panel mode with software vsync; does not set the panel mode")
     ap.add_argument("--ufs-read-test", action="store_true",
@@ -75,6 +77,8 @@ def main():
     args = ap.parse_args()
     if args.quiet_boot and not args.install_root:
         ap.error("--quiet-boot requires --install-root")
+    if args.boot_progress and not args.quiet_boot:
+        ap.error("--boot-progress requires --quiet-boot")
     if args.install_root:
         if not args.xnu or not args.product_adt:
             ap.error('--install-root requires --xnu and --product-adt')
@@ -203,7 +207,7 @@ def main():
               native_ufs=args.native_ufs, ram_mib=args.ram_mib, install_root=args.install_root,
               gpu_firmware=gpu_firmware is not None,
               gpu_firmware_relocated=args.gpu_firmware_relocated,
-              quiet_boot=args.quiet_boot, panel_hz=args.panel_hz)
+              quiet_boot=args.quiet_boot, panel_hz=args.panel_hz, boot_progress=args.boot_progress)
         if gpu_firmware is not None:
             # Private output only. The kernel anchor was matched before any
             # compilation. No default image, source digest or boot argument
@@ -265,6 +269,8 @@ def main():
             'kernel_sha256': hashlib.sha256(kernel.read_bytes()).hexdigest() if kernel else None}
     if args.quiet_boot:
         info['quiet_boot'] = True
+    if args.boot_progress:
+        info['boot_progress'] = True
     if args.panel_hz is not None:
         info['software_vsync_hz'] = args.panel_hz
     if gpu_firmware is not None:

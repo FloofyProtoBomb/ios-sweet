@@ -1,0 +1,21 @@
+name: dre-boot-progress
+
+on:
+  push:
+    branches: [dre-boot-progress]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: dre-boot-progress
+  cancel-in-progress: false
+
+jobs:
+  checkpoint-kernel:
+    uses: ./.github/workflows/xnu.yml
+    with:
+      machine_config: DRE
+      dre_profile: ui
+      native_drafts: true

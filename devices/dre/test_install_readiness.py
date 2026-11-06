@@ -29,6 +29,11 @@ def main():
         checks += 1
     command = ' '.join(f'{key}={value}' for key,value in r.REQUIRED_ARGS.items())
     assert r.inspect_install_arguments(command)['rd'] == 'ufsroot0'; checks += 1
+    progress = ' dre_quiet_boot=1 dre_boot_progress=1'
+    assert r.inspect_install_arguments(command + progress)['dre_boot_progress'] == '1'; checks += 1
+    reject(lambda:r.inspect_install_arguments(command + ' dre_boot_progress=1'), 'quiet boot profile')
+    reject(lambda:r.inspect_install_arguments(command + progress.replace('progress=1', 'progress=0')),
+           'quiet boot profile')
     for option in ('dre_qemu_affinity=1', 'dre_ufs_map_test=1', 'dre_ufs_bsd_test=1',
                    'dre_ufs_qemu_file=1', 'interrupt-masked-debug-mode=1', 'tlto_us=1000000'):
         reject(lambda:r.inspect_install_arguments(command + ' ' + option), 'QEMU-only')
